@@ -22,7 +22,7 @@ export const LandingPage: React.FC<{ onNavigate: (view: string) => void }> = ({ 
             <Button
               size="lg"
               className="bg-unity-500 hover:bg-unity-600 text-white px-8 py-4 text-lg"
-              onClick={() => onNavigate('dashboard')}
+              onClick={() => onNavigate('signup')}
             >
               Start Your Journey <ArrowRight className="ml-2" size={20} />
             </Button>
