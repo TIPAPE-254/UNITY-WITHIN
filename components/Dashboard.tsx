@@ -4,7 +4,7 @@ import { Button } from './Button';
 import { generateDailyAffirmation } from '../services/geminiService';
 import { Sun, Sparkles, TrendingUp, Flame, Trophy, Star, Sprout, Flower, Trees, Wind, BrainCircuit, Heart, Zap, Phone, ExternalLink, Brain, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts';
-import { UserProgress } from '../types';
+import { UserProgress, Goal, Habit, SafetyPlan, Badge, WearableData } from '../types';
 
 interface DashboardProps {
   userName?: string;
@@ -25,6 +25,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
   const [loadingAffirmation, setLoadingAffirmation] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [xpGained, setXpGained] = useState<number | null>(null);
+  const therapistToolsEnabled = false; // Feature flag for therapist tools
 
   // Gamification State
   const [progress, setProgress] = useState<UserProgress>(() => {
@@ -54,6 +55,51 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
     { name: 'Sun', mood: selectedMood ? MOODS.findIndex(m => m.label === selectedMood) + 1 : 0 },
   ];
 
+  // Goal Setting & Habit Tracking State
+  const [goals, setGoals] = useState<Goal[]>(() => {
+    const saved = localStorage.getItem('unity_goals');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [habits, setHabits] = useState<Habit[]>(() => {
+    const saved = localStorage.getItem('unity_habits');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Emergency & Safety Tools State
+  const [safetyPlan, setSafetyPlan] = useState<SafetyPlan>(() => {
+    const saved = localStorage.getItem('unity_safety_plan');
+    return saved ? JSON.parse(saved) : {
+      id: 'default',
+      triggers: [],
+      copingStrategies: [],
+      supportContacts: [],
+      emergencyActions: []
+    };
+  });
+
+  // Gamification Enhancements State
+  const [badges, setBadges] = useState<Badge[]>(() => {
+    const saved = localStorage.getItem('unity_badges');
+    return saved ? JSON.parse(saved) : [
+      { id: 'first_checkin', name: 'First Steps', description: 'Completed your first mood check-in', icon: '🌱', earnedAt: null, requirement: 'Complete 1 mood check-in' },
+      { id: 'week_streak', name: 'Week Warrior', description: 'Maintained a 7-day streak', icon: '🔥', earnedAt: null, requirement: '7-day streak' },
+      { id: 'tool_explorer', name: 'Tool Explorer', description: 'Used 5 different tools', icon: '🛠️', earnedAt: null, requirement: 'Use 5 different tools' },
+      { id: 'journal_keeper', name: 'Journal Keeper', description: 'Wrote 10 journal entries', icon: '📖', earnedAt: null, requirement: '10 journal entries' },
+    ];
+  });
+
+  // Wearable Integration State
+  const [wearableData, setWearableData] = useState<WearableData>(() => {
+    const saved = localStorage.getItem('unity_wearable');
+    return saved ? JSON.parse(saved) : {
+      steps: 0,
+      heartRate: 0,
+      sleepHours: 0,
+      lastSync: null
+    };
+  });
+
   useEffect(() => {
     fetchAffirmation("calm");
   }, []);
@@ -69,6 +115,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
   useEffect(() => {
     localStorage.setItem('unity_tool_favorites', JSON.stringify(favorites));
   }, [favorites]);
+
+  useEffect(() => {
+    localStorage.setItem('unity_goals', JSON.stringify(goals));
+  }, [goals]);
+
+  useEffect(() => {
+    localStorage.setItem('unity_habits', JSON.stringify(habits));
+  }, [habits]);
+
+  useEffect(() => {
+    localStorage.setItem('unity_safety_plan', JSON.stringify(safetyPlan));
+  }, [safetyPlan]);
+
+  useEffect(() => {
+    localStorage.setItem('unity_badges', JSON.stringify(badges));
+  }, [badges]);
+
+  useEffect(() => {
+    localStorage.setItem('unity_wearable', JSON.stringify(wearableData));
+  }, [wearableData]);
 
   const fetchAffirmation = async (moodLabel: string) => {
     setLoadingAffirmation(true);
@@ -100,17 +166,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
 
   const handleCheckIn = () => {
     const today = new Date().toDateString();
-    
+
     // Prevent double check-in points for the same day
     if (progress.lastCheckInDate === today) return;
 
     let newStreak = progress.streak;
     let newPoints = progress.points + XP_PER_CHECKIN;
-    
+
     // Check if yesterday was the last check-in for streak continuity
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    
+
     if (progress.lastCheckInDate === yesterday.toDateString()) {
       newStreak += 1;
       newPoints += 10; // Bonus for maintaining streak
@@ -121,25 +187,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
     // Calculate Level
     let newLevel = 1;
     for (let i = LEVELS.length - 1; i >= 0; i--) {
-        if (newPoints >= LEVELS[i].minXp) {
-            newLevel = LEVELS[i].level;
-            break;
-        }
+      if (newPoints >= LEVELS[i].minXp) {
+        newLevel = LEVELS[i].level;
+        break;
+      }
     }
 
     setProgress({
-        points: newPoints,
-        streak: newStreak,
-        lastCheckInDate: today,
-        level: newLevel
+      points: newPoints,
+      streak: newStreak,
+      lastCheckInDate: today,
+      level: newLevel
     });
 
     // Trigger visual feedback
     setXpGained(progress.lastCheckInDate === yesterday.toDateString() ? XP_PER_CHECKIN + 10 : XP_PER_CHECKIN);
     setShowConfetti(true);
     setTimeout(() => {
-        setShowConfetti(false);
-        setXpGained(null);
+      setShowConfetti(false);
+      setXpGained(null);
     }, 2000);
   };
 
@@ -152,70 +218,191 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
 
   const currentLevel = LEVELS.find(l => l.level === progress.level) || LEVELS[0];
   const nextLevel = LEVELS.find(l => l.level === progress.level + 1);
-  const progressToNext = nextLevel 
-    ? ((progress.points - currentLevel.minXp) / (nextLevel.minXp - currentLevel.minXp)) * 100 
+  const progressToNext = nextLevel
+    ? ((progress.points - currentLevel.minXp) / (nextLevel.minXp - currentLevel.minXp)) * 100
     : 100;
+
+  const updateHabitProgress = (habitId: string) => {
+    setHabits(prev => prev.map(habit => {
+      if (habit.id !== habitId) return habit;
+
+      const today = new Date().toDateString();
+      if (habit.lastCompleted === today) return habit; // Already completed today
+
+      const newCount = habit.currentCount + 1;
+      // Simple daily streak logic
+      const newStreak = habit.streak + 1;
+
+      return {
+        ...habit,
+        currentCount: newCount,
+        streak: newStreak,
+        lastCompleted: today
+      };
+    }));
+  };
+
+  const getEarnedBadges = () => badges.filter(b => b.earnedAt !== null);
+  const getAvailableBadges = () => badges.filter(b => b.earnedAt === null);
+
+  // Initialize some sample data for demonstration
+  useEffect(() => {
+    if (goals.length === 0) {
+      setGoals([
+        {
+          id: 'goal-1',
+          title: 'Practice Daily Mindfulness',
+          description: 'Complete 30 days of mindfulness exercises',
+          category: 'health',
+          targetDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          progress: 40,
+          isCompleted: false,
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'goal-2',
+          title: 'Build Journaling Habit',
+          description: 'Write in journal 5 times per week',
+          category: 'personal',
+          targetDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+          progress: 25,
+          isCompleted: false,
+          createdAt: new Date().toISOString()
+        }
+      ]);
+    }
+
+    if (habits.length === 0) {
+      setHabits([
+        {
+          id: 'habit-1',
+          name: 'Morning Meditation',
+          description: '10 minutes of mindfulness each morning',
+          frequency: 'daily',
+          streak: 5,
+          lastCompleted: new Date().toDateString(),
+          targetCount: 7,
+          currentCount: 5
+        },
+        {
+          id: 'habit-2',
+          name: 'Gratitude Practice',
+          description: 'Write down 3 things I\'m grateful for',
+          frequency: 'daily',
+          streak: 3,
+          lastCompleted: new Date(Date.now() - 24 * 60 * 60 * 1000).toDateString(),
+          targetCount: 7,
+          currentCount: 4
+        }
+      ]);
+    }
+
+    if (safetyPlan.copingStrategies.length === 0) {
+      setSafetyPlan({
+        id: 'default',
+        triggers: ['Feeling overwhelmed', 'Negative thoughts', 'Stress at work'],
+        copingStrategies: [
+          'Take 5 deep breaths',
+          'Go for a short walk',
+          'Call a trusted friend',
+          'Use grounding techniques (5-4-3-2-1)'
+        ],
+        supportContacts: [
+          { name: 'Best Friend', phone: '555-0123' },
+          { name: 'Family Member', phone: '555-0456' }
+        ],
+        emergencyActions: [
+          'Call crisis hotline (988)',
+          'Go to emergency room if needed',
+          'Contact emergency contact'
+        ]
+      });
+    }
+
+    if (wearableData.steps === 0) {
+      setWearableData({
+        steps: 8432,
+        heartRate: 72,
+        sleepHours: 7.5,
+        lastSync: new Date().toISOString()
+      });
+    }
+
+    // Initialize badges with earned status based on progress
+    setBadges(prev => prev.map(badge => {
+      if (badge.id === 'first_checkin' && progress.points > 0) {
+        return { ...badge, earnedAt: new Date().toISOString() };
+      }
+      if (badge.id === 'week_streak' && progress.streak >= 7) {
+        return { ...badge, earnedAt: new Date().toISOString() };
+      }
+      if (badge.id === 'tool_explorer' && Object.keys(toolUsage).length >= 5) {
+        return { ...badge, earnedAt: new Date().toISOString() };
+      }
+      return badge;
+    }));
+  }, [goals.length, habits.length, safetyPlan.copingStrategies.length, wearableData.steps, progress.points, progress.streak, toolUsage]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 relative">
-      
+
       {/* Header Section */}
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-2">
-            <h1 className="text-3xl font-bold text-unity-black">
+          <h1 className="text-3xl font-bold text-unity-black">
             {getGreeting()}, <span className="text-unity-500">{userName}</span>
-            </h1>
-            <p className="text-gray-500">How is your heart feeling today?</p>
+          </h1>
+          <p className="text-gray-500">How is your heart feeling today?</p>
         </div>
-        
+
         {/* Gamification Stats Pill */}
         <div className="bg-white px-4 py-2 rounded-2xl shadow-sm border border-unity-100 flex items-center gap-6">
-            <div className="flex items-center gap-2" title="Current Streak">
-                <div className={`p-1.5 rounded-full ${progress.streak > 0 ? 'bg-orange-100 text-orange-500' : 'bg-gray-100 text-gray-400'}`}>
-                    <Flame size={18} className={progress.streak > 0 ? "fill-orange-500" : ""} />
-                </div>
-                <div>
-                    <span className="block text-xs text-gray-400 font-medium uppercase">Streak</span>
-                    <span className="font-bold text-unity-black text-sm">{progress.streak} Day{progress.streak !== 1 && 's'}</span>
-                </div>
+          <div className="flex items-center gap-2" title="Current Streak">
+            <div className={`p-1.5 rounded-full ${progress.streak > 0 ? 'bg-orange-100 text-orange-500' : 'bg-gray-100 text-gray-400'}`}>
+              <Flame size={18} className={progress.streak > 0 ? "fill-orange-500" : ""} />
             </div>
-            <div className="w-px h-8 bg-gray-100"></div>
-            <div className="flex items-center gap-2" title="Total XP">
-                 <div className="p-1.5 rounded-full bg-yellow-100 text-yellow-600">
-                    <Star size={18} className="fill-yellow-600" />
-                </div>
-                <div>
-                    <span className="block text-xs text-gray-400 font-medium uppercase">Total XP</span>
-                    <span className="font-bold text-unity-black text-sm">{progress.points}</span>
-                </div>
+            <div>
+              <span className="block text-xs text-gray-400 font-medium uppercase">Streak</span>
+              <span className="font-bold text-unity-black text-sm">{progress.streak} Day{progress.streak !== 1 && 's'}</span>
             </div>
+          </div>
+          <div className="w-px h-8 bg-gray-100"></div>
+          <div className="flex items-center gap-2" title="Total XP">
+            <div className="p-1.5 rounded-full bg-yellow-100 text-yellow-600">
+              <Star size={18} className="fill-yellow-600" />
+            </div>
+            <div>
+              <span className="block text-xs text-gray-400 font-medium uppercase">Total XP</span>
+              <span className="font-bold text-unity-black text-sm">{progress.points}</span>
+            </div>
+          </div>
         </div>
       </header>
 
       {/* Progress / Level Card */}
       <section className="bg-white rounded-3xl p-6 shadow-sm border border-unity-50 relative overflow-hidden">
         <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 rounded-full bg-unity-100 flex items-center justify-center text-unity-500">
-                <currentLevel.icon size={24} />
+          <div className="w-12 h-12 rounded-full bg-unity-100 flex items-center justify-center text-unity-500">
+            <currentLevel.icon size={24} />
+          </div>
+          <div className="flex-1">
+            <div className="flex justify-between items-end mb-1">
+              <h3 className="font-bold text-lg text-unity-black">Level {currentLevel.level}: {currentLevel.name}</h3>
+              {nextLevel && <span className="text-xs text-gray-400">{Math.floor(nextLevel.minXp - progress.points)} XP to next level</span>}
             </div>
-            <div className="flex-1">
-                <div className="flex justify-between items-end mb-1">
-                    <h3 className="font-bold text-lg text-unity-black">Level {currentLevel.level}: {currentLevel.name}</h3>
-                    {nextLevel && <span className="text-xs text-gray-400">{Math.floor(nextLevel.minXp - progress.points)} XP to next level</span>}
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                    <div 
-                        className="bg-gradient-to-r from-unity-400 to-unity-500 h-2.5 rounded-full transition-all duration-1000 ease-out" 
-                        style={{ width: `${Math.min(progressToNext, 100)}%` }}
-                    ></div>
-                </div>
+            <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-unity-400 to-unity-500 h-2.5 rounded-full transition-all duration-1000 ease-out"
+                style={{ width: `${Math.min(progressToNext, 100)}%` }}
+              ></div>
             </div>
+          </div>
         </div>
         {progress.lastCheckInDate !== new Date().toDateString() && (
-             <div className="bg-unity-50 rounded-xl p-3 flex items-center gap-3 text-sm text-unity-700">
-                <Sparkles size={16} />
-                <span>Check in today to earn <strong>+{XP_PER_CHECKIN} XP</strong> and keep your flame burning!</span>
-             </div>
+          <div className="bg-unity-50 rounded-xl p-3 flex items-center gap-3 text-sm text-unity-700">
+            <Sparkles size={16} />
+            <span>Check in today to earn <strong>+{XP_PER_CHECKIN} XP</strong> and keep your flame burning!</span>
+          </div>
         )}
       </section>
 
@@ -227,11 +414,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
             <button
               key={mood.label}
               onClick={() => handleMoodSelect(mood.label)}
-              className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all duration-200 transform hover:scale-105 ${
-                selectedMood === mood.label 
-                  ? 'bg-unity-50 ring-2 ring-unity-400 scale-105' 
-                  : 'hover:bg-gray-50'
-              }`}
+              className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all duration-200 transform hover:scale-105 ${selectedMood === mood.label
+                ? 'bg-unity-50 ring-2 ring-unity-400 scale-105'
+                : 'hover:bg-gray-50'
+                }`}
             >
               <span className="text-3xl filter drop-shadow-sm">{mood.emoji}</span>
               <span className={`text-xs font-medium ${selectedMood === mood.label ? 'text-unity-700' : 'text-gray-500'}`}>
@@ -243,11 +429,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
 
         {/* XP Pop-up Animation */}
         {showConfetti && (
-             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
-                 <div className="animate-bounce text-yellow-500 font-bold text-2xl drop-shadow-md">
-                    +{xpGained} XP!
-                 </div>
-             </div>
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
+            <div className="animate-bounce text-yellow-500 font-bold text-2xl drop-shadow-md">
+              +{xpGained} XP!
+            </div>
+          </div>
         )}
       </section>
 
@@ -257,65 +443,65 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
           <Sparkles size={120} />
         </div>
         <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-4 opacity-90">
-                <Sun size={20} />
-                <span className="uppercase tracking-wider text-xs font-bold">Daily Wisdom</span>
+          <div className="flex items-center gap-2 mb-4 opacity-90">
+            <Sun size={20} />
+            <span className="uppercase tracking-wider text-xs font-bold">Daily Wisdom</span>
+          </div>
+          {loadingAffirmation ? (
+            <div className="h-16 flex items-center">
+              <div className="animate-pulse bg-white/30 h-4 w-3/4 rounded"></div>
             </div>
-            {loadingAffirmation ? (
-                 <div className="h-16 flex items-center">
-                    <div className="animate-pulse bg-white/30 h-4 w-3/4 rounded"></div>
-                 </div>
-            ) : (
-                <blockquote className="text-2xl sm:text-3xl font-serif italic leading-relaxed mb-6">
-                "{affirmation}"
-                </blockquote>
-            )}
-            <Button 
-                variant="secondary" 
-                size="sm" 
-                className="bg-white/20 text-white hover:bg-white/30 border-0 backdrop-blur-sm"
-                onClick={() => fetchAffirmation(selectedMood || "calm")}
-            >
-                New affirmation
-            </Button>
+          ) : (
+            <blockquote className="text-2xl sm:text-3xl font-serif italic leading-relaxed mb-6">
+              "{affirmation}"
+            </blockquote>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            className="bg-white/20 text-white hover:bg-white/30 border-0 backdrop-blur-sm"
+            onClick={() => fetchAffirmation(selectedMood || "calm")}
+          >
+            New affirmation
+          </Button>
         </div>
       </section>
 
       {/* Stats / Quick Actions Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
+
         {/* Simple Weekly Mood Chart */}
         <section className="bg-white p-6 rounded-3xl shadow-sm border border-unity-50">
-           <div className="flex items-center justify-between mb-6">
-                <h3 className="font-bold text-unity-black flex items-center gap-2">
-                    <TrendingUp size={20} className="text-unity-500"/> 
-                    Mood History
-                </h3>
-           </div>
-           <div className="h-48 w-full">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-bold text-unity-black flex items-center gap-2">
+              <TrendingUp size={20} className="text-unity-500" />
+              Mood History
+            </h3>
+          </div>
+          <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6"/>
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
-                    <Tooltip 
-                        cursor={{fill: '#fff1f2'}} 
-                        contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                    />
-                    <Bar dataKey="mood" radius={[4, 4, 4, 4]}>
-                        {data.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={index === 6 ? '#f43f5e' : '#fbcfe8'} />
-                        ))}
-                    </Bar>
-                </BarChart>
+              <BarChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                <Tooltip
+                  cursor={{ fill: '#fff1f2' }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Bar dataKey="mood" radius={[4, 4, 4, 4]}>
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={index === 6 ? '#f43f5e' : '#fbcfe8'} />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
-           </div>
+          </div>
         </section>
 
         {/* Quick Suggestion */}
         <section className="bg-white p-6 rounded-3xl shadow-sm border border-unity-50 flex flex-col justify-center items-start space-y-4">
-            <h3 className="font-bold text-unity-black">Feeling overwhelmed?</h3>
-            <p className="text-gray-500 text-sm">Take a moment to center yourself. A 2-minute breathing exercise can reset your nervous system.</p>
-            <Button onClick={() => { handleToolUse('breathing'); onNavigate('breathe'); }}>Start Breathing</Button>
+          <h3 className="font-bold text-unity-black">Feeling overwhelmed?</h3>
+          <p className="text-gray-500 text-sm">Take a moment to center yourself. A 2-minute breathing exercise can reset your nervous system.</p>
+          <Button onClick={() => { handleToolUse('breathing'); onNavigate('breathe'); }}>Start Breathing</Button>
         </section>
       </div>
 
@@ -408,9 +594,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
               </button>
               <button
                 onClick={() => toggleFavorite(tool.id)}
-                className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
-                  favorites.includes(tool.id) ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                }`}
+                className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center transition-colors ${favorites.includes(tool.id) ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                  }`}
                 title={favorites.includes(tool.id) ? 'Remove from favorites' : 'Add to favorites'}
               >
                 <Star size={12} className={favorites.includes(tool.id) ? 'fill-current' : ''} />
@@ -425,6 +610,329 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
           </p>
         </div>
       </section>
+
+      {/* Goal Setting & Habit Tracking Section */}
+      <section className="bg-white p-6 rounded-3xl shadow-sm border border-unity-50">
+        <div className="flex items-center gap-2 mb-6">
+          <Trophy size={20} className="text-unity-500" />
+          <h3 className="font-bold text-unity-black">Goals & Habits</h3>
+        </div>
+
+        <div className="space-y-6">
+          {/* Active Goals */}
+          <div>
+            <h4 className="font-semibold text-unity-black mb-3">Active Goals</h4>
+            {goals.filter(g => !g.isCompleted).length === 0 ? (
+              <p className="text-gray-500 text-sm">No active goals. Set your first goal to get started!</p>
+            ) : (
+              <div className="space-y-3">
+                {goals.filter(g => !g.isCompleted).map(goal => (
+                  <div key={goal.id} className="bg-unity-50 p-4 rounded-2xl">
+                    <div className="flex justify-between items-start mb-2">
+                      <h5 className="font-medium text-unity-black">{goal.title}</h5>
+                      <span className="text-xs text-gray-500">{goal.progress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                      <div
+                        className="bg-unity-500 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${goal.progress}%` }}
+                      ></div>
+                    </div>
+                    <p className="text-xs text-gray-600">{goal.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Daily Habits */}
+          <div>
+            <h4 className="font-semibold text-unity-black mb-3">Daily Habits</h4>
+            {habits.length === 0 ? (
+              <p className="text-gray-500 text-sm">No habits tracked yet. Add habits to build consistency!</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {habits.map(habit => (
+                  <div key={habit.id} className="bg-green-50 p-4 rounded-2xl border border-green-200">
+                    <div className="flex justify-between items-start mb-2">
+                      <h5 className="font-medium text-green-900">{habit.name}</h5>
+                      <div className="flex items-center gap-1">
+                        <Flame size={14} className="text-orange-500" />
+                        <span className="text-xs text-orange-600">{habit.streak}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-green-700 mb-3">{habit.description}</p>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">{habit.currentCount}/{habit.targetCount} this week</span>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="bg-green-100 text-green-700 hover:bg-green-200"
+                        onClick={() => updateHabitProgress(habit.id)}
+                      >
+                        Complete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Emergency & Safety Tools Section */}
+      <section className="bg-white p-6 rounded-3xl shadow-sm border border-unity-50">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={20} className="text-red-500" />
+            <h3 className="font-bold text-unity-black">Emergency Support</h3>
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            className="bg-red-500 hover:bg-red-600 text-white"
+            onClick={() => window.open('tel:988', '_blank')}
+          >
+            Get Help Now
+          </Button>
+        </div>
+
+        <div className="space-y-4">
+          <div className="bg-red-50 p-4 rounded-2xl border border-red-200">
+            <h4 className="font-bold text-red-900 mb-2">Crisis Hotlines</h4>
+            <div className="space-y-2 text-sm text-red-700">
+              <p><strong>988 Suicide & Crisis Lifeline:</strong> Call or text 988</p>
+              <p><strong>Crisis Text Line:</strong> Text HOME to 741741</p>
+              <p><strong>National Domestic Violence Hotline:</strong> 1-800-799-7233</p>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200">
+            <h4 className="font-bold text-blue-900 mb-2">Your Safety Plan</h4>
+            {safetyPlan.copingStrategies.length === 0 ? (
+              <p className="text-sm text-blue-700">Create a personalized safety plan for when you feel overwhelmed.</p>
+            ) : (
+              <div className="space-y-2">
+                <div>
+                  <strong className="text-xs text-blue-800 uppercase">Coping Strategies:</strong>
+                  <ul className="text-sm text-blue-700 mt-1">
+                    {safetyPlan.copingStrategies.slice(0, 3).map((strategy, idx) => (
+                      <li key={idx}>• {strategy}</li>
+                    ))}
+                  </ul>
+                </div>
+                {safetyPlan.supportContacts.length > 0 && (
+                  <div>
+                    <strong className="text-xs text-blue-800 uppercase">Support Contacts:</strong>
+                    <ul className="text-sm text-blue-700 mt-1">
+                      {safetyPlan.supportContacts.slice(0, 2).map((contact, idx) => (
+                        <li key={idx}>• {contact.name}: {contact.phone}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-unity-100">
+          <p className="text-xs text-gray-400 text-center">
+            If you're in immediate danger, call emergency services (911 in the US).
+          </p>
+        </div>
+      </section>
+
+      {/* Gamification Enhancements Section */}
+      <section className="bg-white p-6 rounded-3xl shadow-sm border border-unity-50">
+        <div className="flex items-center gap-2 mb-6">
+          <Trophy size={20} className="text-unity-500" />
+          <h3 className="font-bold text-unity-black">Achievements & Badges</h3>
+        </div>
+
+        <div className="space-y-4">
+          {/* Earned Badges */}
+          <div>
+            <h4 className="font-semibold text-unity-black mb-3">Earned Badges ({getEarnedBadges().length})</h4>
+            {getEarnedBadges().length === 0 ? (
+              <p className="text-gray-500 text-sm">No badges earned yet. Keep using the app to unlock achievements!</p>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {getEarnedBadges().map(badge => (
+                  <div key={badge.id} className="bg-yellow-50 p-3 rounded-2xl border border-yellow-200 text-center">
+                    <div className="text-2xl mb-1">{badge.icon}</div>
+                    <h5 className="font-medium text-yellow-900 text-sm">{badge.name}</h5>
+                    <p className="text-xs text-yellow-700">{badge.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Available Badges */}
+          <div>
+            <h4 className="font-semibold text-unity-black mb-3">Available Badges</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {getAvailableBadges().map(badge => (
+                <div key={badge.id} className="bg-gray-50 p-3 rounded-2xl border border-gray-200 text-center opacity-60">
+                  <div className="text-2xl mb-1">{badge.icon}</div>
+                  <h5 className="font-medium text-gray-700 text-sm">{badge.name}</h5>
+                  <p className="text-xs text-gray-500">{badge.requirement}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Milestones */}
+          <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-2xl border border-purple-200">
+            <h4 className="font-bold text-purple-900 mb-2">Milestone Progress</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-purple-700">30 Days of Journaling</span>
+                <span className="text-xs text-purple-600">12/30 days</span>
+              </div>
+              <div className="w-full bg-purple-200 rounded-full h-2">
+                <div className="bg-purple-500 h-2 rounded-full" style={{ width: '40%' }}></div>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-purple-700">50 Breathing Sessions</span>
+                <span className="text-xs text-purple-600">23/50 sessions</span>
+              </div>
+              <div className="w-full bg-purple-200 rounded-full h-2">
+                <div className="bg-purple-500 h-2 rounded-full" style={{ width: '46%' }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Wearable Integration Section */}
+      <section className="bg-white p-6 rounded-3xl shadow-sm border border-unity-50">
+        <div className="flex items-center gap-2 mb-6">
+          <Zap size={20} className="text-unity-500" />
+          <h3 className="font-bold text-unity-black">Health Integration</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200">
+            <h4 className="font-bold text-blue-900 mb-3">Today's Activity</h4>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-blue-600">{wearableData.steps.toLocaleString()}</div>
+                <div className="text-xs text-blue-700">Steps</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-blue-600">{wearableData.heartRate || '--'}</div>
+                <div className="text-xs text-blue-700">BPM</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-blue-600">{wearableData.sleepHours || '--'}</div>
+                <div className="text-xs text-blue-700">Sleep (hrs)</div>
+              </div>
+            </div>
+            <p className="text-xs text-blue-600 mt-3">
+              {wearableData.lastSync ? `Last synced: ${new Date(wearableData.lastSync).toLocaleDateString()}` : 'Not connected to wearable device'}
+            </p>
+          </div>
+
+          <div className="bg-green-50 p-4 rounded-2xl border border-green-200">
+            <h4 className="font-bold text-green-900 mb-2">AI Health Insights</h4>
+            <p className="text-sm text-green-700">
+              Based on your activity data, you might benefit from a short meditation session to help with stress recovery.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-unity-100">
+          <Button variant="secondary" size="sm" className="w-full">
+            Connect Wearable Device
+          </Button>
+        </div>
+      </section>
+
+      {/* Content Personalization Section */}
+      <section className="bg-white p-6 rounded-3xl shadow-sm border border-unity-50">
+        <div className="flex items-center gap-2 mb-6">
+          <Sparkles size={20} className="text-unity-500" />
+          <h3 className="font-bold text-unity-black">Personalized Content</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div className="bg-purple-50 p-4 rounded-2xl border border-purple-200">
+            <h4 className="font-bold text-purple-900 mb-2">Daily Affirmation</h4>
+            <p className="text-sm text-purple-700 italic">
+              "You are stronger than you know, and more capable than you imagine."
+            </p>
+          </div>
+
+          <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-200">
+            <h4 className="font-bold text-indigo-900 mb-2">Recommended Reading</h4>
+            <div className="space-y-2">
+              <div className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-indigo-500 rounded-full mt-2"></div>
+                <div>
+                  <h5 className="font-medium text-indigo-900 text-sm">The Power of Habit</h5>
+                  <p className="text-xs text-indigo-700">Based on your goal-setting activity</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-indigo-500 rounded-full mt-2"></div>
+                <div>
+                  <h5 className="font-medium text-indigo-900 text-sm">Mindful Breathing Techniques</h5>
+                  <p className="text-xs text-indigo-700">Matches your breathing exercise usage</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-pink-50 p-4 rounded-2xl border border-pink-200">
+            <h4 className="font-bold text-pink-900 mb-2">Seasonal Tips</h4>
+            <p className="text-sm text-pink-700">
+              As we move into winter, remember to maintain your light exposure and consider vitamin D supplements if needed.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Therapist/Admin Tools Section (Conditional) */}
+      {therapistToolsEnabled && (
+        <section className="bg-white p-6 rounded-3xl shadow-sm border border-unity-50">
+          <div className="flex items-center gap-2 mb-6">
+            <Brain size={20} className="text-purple-500" />
+            <h3 className="font-bold text-unity-black">Therapist Tools</h3>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-purple-50 p-4 rounded-2xl border border-purple-200">
+              <h4 className="font-bold text-purple-900 mb-2">Client Progress Dashboard</h4>
+              <p className="text-sm text-purple-700">
+                Monitor client mood trends, tool usage, and goal progress over time.
+              </p>
+            </div>
+
+            <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-200">
+              <h4 className="font-bold text-indigo-900 mb-2">Secure Messaging</h4>
+              <p className="text-sm text-indigo-700">
+                HIPAA-compliant messaging system for therapist-client communication.
+              </p>
+            </div>
+
+            <div className="bg-teal-50 p-4 rounded-2xl border border-teal-200">
+              <h4 className="font-bold text-teal-900 mb-2">Shared Resources</h4>
+              <p className="text-sm text-teal-700">
+                Assign homework, share articles, and create personalized treatment plans.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-unity-100">
+            <p className="text-xs text-gray-400 text-center">
+              Therapist tools require professional account verification.
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* AI-Driven Insights Section */}
       <section className="bg-white p-6 rounded-3xl shadow-sm border border-unity-50">
