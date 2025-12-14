@@ -1,13 +1,8 @@
 import React, { useState } from 'react';
 import { Button } from './Button';
-import { GoogleButton } from './GoogleButton';
-import { useGoogleLogin } from '@react-oauth/google';
-import axios from 'axios';
-import { Heart, Eye, EyeOff, Mail, Lock, User as UserIcon, Chrome, Apple, Phone } from 'lucide-react';
+import { Heart, Eye, EyeOff, Mail, Lock, User, Chrome, Apple, Phone } from 'lucide-react';
 
-import { User } from '../types';
-
-export const Signup: React.FC<{ onNavigate: (view: string) => void; onLoginSuccess: (user: User) => void }> = ({ onNavigate, onLoginSuccess }) => {
+export const Signup: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
   const [firstName, setFirstName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,68 +11,23 @@ export const Signup: React.FC<{ onNavigate: (view: string) => void; onLoginSucce
   const [emergencyContact, setEmergencyContact] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleGoogleSignup = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      try {
-        setIsLoading(true);
-        const userInfo = await axios.get(
-          'https://www.googleapis.com/oauth2/v3/userinfo',
-          { headers: { Authorization: `Bearer ${tokenResponse.access_token}` } }
-        );
-
-        const googleUser: User = {
-          id: userInfo.data.sub,
-          firstName: userInfo.data.given_name,
-          email: userInfo.data.email,
-        };
-
-        onLoginSuccess(googleUser);
-      } catch (error) {
-        console.error('Google Signup Error:', error);
-        alert('Failed to sign up with Google.');
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    onError: () => alert('Google Signup Failed'),
-  });
-
   const handleSignup = async () => {
     setIsLoading(true);
-    try {
-      const response = await fetch('http://localhost:3001/api/signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          firstName,
-          email,
-          password,
-          emergencyContact,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Redirect to login page after successful signup
-        onNavigate('login');
-      } else {
-        alert(data.error || 'Signup failed');
-      }
-    } catch (error) {
-      console.error('Signup error:', error);
-      alert('An error occurred during signup');
-    } finally {
+    // Simulate signup process
+    setTimeout(() => {
       setIsLoading(false);
-    }
+      onNavigate('dashboard');
+    }, 1500);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative bg-cover bg-center bg-no-repeat bg-fixed" style={{ backgroundImage: "url('/images/young-kenyans-unity.png')" }}>
-      {/* Overlay for better readability */}
-      <div className="absolute inset-0 bg-white/20 backdrop-blur-[2px]"></div>
+    <div className="min-h-screen bg-gradient-to-br from-[#FFFCFA] via-[#F7C8D0]/20 to-[#EDE8FF]/30 flex items-center justify-center p-4">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 opacity-5">
+        <div className="absolute top-20 left-20 w-32 h-32 rounded-full bg-unity-200"></div>
+        <div className="absolute bottom-20 right-20 w-24 h-24 rounded-full bg-unity-300"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-40 h-40 rounded-full bg-unity-100"></div>
+      </div>
 
       <div className="relative z-10 w-full max-w-md space-y-8">
         {/* Buddie Avatar */}
@@ -102,7 +52,7 @@ export const Signup: React.FC<{ onNavigate: (view: string) => void; onLoginSucce
                 First name <span className="text-[#C7C7C7]">(optional)</span>
               </label>
               <div className="relative">
-                <UserIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#C7C7C7]" size={20} />
+                <User className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#C7C7C7]" size={20} />
                 <input
                   type="text"
                   value={firstName}
@@ -199,10 +149,7 @@ export const Signup: React.FC<{ onNavigate: (view: string) => void; onLoginSucce
               fullWidth
               onClick={handleSignup}
               disabled={isLoading || !email || !password}
-              className={`font-medium py-4 rounded-2xl transition-all ${isLoading || !email || !password
-                ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
-                : 'bg-[#F7C8D0] hover:bg-[#ffb6c1] text-[#1A1A1A] shadow-sm hover:shadow-md'
-                }`}
+              className="bg-[#F7C8D0] hover:bg-[#F7C8D0]/90 text-[#1A1A1A] font-medium py-4 rounded-2xl transition-all"
             >
               {isLoading ? 'Creating your space...' : 'Create Account'}
             </Button>
@@ -216,23 +163,31 @@ export const Signup: React.FC<{ onNavigate: (view: string) => void; onLoginSucce
               </div>
             </div>
 
-            <div>
-              <GoogleButton onClick={() => handleGoogleSignup()} />
+            <div className="grid grid-cols-2 gap-3">
+              <button className="flex items-center justify-center gap-3 py-3 px-4 bg-[#FFFCFA] border border-[#C7C7C7]/30 rounded-2xl hover:bg-[#F7C8D0]/10 transition-all">
+                <Chrome size={20} className="text-[#1A1A1A]" />
+                <span className="text-sm font-medium text-[#1A1A1A]">Google</span>
+              </button>
+              <button className="flex items-center justify-center gap-3 py-3 px-4 bg-[#FFFCFA] border border-[#C7C7C7]/30 rounded-2xl hover:bg-[#F7C8D0]/10 transition-all">
+                <Apple size={20} className="text-[#1A1A1A]" />
+                <span className="text-sm font-medium text-[#1A1A1A]">Apple</span>
+              </button>
             </div>
-          </div>
-
-          {/* Already have an account link */}
-          <div className="text-center">
-            <button
-              onClick={() => onNavigate('login')}
-              className="text-[#C7C7C7] hover:text-[#1A1A1A] text-sm transition-colors"
-            >
-              Already have an account? <span className="font-medium text-[#F7C8D0]">Sign in</span>
-            </button>
           </div>
         </div>
 
-
+        {/* Login Link */}
+        <div className="text-center">
+          <p className="text-[#C7C7C7] text-sm">
+            Already have an account?{' '}
+            <button
+              onClick={() => onNavigate('login')}
+              className="text-[#F7C8D0] hover:text-[#F7C8D0]/80 font-medium transition-colors"
+            >
+              Sign in
+            </button>
+          </p>
+        </div>
       </div>
     </div>
   );

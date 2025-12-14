@@ -6,7 +6,7 @@ export const APP_NAME = "UNITY WITHIN";
 export const NAVIGATION_ITEMS: { id: ViewState; label: string; icon: any }[] = [
   { id: 'dashboard', label: 'Home', icon: Home },
   { id: 'wellness', label: 'Toolkit', icon: Sparkles },
-  { id: 'chat', label: 'BUDDIE', icon: MessageCircleHeart },
+  { id: 'chat', label: 'Support', icon: MessageCircleHeart },
   { id: 'journal', label: 'Journal', icon: BookHeart },
   { id: 'breathe', label: 'Breathe', icon: Wind },
   { id: 'education', label: 'Learn', icon: GraduationCap },

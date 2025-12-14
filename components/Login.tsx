@@ -1,84 +1,30 @@
 import React, { useState } from 'react';
 import { Button } from './Button';
-import { GoogleButton } from './GoogleButton';
-import { useGoogleLogin } from '@react-oauth/google';
-import axios from 'axios';
 import { Heart, Eye, EyeOff, Mail, Lock, Chrome, Apple } from 'lucide-react';
 
-import { User } from '../types';
-
-interface LoginProps {
-  onNavigate: (view: string) => void;
-  onLoginSuccess: (user: User) => void;
-}
-
-export const Login: React.FC<LoginProps> = ({ onNavigate, onLoginSuccess }) => {
+export const Login: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleGoogleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      try {
-        setIsLoading(true);
-        const userInfo = await axios.get(
-          'https://www.googleapis.com/oauth2/v3/userinfo',
-          { headers: { Authorization: `Bearer ${tokenResponse.access_token}` } }
-        );
-
-        const googleUser = {
-          id: userInfo.data.sub,
-          firstName: userInfo.data.given_name,
-          email: userInfo.data.email,
-        };
-
-        // In a real app, you would send this token/data to your backend to verify and create session
-        onLoginSuccess(googleUser);
-      } catch (error) {
-        console.error('Google Login Error:', error);
-        alert('Failed to login with Google.');
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    onError: () => alert('Google Login Failed'),
-  });
-
   const handleLogin = async () => {
     setIsLoading(true);
-    try {
-      const response = await fetch('http://localhost:3001/api/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Login successful
-        onLoginSuccess(data.user);
-      } else {
-        alert(data.error || 'Login failed');
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      alert('Network error. Please try again.');
-    } finally {
+    // Simulate login process
+    setTimeout(() => {
       setIsLoading(false);
-    }
+      onNavigate('dashboard');
+    }, 1500);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative bg-cover bg-center bg-no-repeat bg-fixed" style={{ backgroundImage: "url('/images/young-kenyans-unity.png')" }}>
-      {/* Overlay for better readability */}
-      <div className="absolute inset-0 bg-white/20 backdrop-blur-[2px]"></div>
+    <div className="min-h-screen bg-gradient-to-br from-[#FFFCFA] via-[#F7C8D0]/20 to-[#EDE8FF]/30 flex items-center justify-center p-4">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 opacity-5">
+        <div className="absolute top-20 left-20 w-32 h-32 rounded-full bg-unity-200"></div>
+        <div className="absolute bottom-20 right-20 w-24 h-24 rounded-full bg-unity-300"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-40 h-40 rounded-full bg-unity-100"></div>
+      </div>
 
       <div className="relative z-10 w-full max-w-md space-y-8">
         {/* Buddie Avatar */}
@@ -141,10 +87,7 @@ export const Login: React.FC<LoginProps> = ({ onNavigate, onLoginSuccess }) => {
               fullWidth
               onClick={handleLogin}
               disabled={isLoading || !email || !password}
-              className={`font-medium py-4 rounded-2xl transition-all ${isLoading || !email || !password
-                ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
-                : 'bg-[#F7C8D0] hover:bg-[#ffb6c1] text-[#1A1A1A] shadow-sm hover:shadow-md'
-                }`}
+              className="bg-[#F7C8D0] hover:bg-[#F7C8D0]/90 text-[#1A1A1A] font-medium py-4 rounded-2xl transition-all"
             >
               {isLoading ? 'Finding your space...' : 'Continue'}
             </Button>
@@ -158,8 +101,15 @@ export const Login: React.FC<LoginProps> = ({ onNavigate, onLoginSuccess }) => {
               </div>
             </div>
 
-            <div>
-              <GoogleButton onClick={() => handleGoogleLogin()} />
+            <div className="grid grid-cols-2 gap-3">
+              <button className="flex items-center justify-center gap-3 py-3 px-4 bg-[#FFFCFA] border border-[#C7C7C7]/30 rounded-2xl hover:bg-[#F7C8D0]/10 transition-all">
+                <Chrome size={20} className="text-[#1A1A1A]" />
+                <span className="text-sm font-medium text-[#1A1A1A]">Google</span>
+              </button>
+              <button className="flex items-center justify-center gap-3 py-3 px-4 bg-[#FFFCFA] border border-[#C7C7C7]/30 rounded-2xl hover:bg-[#F7C8D0]/10 transition-all">
+                <Apple size={20} className="text-[#1A1A1A]" />
+                <span className="text-sm font-medium text-[#1A1A1A]">Apple</span>
+              </button>
             </div>
           </div>
 
