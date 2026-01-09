@@ -66,7 +66,30 @@ export const Signup: React.FC<SignupProps> = ({ onSignupComplete, onSwitchToLogi
         } catch (error) {
             console.error('Signup error:', error);
             setIsLoading(false);
-            setMessage('Unable to connect. Please check your connection.');
+            setMessage('Unable to reach the server. Please ensure the backend is running (run npm run dev:all).');
+        }
+    };
+
+    const handleRetry = async () => {
+        setIsLoading(true);
+        setMessage('');
+        try {
+            const response = await fetch(`${API_BASE_URL}/health`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.database === 'connected') {
+                    setMessage('gentle');
+                    setTimeout(() => setMessage(''), 3000);
+                } else {
+                    setMessage(`Server is UP, but database is ${data.database}.`);
+                }
+            } else {
+                setMessage('Server replied with an error.');
+            }
+        } catch (e) {
+            setMessage('Still unable to connect. Is the backend running?');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -115,10 +138,20 @@ export const Signup: React.FC<SignupProps> = ({ onSignupComplete, onSwitchToLogi
                             {/* Error Message */}
                             {message && message !== 'gentle' && (
                                 <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4">
-                                    <p className="text-sm text-orange-800 flex items-start gap-2">
-                                        <span className="text-lg">💭</span>
-                                        <span>{message}</span>
-                                    </p>
+                                    <div className="flex flex-col gap-3">
+                                        <p className="text-sm text-orange-800 flex items-start gap-2">
+                                            <span className="text-lg">💭</span>
+                                            <span>{message}</span>
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={handleRetry}
+                                            disabled={isLoading}
+                                            className="text-xs font-bold text-unity-600 hover:text-unity-700 bg-white border border-unity-200 py-2 rounded-xl transition-all self-end px-4"
+                                        >
+                                            {isLoading ? 'Checking...' : 'Check Connection'}
+                                        </button>
+                                    </div>
                                 </div>
                             )}
 

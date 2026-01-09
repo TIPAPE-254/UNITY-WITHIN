@@ -90,27 +90,36 @@ app.use((req, res, next) => {
 // Initialize database and default rooms on startup
 testConnection();
 initializeDatabase().then(async () => {
-    // Seed default rooms if none exist
-    const [rooms] = await pool.query('SELECT COUNT(*) as count FROM chat_rooms');
-    if (rooms[0].count === 0) {
-        const defaultRooms = [
-            ['General Support', 'A safe space for general discussions', 'public'],
-            ['Anxiety & Stress', 'Sharing tips and support for anxiety', 'support'],
-            ['The Hustle', 'Navigating career, finances, and ambition', 'public'],
-            ['Heartbreak Hotel', 'Healing from relationship loss', 'support'],
-            ['Exam Stress', 'Academic pressure and study fatigue', 'support'],
-            ['Midnight Thoughts', 'For when you can\'t sleep', 'public']
-        ];
-        for (const room of defaultRooms) {
-            await pool.query('INSERT INTO chat_rooms (name, description, type) VALUES (?, ?, ?)', room);
+    try {
+        // Seed default rooms if none exist
+        const [rooms] = await pool.query('SELECT COUNT(*) as count FROM chat_rooms');
+        if (rooms[0].count === 0) {
+            const defaultRooms = [
+                ['General Support', 'A safe space for general discussions', 'public'],
+                ['Anxiety & Stress', 'Sharing tips and support for anxiety', 'support'],
+                ['The Hustle', 'Navigating career, finances, and ambition', 'public'],
+                ['Heartbreak Hotel', 'Healing from relationship loss', 'support'],
+                ['Exam Stress', 'Academic pressure and study fatigue', 'support'],
+                ['Midnight Thoughts', 'For when you can\'t sleep', 'public']
+            ];
+            for (const room of defaultRooms) {
+                await pool.query('INSERT INTO chat_rooms (name, description, type) VALUES (?, ?, ?)', room);
+            }
+            console.log('✅ Default chat rooms seeded');
         }
-        console.log('✅ Default chat rooms seeded');
+    } catch (err) {
+        console.error('⚠️ Could not seed chat rooms (Database might be unavailable):', err.message);
     }
 });
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', message: 'Server is running' });
+app.get('/api/health', async (req, res) => {
+    try {
+        await pool.query('SELECT 1');
+        res.json({ status: 'OK', message: 'Server is running', database: 'connected' });
+    } catch (err) {
+        res.json({ status: 'OK', message: 'Server is running', database: 'disconnected', error: err.message });
+    }
 });
 
 // Signup endpoint
@@ -980,8 +989,8 @@ app.post('/api/ai/values-affirmation', async (req, res) => {
 });
 
 // Start server
-server.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
     console.log(`📊 Database: ${process.env.DB_NAME}`);
 });
 

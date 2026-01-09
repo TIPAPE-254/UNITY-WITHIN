@@ -58,7 +58,30 @@ export const Login: React.FC<LoginProps> = ({ onLoginComplete, onSwitchToSignup,
         } catch (error) {
             console.error('Login error:', error);
             setIsLoading(false);
-            setError('Unable to connect. Please check your connection.');
+            setError('Unable to reach the server. Please ensure the backend is running (run npm run dev:all) and you have a stable connection.');
+        }
+    };
+
+    const handleRetry = async () => {
+        setIsLoading(true);
+        setError('');
+        try {
+            const response = await fetch(`${API_BASE_URL}/health`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.database === 'connected') {
+                    setMessage('Server is connected! You can now log in.');
+                    setTimeout(() => setMessage(''), 3000);
+                } else {
+                    setError(`Server is up, but database is ${data.database}.`);
+                }
+            } else {
+                setError('Server replied with an error.');
+            }
+        } catch (e) {
+            setError('Still unable to connect. Is the backend running?');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -107,10 +130,20 @@ export const Login: React.FC<LoginProps> = ({ onLoginComplete, onSwitchToSignup,
                             {/* Error Message (Gentle) */}
                             {error && (
                                 <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4">
-                                    <p className="text-sm text-orange-800 flex items-start gap-2">
-                                        <span className="text-lg">💭</span>
-                                        <span>{error}</span>
-                                    </p>
+                                    <div className="flex flex-col gap-3">
+                                        <p className="text-sm text-orange-800 flex items-start gap-2">
+                                            <span className="text-lg">💭</span>
+                                            <span>{error}</span>
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={handleRetry}
+                                            disabled={isLoading}
+                                            className="text-xs font-bold text-unity-600 hover:text-unity-700 bg-white border border-unity-200 py-2 rounded-xl transition-all self-end px-4"
+                                        >
+                                            {isLoading ? 'Checking...' : 'Check Connection'}
+                                        </button>
+                                    </div>
                                 </div>
                             )}
 
