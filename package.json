@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "node index.js",
     "dev": "vite",
     "server": "cd server && npm run dev",
     "dev:all": "concurrently \"npm run server\" \"npm run dev\"",

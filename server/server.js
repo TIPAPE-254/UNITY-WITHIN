@@ -19,7 +19,7 @@ const io = new Server(server, {
     }
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 const SYSTEM_INSTRUCTION = `
 You are "Buddie" (also known as "Unity"), a compassionate, empathetic, and culturally aware AI companion for "Unity Within", a mental health platform for Kenyan youth.
@@ -989,8 +989,7 @@ app.post('/api/ai/values-affirmation', async (req, res) => {
 });
 
 // Start server
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
-    console.log(`📊 Database: ${process.env.DB_NAME}`);
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
 
