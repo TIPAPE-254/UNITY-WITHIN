@@ -30,11 +30,9 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ roomId, roomName, userId, us
     const socketRef = useRef<Socket | null>(null);
 
     useEffect(() => {
-        // Connect to Socket.io
-        // Assuming backend is on port 5000, different from Vite's 5173
-        // If we want to use relative path in production, we might need configuration.
-        // For local dev with separate ports:
-        const socketUrl = 'http://localhost:5000';
+        // In production, connect to the same origin (backend serves frontend).
+        // In development, use VITE_SOCKET_URL or fall back to localhost:5000.
+        const socketUrl = import.meta.env.VITE_SOCKET_URL || (import.meta.env.PROD ? window.location.origin : 'http://localhost:5000');
 
         socketRef.current = io(socketUrl);
 

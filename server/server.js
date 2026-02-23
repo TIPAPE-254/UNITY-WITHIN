@@ -18,9 +18,14 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 const server = createServer(app);
+
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : ["http://localhost:3000", "http://0.0.0.0:3000"];
+
 const io = new Server(server, {
     cors: {
-        origin: ["http://localhost:3000", "http://0.0.0.0:3000"], // Allow Vite dev server
+        origin: ALLOWED_ORIGINS,
         methods: ["GET", "POST"]
     }
 });
@@ -1267,6 +1272,15 @@ app.post('/api/ai/values-affirmation', async (req, res) => {
     }
 
     res.json({ success: true, text: "Your values are your compass. Trust them to guide you forward." });
+});
+
+// Serve React frontend static files in production
+const distPath = path.join(__dirname, process.env.STATIC_FILES_PATH || 'dist');
+app.use(express.static(distPath));
+
+// SPA fallback: serve index.html for all non-API routes
+app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
 });
 
 // Start server
