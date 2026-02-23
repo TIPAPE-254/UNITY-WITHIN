@@ -67,6 +67,10 @@ To provide every young person in Kenya with a safe, non-judgmental space to brea
 
 The app deploys as a single **Azure App Service** (Node.js backend serves the built React frontend).
 
+Target environment:
+- Subscription: `9a191aa8-44e3-4326-9989-08fcf1653ea2`
+- Resource Group: `UNITYWITHIN_group`
+
 ### Prerequisites
 - Azure subscription
 - Azure App Service (Node.js 20 LTS, Linux)
@@ -98,7 +102,7 @@ The app deploys as a single **Azure App Service** (Node.js backend serves the bu
    - `VITE_GEMINI_API_KEY` — Gemini API key (used at build time)
 
 4. **Set the repository variable** in GitHub → Settings → Variables:
-   - `AZURE_WEBAPP_NAME` — your Azure App Service name (e.g. `unity-within`)
+   - `AZURE_WEBAPP_NAME` — the App Service name inside `UNITYWITHIN_group`
 
 5. Push to the `master` or `main` branch — GitHub Actions (`.github/workflows/azure-deploy.yml`) will build and deploy automatically.
 

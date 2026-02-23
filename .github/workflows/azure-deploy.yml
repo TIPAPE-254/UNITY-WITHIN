@@ -14,6 +14,8 @@ jobs:
     permissions:
       contents: read
     env:
+      AZURE_SUBSCRIPTION_ID: 9a191aa8-44e3-4326-9989-08fcf1653ea2
+      AZURE_RESOURCE_GROUP: UNITYWITHIN_group
       AZURE_WEBAPP_PUBLISH_PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
       AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -44,6 +46,14 @@ jobs:
       - name: Copy frontend build into server/dist
         run: cp -r dist server/dist
 
+      - name: Validate target web app name
+        run: |
+          if [ -z "${{ vars.AZURE_WEBAPP_NAME }}" ]; then
+            echo "Missing repository variable AZURE_WEBAPP_NAME."
+            echo "Set it to the App Service name in resource group UNITYWITHIN_group."
+            exit 1
+          fi
+
       # ── Deploy to Azure App Service (Publish Profile) ───────────────────────
       - name: Deploy to Azure App Service (Publish Profile)
         if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE != '' }}
@@ -60,6 +70,19 @@ jobs:
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set Azure subscription
+        if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE == '' && env.AZURE_CREDENTIALS != '' }}
+        run: az account set --subscription "${{ env.AZURE_SUBSCRIPTION_ID }}"
+
+      - name: Validate App Service in resource group
+        if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE == '' && env.AZURE_CREDENTIALS != '' }}
+        run: |
+          az webapp show \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --query "name" \
+            --output tsv >/dev/null
 
       - name: Deploy to Azure App Service (Service Principal)
         if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE == '' && env.AZURE_CREDENTIALS != '' }}
