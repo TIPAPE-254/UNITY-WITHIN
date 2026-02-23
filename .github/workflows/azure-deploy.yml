@@ -41,11 +41,34 @@ jobs:
       - name: Copy frontend build into server/dist
         run: cp -r dist server/dist
 
-      # ── Deploy to Azure App Service ──────────────────────────────────────────
-      - name: Deploy to Azure App Service
+      # ── Deploy to Azure App Service (Publish Profile) ───────────────────────
+      - name: Deploy to Azure App Service (Publish Profile)
+        if: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE != '' }}
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: server
           startup-command: 'node server.js'
+
+      # ── Deploy to Azure App Service (Service Principal) ─────────────────────
+      - name: Azure Login (Service Principal)
+        if: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE == '' && secrets.AZURE_CREDENTIALS != '' }}
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure App Service (Service Principal)
+        if: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE == '' && secrets.AZURE_CREDENTIALS != '' }}
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: server
+          startup-command: 'node server.js'
+
+      - name: Validate Azure deployment credentials
+        if: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE == '' && secrets.AZURE_CREDENTIALS == '' }}
+        run: |
+          echo "Missing Azure deployment credentials."
+          echo "Set either AZURE_WEBAPP_PUBLISH_PROFILE or AZURE_CREDENTIALS in GitHub Secrets."
+          exit 1

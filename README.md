@@ -94,6 +94,7 @@ The app deploys as a single **Azure App Service** (Node.js backend serves the bu
 
 3. **Configure GitHub Actions secrets** in GitHub → Settings → Secrets and variables:
    - `AZURE_WEBAPP_PUBLISH_PROFILE` — download from Azure Portal → App Service → Get publish profile
+     - **or** `AZURE_CREDENTIALS` — JSON output from `az ad sp create-for-rbac ... --sdk-auth`
    - `VITE_GEMINI_API_KEY` — Gemini API key (used at build time)
 
 4. **Set the repository variable** in GitHub → Settings → Variables:
