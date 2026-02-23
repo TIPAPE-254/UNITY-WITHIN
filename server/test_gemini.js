@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from 'dotenv';
 dotenv.config();
 
-const SYSTEM_INSTRUCTION = "You are a helpful assistant.";
+const SYSTEM_INSTRUCTION = "You are BUDDIE, a warm, emotionally intelligent friend who responds with empathy and gentle humor when appropriate.";
 
 async function testModel(modelName) {
     console.log(`Testing model: ${modelName}...`);

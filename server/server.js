@@ -2,13 +2,19 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcrypt';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { pool, testConnection, initializeDatabase } from './db.js';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, '.env.local') });
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 const server = createServer(app);
@@ -20,27 +26,68 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3';
+
+const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '6000', 10);
+const AI_RETRIES = parseInt(process.env.AI_RETRIES || '1', 10);
+
+const GROQ_BASE_URL = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+
+const MISTRAL_BASE_URL = process.env.MISTRAL_BASE_URL || 'https://api.mistral.ai/v1';
+const MISTRAL_MODEL = process.env.MISTRAL_MODEL || 'mistral-small-latest';
+
+const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+
+const HUGGINGFACE_MODEL = process.env.HUGGINGFACE_MODEL || 'mistralai/Mistral-7B-Instruct-v0.3';
 
 const SYSTEM_INSTRUCTION = `
-You are "Buddie" (also known as "Unity"), a compassionate, empathetic, and culturally aware AI companion for "Unity Within", a mental health platform for Kenyan youth.
+You are BUDDIE (also known as Unity), a warm, emotionally intelligent digital companion for Unity Within.
+You are not a formal assistant. You are a supportive, human-like friend who listens deeply, responds gently, and brings lightness when it helps.
 
-**Role & Identity:**
-- You are a supportive peer, NOT a therapist.
-- Tone: Warm, Kenyan youth-friendly (English, Kiswahili, Sheng). Use terms like "Pole" (sorry), "Take it pole pole" (slowly), "I feel you".
-- Context: Understand academic pressure (KCSE/exams), financial stress ("hustle"), and community constraints.
+CORE PERSONALITY
+- Emotionally intelligent, warm, calm in heavy moments, playful in light moments.
+- Cheerful and hopeful without being fake-positive.
+- Naturally funny in a kind, relatable way (never forced, never mocking).
 
-**Critical Safety Rules:**
-1. **Crisis Detection:** If user mentions suicide, self-harm, abuse, or immediate danger:
-   - STOP all normal conversation.
-   - Respond with deep empathy and IMMEDIATE resource referral.
-   - Example: "I hear how heavy this is, and I want you to be safe. Please reach out to a professional. In Kenya, call Red Cross (1199) or Befrienders (254 772 173 004)."
-2. **Non-Clinical:** Never diagnose. Don't say "You have anxiety." Say "That sounds like a lot of worry."
-3. **Trauma-Informed:** Prioritize safety and validation. Do not dig for trauma details.
+EMOTIONAL INTELLIGENCE FIRST
+1) Notice the emotional tone.
+2) Validate and reflect it sincerely.
+3) Offer warmth and gentle support.
+4) Add light humor only if it is safe and helpful.
 
-**Interaction Style:**
-- Be concise (max 3-4 sentences).
-- specific: If the user is happy, celebrate with them ("That's dope!", "Hongera!").
-- If sad/stressed: Validate first, then offer a micro-step (breathe, drink water, vent).
+HUMOR STYLE
+- Gentle, kind, relatable, slightly witty, culturally warm.
+- No sarcasm that could hurt, no jokes about trauma, loss, or self-harm.
+- Use humor to lift, never to dismiss.
+
+CONVERSATION STYLE
+- Natural, conversational, human-paced.
+- Short to medium responses by default.
+- Avoid academic tone and avoid robotic lists unless asked.
+
+SUPPORT STYLE
+- Encourage small, doable steps: breathing, journaling, reflection, self-kindness.
+- Never command or pressure; guide like a caring friend.
+- Celebrate small wins and check in naturally.
+
+CULTURAL CONTEXT (KENYA FOCUS)
+- Warm, communal tone. Phrases like "Pole" or "take it pole pole" are welcome when natural.
+- Be sensitive to academic pressure, family expectations, financial stress, and stigma.
+- Acknowledge faith if the user brings it up, remain inclusive.
+
+CRISIS SAFETY MODE (NON-NEGOTIABLE)
+If a user expresses intent of self-harm, suicide, or immediate danger:
+- Pause normal flow. No humor.
+- Respond with calm, compassionate support and encourage reaching out now.
+- Provide resources: "In Kenya, contact UNITY WITHIN Support at +254 715 765 561, call 1199 (Red Cross), or +254 722 178 177 (Befrienders Kenya). If elsewhere, use local emergency services."
+- Do not attempt therapy in severe crisis.
+
+TONE DO AND DO NOT
+- Do: sound like a kind friend who listens without judgment.
+- Do not: diagnose, use clinical jargon, or use toxic positivity.
 `;
 
 // Initialize Gemini
@@ -68,6 +115,7 @@ try {
     if (process.env.OPENAI_API_KEY) {
         openai = new OpenAI({
             apiKey: process.env.OPENAI_API_KEY,
+            timeout: AI_TIMEOUT_MS,
         });
         console.log('✨ OpenAI fallback initialized');
     } else {
@@ -75,6 +123,57 @@ try {
     }
 } catch (error) {
     console.warn('⚠️ Failed to initialize OpenAI:', error.message);
+}
+
+// Initialize Groq fallback
+let groq;
+try {
+    if (process.env.GROQ_API_KEY) {
+        groq = new OpenAI({
+            apiKey: process.env.GROQ_API_KEY,
+            baseURL: GROQ_BASE_URL,
+            timeout: AI_TIMEOUT_MS,
+        });
+        console.log(`✨ Groq fallback initialized (Model: ${GROQ_MODEL})`);
+    } else {
+        console.warn('⚠️ GROQ_API_KEY not found. Groq fallback disabled.');
+    }
+} catch (error) {
+    console.warn('⚠️ Failed to initialize Groq:', error.message);
+}
+
+// Initialize Mistral fallback
+let mistral;
+try {
+    if (process.env.MISTRAL_API_KEY) {
+        mistral = new OpenAI({
+            apiKey: process.env.MISTRAL_API_KEY,
+            baseURL: MISTRAL_BASE_URL,
+            timeout: AI_TIMEOUT_MS,
+        });
+        console.log(`✨ Mistral fallback initialized (Model: ${MISTRAL_MODEL})`);
+    } else {
+        console.warn('⚠️ MISTRAL_API_KEY not found. Mistral fallback disabled.');
+    }
+} catch (error) {
+    console.warn('⚠️ Failed to initialize Mistral:', error.message);
+}
+
+// Initialize DeepSeek fallback
+let deepseek;
+try {
+    if (process.env.DEEPSEEK_API_KEY) {
+        deepseek = new OpenAI({
+            apiKey: process.env.DEEPSEEK_API_KEY,
+            baseURL: DEEPSEEK_BASE_URL,
+            timeout: AI_TIMEOUT_MS,
+        });
+        console.log(`✨ DeepSeek fallback initialized (Model: ${DEEPSEEK_MODEL})`);
+    } else {
+        console.warn('⚠️ DEEPSEEK_API_KEY not found. DeepSeek fallback disabled.');
+    }
+} catch (error) {
+    console.warn('⚠️ Failed to initialize DeepSeek:', error.message);
 }
 
 // Middleware
@@ -244,26 +343,117 @@ app.post('/api/login', async (req, res) => {
 
 // ... (Get user profile endpoint) ...
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const tryParseJson = (text) => {
+    if (!text) return null;
+    const cleaned = text.replace(/```json|```/g, '').trim();
+    try {
+        return JSON.parse(cleaned);
+    } catch (error) {
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            try {
+                return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+            } catch (innerError) {
+                return null;
+            }
+        }
+        return null;
+    }
+};
+
+const buildPrompt = (prompt, json) => {
+    if (!json) return prompt;
+    return `${prompt}\n\nReturn ONLY valid JSON. Do not wrap in markdown.`;
+};
+
+const createTimeoutSignal = (timeoutMs) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    return { signal: controller.signal, cancel: () => clearTimeout(timeoutId) };
+};
+
+const callOpenAICompatible = async (client, modelName, prompt, systemInstruction, json) => {
+    const response = await client.chat.completions.create({
+        model: modelName,
+        messages: [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: buildPrompt(prompt, json) }
+        ],
+        response_format: json ? { type: "json_object" } : undefined
+    });
+
+    const text = response.choices?.[0]?.message?.content || '';
+    if (!json) return text;
+
+    const parsed = tryParseJson(text);
+    if (!parsed) throw new Error('Invalid JSON from provider');
+    return parsed;
+};
+
+const callHuggingFace = async (prompt, systemInstruction, json) => {
+    if (!process.env.HUGGINGFACE_API_KEY) return null;
+
+    const { signal, cancel } = createTimeoutSignal(AI_TIMEOUT_MS);
+    const hfPrompt = `${systemInstruction}\n\nUser: ${buildPrompt(prompt, json)}\nAssistant:`;
+
+    try {
+        const response = await fetch(`https://api-inference.huggingface.co/models/${HUGGINGFACE_MODEL}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`
+            },
+            body: JSON.stringify({
+                inputs: hfPrompt,
+                parameters: {
+                    max_new_tokens: 300,
+                    temperature: 0.7,
+                    return_full_text: false
+                }
+            }),
+            signal
+        });
+
+        if (!response.ok) {
+            console.error(`❌ Hugging Face fallback error: ${response.status} ${response.statusText}`);
+            return null;
+        }
+
+        const data = await response.json();
+        const text = Array.isArray(data) ? data[0]?.generated_text : data?.generated_text;
+        if (!text) return null;
+        const normalized = text.replace(/```json|```/g, '').trim();
+        if (!json) return normalized;
+        return tryParseJson(normalized);
+    } finally {
+        cancel();
+    }
+};
+
 // Core AI Calling Helper with Robustness
 const callAI = async (prompt, systemInstruction = SYSTEM_INSTRUCTION, options = {}) => {
-    const { retries = 2, delay = 1000, json = false } = options;
+    const { retries = AI_RETRIES, delay = 500, json = false } = options;
 
     // 1. Try Gemini
     if (model) {
         let currentDelay = delay;
         for (let i = 0; i < retries; i++) {
             try {
-                const result = await model.generateContent(prompt);
+                const result = await model.generateContent(buildPrompt(prompt, json));
                 const text = result.response.text();
-                if (json) {
-                    return JSON.parse(text.replace(/```json|```/g, '').trim());
-                }
-                return text;
+                if (!json) return text;
+
+                const parsed = tryParseJson(text);
+                if (!parsed) throw new Error('Invalid JSON from provider');
+                return parsed;
             } catch (error) {
                 const isRateLimit = error.message?.includes('429') || error.status === 429;
                 if (isRateLimit && i < retries - 1) {
                     console.warn(`⏳ Gemini rate limit (Attempt ${i + 1}). Retrying in ${currentDelay}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, currentDelay));
+                    await sleep(currentDelay);
                     currentDelay *= 2;
                 } else {
                     console.error(`❌ Gemini error (Attempt ${i + 1}):`, error.message);
@@ -275,20 +465,108 @@ const callAI = async (prompt, systemInstruction = SYSTEM_INSTRUCTION, options = 
 
     // 2. Try OpenAI Fallback
     if (openai) {
-        try {
-            const response = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                messages: [
-                    { role: "system", content: systemInstruction },
-                    { role: "user", content: prompt }
-                ],
-                response_format: json ? { type: "json_object" } : { type: "text" }
-            });
-            const text = response.choices[0].message.content;
-            return json ? JSON.parse(text) : text;
-        } catch (error) {
-            console.error("❌ OpenAI fallback error:", error.message);
+        let currentDelay = delay;
+        for (let i = 0; i < retries; i++) {
+            try {
+                const response = await openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    messages: [
+                        { role: "system", content: systemInstruction },
+                        { role: "user", content: buildPrompt(prompt, json) }
+                    ],
+                    response_format: json ? { type: "json_object" } : undefined
+                });
+                const text = response.choices?.[0]?.message?.content || '';
+                if (!json) return text;
+
+                const parsed = tryParseJson(text);
+                if (!parsed) throw new Error('Invalid JSON from provider');
+                return parsed;
+            } catch (error) {
+                const status = error?.status;
+                const message = error?.message || '';
+                const isRateLimit = status === 429 || message.includes('429');
+                const isRetryable = isRateLimit || status === 503 || status === 504;
+                if (isRetryable && i < retries - 1) {
+                    console.warn(`⏳ OpenAI rate limit/unavailable (Attempt ${i + 1}). Retrying in ${currentDelay}ms...`);
+                    await sleep(currentDelay);
+                    currentDelay *= 2;
+                } else {
+                    console.error("❌ OpenAI fallback error:", message);
+                    break;
+                }
+            }
         }
+    }
+
+    // 3. Try Groq Fallback
+    if (groq) {
+        try {
+            return await callOpenAICompatible(groq, GROQ_MODEL, prompt, systemInstruction, json);
+        } catch (error) {
+            console.error("❌ Groq fallback error:", error?.message || error);
+        }
+    }
+
+    // 4. Try Mistral Fallback
+    if (mistral) {
+        try {
+            return await callOpenAICompatible(mistral, MISTRAL_MODEL, prompt, systemInstruction, json);
+        } catch (error) {
+            console.error("❌ Mistral fallback error:", error?.message || error);
+        }
+    }
+
+    // 5. Try DeepSeek Fallback
+    if (deepseek) {
+        try {
+            return await callOpenAICompatible(deepseek, DEEPSEEK_MODEL, prompt, systemInstruction, json);
+        } catch (error) {
+            console.error("❌ DeepSeek fallback error:", error?.message || error);
+        }
+    }
+
+    // 6. Try Hugging Face Fallback
+    try {
+        const hfResponse = await callHuggingFace(prompt, systemInstruction, json);
+        if (hfResponse) return hfResponse;
+    } catch (error) {
+        console.error("❌ Hugging Face fallback error:", error?.message || error);
+    }
+
+    // 7. Try local Ollama fallback
+    try {
+        const { signal, cancel } = createTimeoutSignal(AI_TIMEOUT_MS);
+        try {
+            const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: OLLAMA_MODEL,
+                    prompt: buildPrompt(prompt, json),
+                    system: systemInstruction,
+                    stream: false
+                }),
+                signal
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const text = data?.response || '';
+                if (!text) return null;
+                if (!json) return text;
+
+                const parsed = tryParseJson(text);
+                if (!parsed) return null;
+                return parsed;
+            }
+
+            console.error(`❌ Ollama fallback error: ${response.status} ${response.statusText}`);
+        } finally {
+            cancel();
+        }
+    } catch (error) {
+        console.error('❌ Ollama fallback error:', error.message);
     }
 
     return null;
@@ -777,6 +1055,19 @@ app.get('/api/tiny-wins/:userId', async (req, res) => {
     }
 });
 
+const getBuddieFallback = (mood) => {
+    const m = mood ? mood.toLowerCase() : '';
+
+    if (['sad', 'depressed', 'grief'].includes(m)) {
+        return "I’m here with you. That feeling can be heavy. Pole sana. Would you like to breathe together?";
+    }
+    if (['stressed', 'anxious', 'overwhelmed'].includes(m)) {
+        return "Take a moment. Just breathe. Hakuna matata - let's take it step by step.";
+    }
+
+    return "Thank you for sharing. How are you holding up?";
+};
+
 // BUDDIE Response Endpoint
 app.post('/api/buddie/respond', async (req, res) => {
     try {
@@ -798,21 +1089,11 @@ app.post('/api/buddie/respond', async (req, res) => {
         }
 
         // Final Non-AI Fallback logic
-        let response = "I'm here with you.";
-        const m = mood ? mood.toLowerCase() : '';
-
-        if (['sad', 'depressed', 'grief'].includes(m)) {
-            response = "I’m here with you. That feeling can be heavy. Pole sana. Would you like to breathe together?";
-        } else if (['stressed', 'anxious', 'overwhelmed'].includes(m)) {
-            response = "Take a moment. Just breathe. Hakuna matata - let's take it step by step.";
-        } else {
-            response = "Thank you for sharing. How are you holding up?";
-        }
-        res.json({ success: true, message: response });
+        res.json({ success: true, message: getBuddieFallback(mood) });
 
     } catch (error) {
         console.error('Buddie error:', error);
-        res.status(500).json({ error: 'Buddie is resting' });
+        res.json({ success: true, message: getBuddieFallback(req.body?.mood) });
     }
 });
 
