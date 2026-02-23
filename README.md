@@ -90,8 +90,7 @@ The app deploys as a single **Azure App Service** (Node.js backend serves the bu
    | `DB_USER` | `adminuser` |
    | `DB_PASSWORD` | Your DB password |
    | `DB_NAME` | `UNITY_WITHIN` |
-   | `ALLOWED_ORIGINS` | `https://<your-app>.azurewebsites.net` |
-   | `STATIC_FILES_PATH` | `dist` |
+   | `ALLOWED_ORIGINS` | *(Optional)* `https://<your-app>.azurewebsites.net` (comma-separated if multiple) |
 
 3. **Configure GitHub Actions secrets** in GitHub → Settings → Secrets and variables:
    - `AZURE_WEBAPP_PUBLISH_PROFILE` — download from Azure Portal → App Service → Get publish profile
@@ -100,7 +99,7 @@ The app deploys as a single **Azure App Service** (Node.js backend serves the bu
 4. **Set the repository variable** in GitHub → Settings → Variables:
    - `AZURE_WEBAPP_NAME` — your Azure App Service name (e.g. `unity-within`)
 
-5. Push to the `main` branch — GitHub Actions (`.github/workflows/azure-deploy.yml`) will build and deploy automatically.
+5. Push to the `master` or `main` branch — GitHub Actions (`.github/workflows/azure-deploy.yml`) will build and deploy automatically.
 
 ---
 *Built with ❤️ for mental wellness.*

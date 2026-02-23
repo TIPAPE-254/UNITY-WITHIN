@@ -20,12 +20,14 @@ const app = express();
 const server = createServer(app);
 
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-    : ["http://localhost:3000", "http://0.0.0.0:3000"];
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+    : [];
+
+const SOCKET_IO_CORS_ORIGIN = ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : true;
 
 const io = new Server(server, {
     cors: {
-        origin: ALLOWED_ORIGINS,
+        origin: SOCKET_IO_CORS_ORIGIN,
         methods: ["GET", "POST"]
     }
 });
