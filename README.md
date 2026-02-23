@@ -102,7 +102,7 @@ Target environment:
    - `VITE_GEMINI_API_KEY` — Gemini API key (used at build time)
 
 4. **Set the repository variable** in GitHub → Settings → Variables:
-   - `AZURE_WEBAPP_NAME` — optional override for App Service name inside `UNITYWITHIN_group` (default: `unity-within`)
+   - No variable required (workflow targets App Service name `unity-within` in `UNITYWITHIN_group`)
 
 5. Push to the `master` or `main` branch — GitHub Actions (`.github/workflows/azure-deploy.yml`) will build and deploy automatically.
 
