@@ -48,7 +48,8 @@ jobs:
         run: cp -r dist server/dist
 
       - name: Resolve target web app
-        run: echo "Deploy target app: ${{ env.TARGET_WEBAPP_NAME }}"
+        run: |
+          echo "Deploy target app: ${{ env.TARGET_WEBAPP_NAME }}"
 
       # ── Deploy to Azure App Service (Publish Profile) ───────────────────────
       - name: Deploy to Azure App Service (Publish Profile)
