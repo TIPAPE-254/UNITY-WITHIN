@@ -1,12 +1,16 @@
+// --- Import all required modules at the top ---
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { pool, testConnection, initializeDatabase } from './db.js';
+import { sendResetEmail } from './brevoMailer.js';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 
@@ -32,7 +36,8 @@ const io = new Server(server, {
     }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
+const RESET_PASSWORD_BASE_URL = process.env.RESET_PASSWORD_BASE_URL || process.env.APP_BASE_URL || 'https://www.unitywithin.app';
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3';
 
@@ -43,12 +48,75 @@ const GROQ_BASE_URL = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
 
 const MISTRAL_BASE_URL = process.env.MISTRAL_BASE_URL || 'https://api.mistral.ai/v1';
+
+// Admin middleware - checks if user is the specific admin email
+const requireAdmin = async (req, res, next) => {
+    try {
+        const userId = req.query.userId || req.headers['x-user-id'];
+        if (!userId) {
+            return res.status(401).json({ error: 'Missing user ID' });
+        }
+        
+        const [users] = await pool.query('SELECT email FROM users WHERE id = ?', [userId]);
+        const user = users[0];
+        
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        // Allow access only if user has the specific admin email
+        const ADMIN_EMAIL = 'lepiromatayo@gmail.com';
+        if (user.email !== ADMIN_EMAIL) {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+        
+        next();
+    } catch (error) {
+        res.status(500).json({ error: 'Authorization failed' });
+    }
+};
 const MISTRAL_MODEL = process.env.MISTRAL_MODEL || 'mistral-small-latest';
 
 const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+const isLocalAddress = (value) => /(^|\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(value || '');
+
+const validateProductionConfig = () => {
+    if (!isProduction) return;
+
+    const requiredEnv = ['BREVO_SMTP_USER', 'BREVO_SMTP_PASS', 'BREVO_FROM_EMAIL'];
+    const missing = requiredEnv.filter((key) => !process.env[key]);
+
+    if (missing.length > 0) {
+        throw new Error(`Missing required production environment variable(s): ${missing.join(', ')}`);
+    }
+};
+
 const HUGGINGFACE_MODEL = process.env.HUGGINGFACE_MODEL || 'mistralai/Mistral-7B-Instruct-v0.3';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+
+const BUDDIE_DIALOG_DATA_PATH = process.env.BUDDIE_DIALOG_DATA_PATH || path.join(__dirname, 'data', 'dailydialog_examples.json');
+const BUDDIE_COUNSELING_DATA_PATH = process.env.BUDDIE_COUNSELING_DATA_PATH || path.join(__dirname, 'data', 'mental_health_counseling_examples.json');
+const BUDDIE_DIALOG_FEWSHOT_COUNT = Math.max(1, parseInt(process.env.BUDDIE_DIALOG_FEWSHOT_COUNT || '4', 10));
+
+const DEFAULT_CHAT_ROOMS = [
+    ['General Support', 'A safe space for general discussions', 'public'],
+    ['Anxiety & Stress', 'Sharing tips and support for anxiety', 'support'],
+    ['The Hustle', 'Navigating career, finances, and ambition', 'public'],
+    ['Heartbreak Hotel', 'Healing from relationship loss', 'support'],
+    ['Exam Stress', 'Academic pressure and study fatigue', 'support'],
+    ['Midnight Thoughts', 'For when you can\'t sleep', 'public']
+];
+
+const DEFAULT_BUDDIE_STYLE_EXAMPLES = [
+    { user: 'Hey, I feel off today.', buddie: 'Hey 🤍 I hear you. Want to tell me what felt heavy today?', intent: 'emotional-checkin', emotion: 'low' },
+    { user: 'I am overthinking everything.', buddie: 'That spiral is exhausting. Let’s slow it down together—what thought keeps looping most?', intent: 'anxiety-support', emotion: 'anxious' },
+    { user: 'I had a good day for once.', buddie: 'I love that for you ✨ What made today feel lighter?', intent: 'positive-reflection', emotion: 'happy' },
+    { user: 'Can we just talk?', buddie: 'Absolutely. I’m here, no pressure, no judgment. What’s on your mind right now?', intent: 'open-conversation', emotion: 'neutral' },
+];
 
 const SYSTEM_INSTRUCTION = `
 You are BUDDIE (also known as Unity), a warm, emotionally intelligent digital companion for Unity Within.
@@ -99,22 +167,216 @@ TONE DO AND DO NOT
 
 // Initialize Gemini
 let genAI;
-let model;
+let buddieDialogExamples = [];
+
+const normalizeText = (value) => (value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+const extractTokens = (value) => {
+    const cleaned = normalizeText(value);
+    if (!cleaned) return [];
+    return cleaned.split(' ').filter(token => token.length >= 3);
+};
+
+const hasQuestionSignal = (value) => /\?|\b(why|how|what|when|where|can|could|would|should|is|are|do|did)\b/i.test(value || '');
+
+const toSafeText = (value) => (typeof value === 'string' ? value.trim() : '');
+
+const resolveDataPath = (candidatePath) => {
+    if (!candidatePath) return candidatePath;
+    if (path.isAbsolute(candidatePath)) return candidatePath;
+    return path.join(__dirname, candidatePath);
+};
+
+const loadBuddieDialogExamples = (filePath, label) => {
+    try {
+        const resolvedPath = resolveDataPath(filePath);
+
+        if (!fs.existsSync(resolvedPath)) {
+            console.warn(`⚠️ ${label} file not found at ${resolvedPath}.`);
+            return [];
+        }
+
+        const raw = fs.readFileSync(resolvedPath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+            console.warn(`⚠️ ${label} data must be an array.`);
+            return [];
+        }
+
+        const valid = parsed
+            .map((item) => ({
+                user: (item?.user || item?.context || '').toString().trim(),
+                buddie: (item?.assistant || item?.reply || '').toString().trim(),
+                intent: (item?.intent || '').toString().trim(),
+                emotion: (item?.emotion || '').toString().trim(),
+            }))
+            .filter(item => item.user && item.buddie);
+
+        console.log(`✅ Loaded ${valid.length} ${label} examples for Buddie style guidance`);
+        return valid;
+    } catch (error) {
+        console.error(`⚠️ Failed to load ${label} examples:`, error.message);
+        return [];
+    }
+};
+
+const loadAllBuddieStyleExamples = () => {
+    const dailyDialog = loadBuddieDialogExamples(BUDDIE_DIALOG_DATA_PATH, 'DailyDialog');
+    const counseling = loadBuddieDialogExamples(BUDDIE_COUNSELING_DATA_PATH, 'MentalHealthCounseling');
+    const merged = [...dailyDialog, ...counseling];
+
+    if (!merged.length) {
+        console.warn('⚠️ No conversational calibration datasets loaded. Buddie will use built-in style examples.');
+        return DEFAULT_BUDDIE_STYLE_EXAMPLES;
+    }
+
+    const deduped = [];
+    const seen = new Set();
+    for (const item of merged) {
+        const key = `${item.user}::${item.buddie}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(item);
+    }
+
+    console.log(`✅ Buddie calibration ready with ${deduped.length} total examples`);
+    return deduped;
+};
+
+const normalizeConversationHistory = (history) => {
+    if (!Array.isArray(history)) return [];
+
+    const normalized = history
+        .map((item) => ({
+            role: item?.role === 'model' ? 'Buddie' : 'User',
+            text: toSafeText(item?.text),
+        }))
+        .filter(item => item.text)
+        .slice(-6);
+
+    return normalized;
+};
+
+const buildBuddieUserPrompt = ({ message, mood, note, intensity, history }) => {
+    const cleanedMessage = toSafeText(message);
+    if (!cleanedMessage && !mood) {
+        return 'Hello Buddie.';
+    }
+
+    const chunks = [];
+    const normalizedHistory = normalizeConversationHistory(history);
+
+    if (normalizedHistory.length) {
+        chunks.push(
+            'Recent conversation context (most recent last):',
+            ...normalizedHistory.map(entry => `${entry.role}: ${entry.text}`),
+            ''
+        );
+    }
+
+    if (mood) {
+        chunks.push(`Mood context: user reports mood="${mood}" intensity="${intensity || 'unknown'}" note="${note || 'none'}"`);
+    }
+
+    if (cleanedMessage) {
+        chunks.push(`Latest user message: ${cleanedMessage}`);
+    }
+
+    chunks.push(
+        'Respond like a caring close friend: natural, warm, and human.',
+        'Use simple everyday language with contractions.',
+        'Keep it concise (2-4 sentences), and ask at most one follow-up question.'
+    );
+
+    return chunks.join('\n');
+};
+
+const ensureDefaultRoomsSeeded = async () => {
+    try {
+        const [rows] = await pool.query('SELECT COUNT(*) as count FROM chat_rooms');
+        const rawCount = rows?.[0]?.count;
+        const count = typeof rawCount === 'number' ? rawCount : parseInt(rawCount || '0', 10);
+
+        if (count > 0) return;
+
+        for (const room of DEFAULT_CHAT_ROOMS) {
+            await pool.query('INSERT INTO chat_rooms (name, description, type) VALUES (?, ?, ?)', room);
+        }
+        console.log('✅ Default chat rooms seeded');
+    } catch (err) {
+        console.error('⚠️ Could not seed chat rooms (Database might be unavailable):', err.message);
+    }
+};
+
+const getGeminiModel = (systemInstruction = SYSTEM_INSTRUCTION) => {
+    if (!genAI) return null;
+    return genAI.getGenerativeModel({
+        model: GEMINI_MODEL,
+        systemInstruction
+    });
+};
+
+const selectDialogExamplesForPrompt = (userPrompt, count = BUDDIE_DIALOG_FEWSHOT_COUNT) => {
+    if (!buddieDialogExamples.length) return [];
+
+    const userTokens = new Set(extractTokens(userPrompt));
+    const userHasQuestion = hasQuestionSignal(userPrompt);
+
+    const ranked = buddieDialogExamples
+        .map(example => {
+            const exTokens = new Set(extractTokens(example.user));
+            let overlap = 0;
+            for (const token of userTokens) {
+                if (exTokens.has(token)) overlap += 1;
+            }
+
+            const questionBoost = userHasQuestion && hasQuestionSignal(example.user) ? 1 : 0;
+            const score = overlap + questionBoost;
+            return { example, score };
+        })
+        .sort((a, b) => b.score - a.score);
+
+    const topMatches = ranked.filter(item => item.score > 0).slice(0, count).map(item => item.example);
+    if (topMatches.length >= count) return topMatches;
+
+    const selectedIds = new Set(topMatches.map(item => `${item.user}::${item.buddie}`));
+    const fillers = buddieDialogExamples
+        .filter(item => !selectedIds.has(`${item.user}::${item.buddie}`))
+        .slice(0, count - topMatches.length);
+
+    return [...topMatches, ...fillers];
+};
+
+const buildBuddieSystemInstruction = (userPrompt) => {
+    const examples = selectDialogExamplesForPrompt(userPrompt);
+    if (!examples.length) return SYSTEM_INSTRUCTION;
+
+    const fewShotBlock = examples
+        .map((example, index) => {
+            const tags = [example.intent && `intent=${example.intent}`, example.emotion && `emotion=${example.emotion}`]
+                .filter(Boolean)
+                .join(', ');
+            const tagLine = tags ? ` (${tags})` : '';
+
+            return `Example ${index + 1}${tagLine}\nUser: ${example.user}\nBuddie: ${example.buddie}`;
+        })
+        .join('\n\n');
+
+    return `${SYSTEM_INSTRUCTION}\n\nNATURAL CONVERSATION CALIBRATION\nUse the examples below only to improve smooth, human pacing and tone for everyday conversation.\nDo NOT copy text verbatim.\nSafety and crisis rules above always override style examples.\n\n${fewShotBlock}`;
+};
+
 try {
     if (process.env.GEMINI_API_KEY) {
         genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        // Using 1.5-flash as default as it's more stable for high-volume free tier
-        model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
-            systemInstruction: SYSTEM_INSTRUCTION
-        });
-        console.log('✨ Gemini AI initialized for Buddie (Model: gemini-1.5-flash)');
+        console.log(`✨ Gemini AI initialized for Buddie (Model: ${GEMINI_MODEL})`);
     } else {
         console.warn('⚠️ GEMINI_API_KEY not found. Buddie will look for OpenAI fallback.');
     }
 } catch (error) {
     console.warn('⚠️ Failed to initialize Gemini:', error.message);
 }
+
+buddieDialogExamples = loadAllBuddieStyleExamples();
 
 // Initialize OpenAI fallback
 let openai;
@@ -184,8 +446,30 @@ try {
 }
 
 // Middleware
+app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
+
+const getPublicBaseUrl = (req) => {
+    if (process.env.RESET_PASSWORD_BASE_URL) {
+        if (isProduction && isLocalAddress(process.env.RESET_PASSWORD_BASE_URL)) {
+            console.warn('⚠️ RESET_PASSWORD_BASE_URL points to localhost in production. Falling back to request host.');
+        } else {
+            return process.env.RESET_PASSWORD_BASE_URL.replace(/\/$/, '');
+        }
+    }
+
+    const forwardedProto = (req.headers['x-forwarded-proto'] || '').toString().split(',')[0].trim();
+    const forwardedHost = (req.headers['x-forwarded-host'] || '').toString().split(',')[0].trim();
+    const host = forwardedHost || req.get('host') || process.env.WEBSITE_HOSTNAME || '';
+    const protocol = forwardedProto || req.protocol || 'https';
+
+    if (!host) {
+        return RESET_PASSWORD_BASE_URL.replace(/\/$/, '');
+    }
+
+    return `${protocol}://${host}`.replace(/\/$/, '');
+};
 
 // Request logger
 app.use((req, res, next) => {
@@ -196,26 +480,7 @@ app.use((req, res, next) => {
 // Initialize database and default rooms on startup
 testConnection();
 initializeDatabase().then(async () => {
-    try {
-        // Seed default rooms if none exist
-        const [rooms] = await pool.query('SELECT COUNT(*) as count FROM chat_rooms');
-        if (rooms[0].count === 0) {
-            const defaultRooms = [
-                ['General Support', 'A safe space for general discussions', 'public'],
-                ['Anxiety & Stress', 'Sharing tips and support for anxiety', 'support'],
-                ['The Hustle', 'Navigating career, finances, and ambition', 'public'],
-                ['Heartbreak Hotel', 'Healing from relationship loss', 'support'],
-                ['Exam Stress', 'Academic pressure and study fatigue', 'support'],
-                ['Midnight Thoughts', 'For when you can\'t sleep', 'public']
-            ];
-            for (const room of defaultRooms) {
-                await pool.query('INSERT INTO chat_rooms (name, description, type) VALUES (?, ?, ?)', room);
-            }
-            console.log('✅ Default chat rooms seeded');
-        }
-    } catch (err) {
-        console.error('⚠️ Could not seed chat rooms (Database might be unavailable):', err.message);
-    }
+    await ensureDefaultRoomsSeeded();
 });
 
 // Health check endpoint
@@ -348,7 +613,157 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+app.post('/api/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({
+                error: 'Missing email',
+                message: 'Please provide your email address.'
+            });
+        }
+
+        const [users] = await pool.query('SELECT id, email FROM users WHERE email = ?', [email]);
+        const user = users[0];
+
+        if (!user) {
+            return res.json({ message: 'If the email exists, a reset link will be sent.' });
+        }
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const expires = new Date(Date.now() + 60 * 60 * 1000);
+
+        await pool.query(
+            'UPDATE users SET reset_password_token = ?, reset_password_expires = ? WHERE email = ?',
+            [token, expires, email]
+        );
+
+        const baseUrl = getPublicBaseUrl(req);
+        const resetLink = `${baseUrl}/reset-password/${token}`;
+        await sendResetEmail(email, resetLink);
+
+        return res.json({ message: 'If the email exists, a reset link will be sent.' });
+    } catch (error) {
+        console.error('Forgot password error:', error);
+        return res.status(500).json({
+            error: 'Server error',
+            message: 'Unable to process password reset right now.'
+        });
+    }
+});
+
+app.post('/api/reset-password/:token', async (req, res) => {
+    try {
+        const { token } = req.params;
+        const { password } = req.body;
+
+        if (!token || !password) {
+            return res.status(400).json({
+                error: 'Missing data',
+                message: 'Token and new password are required.'
+            });
+        }
+
+        const [users] = await pool.query(
+            'SELECT id FROM users WHERE reset_password_token = ? AND reset_password_expires > NOW()',
+            [token]
+        );
+
+        const user = users[0];
+
+        if (!user) {
+            return res.status(400).json({
+                error: 'Invalid token',
+                message: 'Token is invalid or expired.'
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        await pool.query(
+            'UPDATE users SET password_hash = ?, reset_password_token = NULL, reset_password_expires = NULL WHERE id = ?',
+            [hashedPassword, user.id]
+        );
+
+        return res.json({ message: 'Password has been reset. You can now log in.' });
+    } catch (error) {
+        console.error('Reset password error:', error);
+        return res.status(500).json({
+            error: 'Server error',
+            message: 'Unable to reset password right now.'
+        });
+    }
+});
+
 // ... (Get user profile endpoint) ...
+// User Profile Endpoints
+// GET profile
+app.get('/api/profile', async (req, res) => {
+    try {
+        // TODO: Replace with real auth (e.g., req.user.id from session/JWT)
+        const userId = req.query.userId || req.headers['x-user-id'];
+        if (!userId) return res.status(401).json({ error: 'Missing user ID' });
+        const [users] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
+        const user = users[0];
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        res.json({ success: true, user });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch profile' });
+    }
+});
+
+// PUT profile (update)
+app.put('/api/profile', async (req, res) => {
+    try {
+        const userId = req.body.userId || req.headers['x-user-id'];
+        if (!userId) return res.status(401).json({ error: 'Missing user ID' });
+        const fields = req.body;
+        const allowed = ['name', 'avatar', 'ageRange', 'bio', 'isAnonymous', 'emergency_contact', 'notificationPrefs', 'goals', 'profileVisibility'];
+        const updates = [];
+        const values = [];
+        allowed.forEach((key) => {
+            if (fields[key] !== undefined) {
+                updates.push(`${key} = ?`);
+                values.push(fields[key]);
+            }
+        });
+        if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
+        values.push(userId);
+        await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to update profile' });
+    }
+});
+
+// DELETE profile (account deletion)
+app.delete('/api/profile', async (req, res) => {
+    try {
+        const userId = req.body.userId || req.headers['x-user-id'];
+        if (!userId) return res.status(401).json({ error: 'Missing user ID' });
+        await pool.query('DELETE FROM users WHERE id = ?', [userId]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to delete account' });
+    }
+});
+
+// Download profile data
+app.get('/api/profile/download', async (req, res) => {
+    try {
+        const userId = req.query.userId || req.headers['x-user-id'];
+        if (!userId) return res.status(401).json({ error: 'Missing user ID' });
+        const [users] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
+        const user = users[0];
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        res.setHeader('Content-Disposition', 'attachment; filename="unitywithin-profile.json"');
+        res.setHeader('Content-Type', 'application/json');
+        res.send(JSON.stringify(user, null, 2));
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to download profile data' });
+    }
+});
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -445,11 +860,12 @@ const callAI = async (prompt, systemInstruction = SYSTEM_INSTRUCTION, options = 
     const { retries = AI_RETRIES, delay = 500, json = false } = options;
 
     // 1. Try Gemini
-    if (model) {
+    const geminiModel = getGeminiModel(systemInstruction);
+    if (geminiModel) {
         let currentDelay = delay;
         for (let i = 0; i < retries; i++) {
             try {
-                const result = await model.generateContent(buildPrompt(prompt, json));
+                const result = await geminiModel.generateContent(buildPrompt(prompt, json));
                 const text = result.response.text();
                 if (!json) return text;
 
@@ -685,7 +1101,11 @@ io.on('connection', (socket) => {
 // Chat Endpoints
 app.get('/api/chat/rooms', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM chat_rooms ORDER BY name ASC');
+        let [rows] = await pool.query('SELECT * FROM chat_rooms ORDER BY name ASC');
+        if (!rows || rows.length === 0) {
+            await ensureDefaultRoomsSeeded();
+            [rows] = await pool.query('SELECT * FROM chat_rooms ORDER BY name ASC');
+        }
         res.json({ success: true, data: rows });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch rooms' });
@@ -699,7 +1119,7 @@ app.get('/api/chat/rooms/:roomId/messages', async (req, res) => {
         // If is_anonymous is TRUE (1), return NULL or 'Anonymous'.
         const [rows] = await pool.query(`
             SELECT m.id, m.content, m.created_at, m.is_anonymous, m.user_id, 
-            CASE WHEN m.is_anonymous = 1 THEN NULL ELSE u.name END as user_name
+            CASE WHEN m.is_anonymous = TRUE THEN NULL ELSE u.name END as user_name
             FROM chat_messages m
             LEFT JOIN users u ON m.user_id = u.id
             WHERE m.room_id = ?
@@ -724,7 +1144,7 @@ app.post('/api/reports', async (req, res) => {
 });
 
 // Admin Endpoints
-app.get('/api/admin/stats', async (req, res) => {
+app.get('/api/admin/stats', requireAdmin, async (req, res) => {
     try {
         const [[{ userCount }]] = await pool.query('SELECT COUNT(*) as userCount FROM users');
         const [[{ messageCount }]] = await pool.query('SELECT COUNT(*) as messageCount FROM chat_messages');
@@ -736,7 +1156,7 @@ app.get('/api/admin/stats', async (req, res) => {
     }
 });
 
-app.get('/api/admin/users', async (req, res) => {
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
     try {
         const [users] = await pool.query('SELECT id, name, email, role, created_at, is_active FROM users ORDER BY created_at DESC');
         res.json({ success: true, data: users });
@@ -745,7 +1165,7 @@ app.get('/api/admin/users', async (req, res) => {
     }
 });
 
-app.delete('/api/admin/users/:id', async (req, res) => {
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
     try {
         await pool.query('DELETE FROM users WHERE id = ?', [req.params.id]);
         res.json({ success: true });
@@ -754,7 +1174,7 @@ app.delete('/api/admin/users/:id', async (req, res) => {
     }
 });
 
-app.get('/api/admin/moderation-logs', async (req, res) => {
+app.get('/api/admin/moderation-logs', requireAdmin, async (req, res) => {
     try {
         const [rows] = await pool.query(`
             SELECT m.*, u.name as user_name 
@@ -768,7 +1188,7 @@ app.get('/api/admin/moderation-logs', async (req, res) => {
     }
 });
 
-app.get('/api/admin/chat/messages', async (req, res) => {
+app.get('/api/admin/chat/messages', requireAdmin, async (req, res) => {
     try {
         res.setHeader('Cache-Control', 'no-store');
         const [rows] = await pool.query(`
@@ -783,7 +1203,7 @@ app.get('/api/admin/chat/messages', async (req, res) => {
     }
 });
 
-app.delete('/api/admin/chat/messages/:id', async (req, res) => {
+app.delete('/api/admin/chat/messages/:id', requireAdmin, async (req, res) => {
     try {
         await pool.query('DELETE FROM chat_messages WHERE id = ?', [req.params.id]);
         res.json({ success: true });
@@ -793,7 +1213,7 @@ app.delete('/api/admin/chat/messages/:id', async (req, res) => {
 });
 
 // Admin: Toggle User Role (Promote/Demote)
-app.patch('/api/admin/users/:id/role', async (req, res) => {
+app.patch('/api/admin/users/:id/role', requireAdmin, async (req, res) => {
     try {
         const { role } = req.body;
         if (!['user', 'admin'].includes(role)) {
@@ -807,7 +1227,7 @@ app.patch('/api/admin/users/:id/role', async (req, res) => {
 });
 
 // Admin: Get all moods
-app.get('/api/admin/moods', async (req, res) => {
+app.get('/api/admin/moods', requireAdmin, async (req, res) => {
     try {
         const [rows] = await pool.query(`
             SELECT m.*, u.name as user_name 
@@ -822,7 +1242,7 @@ app.get('/api/admin/moods', async (req, res) => {
 });
 
 // Admin: Get all journals
-app.get('/api/admin/journals', async (req, res) => {
+app.get('/api/admin/journals', requireAdmin, async (req, res) => {
     try {
         const [rows] = await pool.query(`
             SELECT j.*, u.name as user_name 
@@ -837,7 +1257,7 @@ app.get('/api/admin/journals', async (req, res) => {
 });
 
 // Admin: Get all tiny wins
-app.get('/api/admin/tiny-wins', async (req, res) => {
+app.get('/api/admin/tiny-wins', requireAdmin, async (req, res) => {
     try {
         const [rows] = await pool.query(`
             SELECT w.*, u.name as user_name 
@@ -852,7 +1272,7 @@ app.get('/api/admin/tiny-wins', async (req, res) => {
 });
 
 // Admin: Get all reports
-app.get('/api/admin/reports', async (req, res) => {
+app.get('/api/admin/reports', requireAdmin, async (req, res) => {
     try {
         const [rows] = await pool.query(`
             SELECT r.*, u.name as reporter_name, m.content as message_content
@@ -868,7 +1288,7 @@ app.get('/api/admin/reports', async (req, res) => {
 });
 
 // Admin: Room Management
-app.post('/api/admin/chat/rooms', async (req, res) => {
+app.post('/api/admin/chat/rooms', requireAdmin, async (req, res) => {
     try {
         const { name, description, type } = req.body;
         await pool.query('INSERT INTO chat_rooms (name, description, type) VALUES (?, ?, ?)', [name, description, type || 'public']);
@@ -878,7 +1298,7 @@ app.post('/api/admin/chat/rooms', async (req, res) => {
     }
 });
 
-app.delete('/api/admin/chat/rooms/:id', async (req, res) => {
+app.delete('/api/admin/chat/rooms/:id', requireAdmin, async (req, res) => {
     try {
         await pool.query('DELETE FROM chat_rooms WHERE id = ?', [req.params.id]);
         res.json({ success: true, message: 'Room deleted' });
@@ -1075,21 +1495,58 @@ const getBuddieFallback = (mood) => {
     return "Thank you for sharing. How are you holding up?";
 };
 
+const SIMPLE_GREETING_PATTERN = /^(hi|hello|hey|yo|hiya|heya|good\s*(morning|afternoon|evening)|howdy|what'?s\s*up|sup|sasa|niaje|mambo|hallo|hola)(\s+buddie|\s+unity)?[!,.?\s]*$/i;
+const GRATITUDE_PATTERN = /^(thanks|thank\s*you|asante|shukran)(\s+so\s+much)?[!,.?\s]*$/i;
+
+const isSimpleGreeting = (text) => {
+    if (!text || typeof text !== 'string') return false;
+    return SIMPLE_GREETING_PATTERN.test(text.trim());
+};
+
+const isGratitudeMessage = (text) => {
+    if (!text || typeof text !== 'string') return false;
+    return GRATITUDE_PATTERN.test(text.trim());
+};
+
+const getHumanGreeting = () => {
+    const options = [
+        "Hey 👋 I'm here with you. How are you feeling right now?",
+        "Hi there 💙 Good to see you. What's on your mind today?",
+        "Hello! I'm listening. Do you want to talk about your day?",
+        "Hey, karibu 🤍 I'm here for you. How are you holding up?"
+    ];
+
+    const index = Math.floor(Math.random() * options.length);
+    return options[index];
+};
+
+const getHumanGratitudeReply = () => {
+    const options = [
+        'Always 🤍 I got you. Want to keep talking a bit?',
+        'You’re welcome. I’m here anytime you need me.',
+        'Anytime, friend ✨ You’re not alone in this.',
+    ];
+    return options[Math.floor(Math.random() * options.length)];
+};
+
 // BUDDIE Response Endpoint
 app.post('/api/buddie/respond', async (req, res) => {
     try {
-        const { mood, note, message } = req.body;
+        const { mood, note, message, history, intensity } = req.body;
+        const cleanedMessage = toSafeText(message);
 
-        let userPrompt = "";
-        if (message) {
-            userPrompt = message;
-        } else if (mood) {
-            userPrompt = `I am feeling ${mood} with intensity ${req.body.intensity || 'unknown'}. Note: ${note || 'none'}`;
-        } else {
-            userPrompt = "Hello Buddie.";
+        if (cleanedMessage && isSimpleGreeting(cleanedMessage)) {
+            return res.json({ success: true, message: getHumanGreeting() });
         }
 
-        const aiResponse = await callAI(userPrompt);
+        if (cleanedMessage && isGratitudeMessage(cleanedMessage)) {
+            return res.json({ success: true, message: getHumanGratitudeReply() });
+        }
+
+        const userPrompt = buildBuddieUserPrompt({ message: cleanedMessage, mood, note, intensity, history });
+
+        const buddieInstruction = buildBuddieSystemInstruction(userPrompt);
+        const aiResponse = await callAI(userPrompt, buddieInstruction);
 
         if (aiResponse) {
             return res.json({ success: true, message: aiResponse });
@@ -1179,15 +1636,15 @@ app.get('/api/ai/insights', async (req, res) => {
 
     try {
         const [moods] = await pool.query(
-            'SELECT mood, intensity, note, created_at FROM user_moods WHERE user_id = ? AND created_at >= NOW() - INTERVAL 14 DAY ORDER BY created_at DESC',
+            "SELECT mood, intensity, note, created_at FROM user_moods WHERE user_id = ? AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
             [userId]
         );
         const [journals] = await pool.query(
-            'SELECT content, created_at FROM journal_entries WHERE user_id = ? AND created_at >= NOW() - INTERVAL 14 DAY ORDER BY created_at DESC',
+            "SELECT content, created_at FROM journal_entries WHERE user_id = ? AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
             [userId]
         );
         const [wins] = await pool.query(
-            'SELECT content, created_at FROM tiny_wins WHERE user_id = ? AND created_at >= NOW() - INTERVAL 14 DAY ORDER BY created_at DESC',
+            "SELECT content, created_at FROM tiny_wins WHERE user_id = ? AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
             [userId]
         );
 
@@ -1276,16 +1733,100 @@ app.post('/api/ai/values-affirmation', async (req, res) => {
     res.json({ success: true, text: "Your values are your compass. Trust them to guide you forward." });
 });
 
+
+// --- Community Auto-Join Route ---
+app.get('/community/:slug', async (req, res) => {
+    const { slug } = req.params;
+    const [communities] = await pool.query(
+        'SELECT * FROM communities WHERE slug = ?',
+        [slug]
+    );
+    const community = communities[0];
+    if (!community) return res.status(404).send('Community not found');
+    if (!req.session || !req.session.user) {
+        return res.redirect(`/login?redirect=/community/${slug}`);
+    }
+    await pool.query(
+        `INSERT INTO community_members (community_id, user_id)
+         VALUES (?, ?)
+         ON CONFLICT DO NOTHING`,
+        [community.id, req.session.user.id]
+    );
+    res.redirect(`/community/${community.id}`);
+});
+
+// --- Dynamic Open Graph meta tags for community social previews ---
+app.get('/og/community/:slug', async (req, res) => {
+    const { slug } = req.params;
+    const [communities] = await pool.query('SELECT * FROM communities WHERE slug = ?', [slug]);
+    const community = communities[0];
+    if (!community) return res.status(404).send('Community not found');
+    const ogTitle = `Join ${community.name} on UnityWithin!`;
+    const ogDesc = `Connect, share and collaborate with members of ${community.name}.`;
+    const ogImage = 'https://unitywithin.app/images/community-preview.png';
+    const ogUrl = `https://unitywithin.app/community/${community.slug}`;
+    res.set('Content-Type', 'text/html');
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>${ogTitle}</title>
+            <meta property="og:title" content="${ogTitle}" />
+            <meta property="og:description" content="${ogDesc}" />
+            <meta property="og:image" content="${ogImage}" />
+            <meta property="og:url" content="${ogUrl}" />
+            <meta name="twitter:card" content="summary_large_image" />
+            <meta name="twitter:title" content="${ogTitle}" />
+            <meta name="twitter:description" content="${ogDesc}" />
+            <meta name="twitter:image" content="${ogImage}" />
+            <meta http-equiv="refresh" content="0; url=${ogUrl}" />
+        </head>
+        <body>
+            <p>Redirecting to community...</p>
+        </body>
+        </html>
+    `);
+});
+
+// --- Buddy Invite Auto-Join Route ---
+app.get('/buddy/:code', async (req, res) => {
+    const { code } = req.params;
+    const [invites] = await pool.query(
+        'SELECT * FROM buddy_invites WHERE invite_code = ?',
+        [code]
+    );
+    const invite = invites[0];
+    if (!invite) return res.status(404).send('Invalid invite');
+    if (!req.session || !req.session.user) {
+        return res.redirect(`/login?redirect=/buddy/${code}`);
+    }
+    await pool.query(
+        `INSERT INTO buddies (user_id, buddy_id)
+         VALUES (?, ?)
+         ON CONFLICT DO NOTHING`,
+        [req.session.user.id, invite.inviter_id]
+    );
+    await pool.query(
+        'UPDATE buddy_invites SET uses = uses + 1 WHERE id = ?',
+        [invite.id]
+    );
+    res.redirect('/buddy');
+});
+
 // Serve React frontend static files in production
 const distPath = path.join(__dirname, process.env.STATIC_FILES_PATH || 'dist');
 app.use(express.static(distPath));
 
 // SPA fallback: serve index.html for all non-API routes
-app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
+app.get(/^(?!\/api).*/, (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
 });
 
 // Start server
+validateProductionConfig();
+
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

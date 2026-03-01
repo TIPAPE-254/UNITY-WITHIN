@@ -24,3 +24,6 @@ server/dist
 *.sln
 *.sw?
 .env
+
+# Generated Buddie conversation calibration data
+server/data/*.json

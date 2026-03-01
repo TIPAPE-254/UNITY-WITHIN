@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Heart, Mail, ArrowLeft } from 'lucide-react';
+import { API_BASE_URL } from '../constants';
 
 interface ForgotPasswordProps {
     onBackToLogin: () => void;
@@ -9,16 +10,37 @@ export const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onBackToLogin })
     const [email, setEmail] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isSent, setIsSent] = useState(false);
+    const [error, setError] = useState('');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
+        setError('');
 
-        // Simulate sending reset email
-        setTimeout(() => {
-            setIsLoading(false);
+        try {
+            const response = await fetch(`${API_BASE_URL}/forgot-password`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                setError(data.message || 'Unable to send reset link right now. Please try again.');
+                setIsLoading(false);
+                return;
+            }
+
             setIsSent(true);
-        }, 1500);
+            setIsLoading(false);
+        } catch (err) {
+            console.error('Forgot password error:', err);
+            setError('Unable to reach the server. Please try again in a moment.');
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -70,6 +92,12 @@ export const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onBackToLogin })
                             <p className="text-gray-600 leading-relaxed">
                                 Enter your email address and we'll send you a link to create a new password.
                             </p>
+
+                            {error && (
+                                <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 text-sm text-orange-800">
+                                    {error}
+                                </div>
+                            )}
 
                             {/* Email Field */}
                             <div>

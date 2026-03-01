@@ -45,7 +45,7 @@ export const AIChat: React.FC = () => {
         },
         body: JSON.stringify({
           message: userMsg.text,
-          // We could send userId here if we had it in context
+          history: messages.slice(-6).map((m) => ({ role: m.role, text: m.text })),
         }),
       });
 

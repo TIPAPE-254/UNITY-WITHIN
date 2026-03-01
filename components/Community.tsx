@@ -19,6 +19,14 @@ export const Community: React.FC<CommunityProps> = ({ userId, userName }) => {
     const [rooms, setRooms] = useState<LocalChatRoom[]>([]);
     const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    const fallbackRooms: LocalChatRoom[] = [
+        { id: 1, name: 'General Support', description: 'A safe space for general discussions', type: 'public' },
+        { id: 2, name: 'Anxiety & Stress', description: 'Sharing tips and support for anxiety', type: 'support' },
+        { id: 3, name: 'The Hustle', description: 'Navigating career, finances, and ambition', type: 'public' },
+        { id: 4, name: 'Heartbreak Hotel', description: 'Healing from relationship loss', type: 'support' },
+    ];
 
     useEffect(() => {
         fetchRooms();
@@ -26,13 +34,26 @@ export const Community: React.FC<CommunityProps> = ({ userId, userName }) => {
 
     const fetchRooms = async () => {
         try {
+            setError(null);
             const res = await fetch(`${API_BASE_URL}/chat/rooms`);
+            if (!res.ok) {
+                throw new Error(`Failed with status ${res.status}`);
+            }
             const data = await res.json();
             if (data.success) {
-                setRooms(data.data);
+                if (Array.isArray(data.data) && data.data.length > 0) {
+                    setRooms(data.data);
+                } else {
+                    setRooms(fallbackRooms);
+                    setError('No community rooms were available yet. Showing default rooms.');
+                }
+            } else {
+                throw new Error('Invalid room response');
             }
         } catch (error) {
             console.error('Failed to fetch rooms', error);
+            setRooms(fallbackRooms);
+            setError('Community server is unavailable right now. Showing available rooms.');
         } finally {
             setLoading(false);
         }
@@ -44,7 +65,7 @@ export const Community: React.FC<CommunityProps> = ({ userId, userName }) => {
             <ChatRoom
                 roomId={activeRoomId}
                 roomName={activeRoom?.name || 'Chat'}
-                userId={userId!}
+                userId={userId}
                 userName={userName || 'Anonymous'}
                 onLeave={() => setActiveRoomId(null)}
             />
@@ -61,6 +82,12 @@ export const Community: React.FC<CommunityProps> = ({ userId, userName }) => {
                     Find a safe space to share, listen, and connect with others who understand what you're going through.
                 </p>
             </header>
+
+            {error && (
+                <div className="bg-orange-50 border border-orange-200 text-orange-700 text-sm rounded-2xl px-4 py-3">
+                    {error}
+                </div>
+            )}
 
             {loading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

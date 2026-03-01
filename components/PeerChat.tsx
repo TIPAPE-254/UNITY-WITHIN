@@ -29,9 +29,9 @@ const MessageBubble: React.FC<{
     const [isHovered, setIsHovered] = useState(false);
 
     // Touch Handlers
-    const handleTouchStart = (e: React.TouchEvent) => {
-        setStartX(e.touches[0].clientX);
-    };
+        const handleTouchStart = (e: React.TouchEvent) => {
+            setStartX(e.touches[0].clientX);
+        };
 
     const handleTouchMove = (e: React.TouchEvent) => {
         if (startX === null) return;
@@ -102,14 +102,15 @@ const MessageBubble: React.FC<{
                 style={{ transform: `translateX(${offsetX}px)` }}
             >
                 {/* Quoted Reply */}
-                {msg.reply_to && (
-                    <div className={`mb-2 p-2 rounded-lg text-xs border-l-4 ${isOwn ? 'bg-white/50 border-unity-400' : 'bg-gray-50 border-gray-300'}`}>
-                        <p className="font-bold mb-1 opacity-70">
-                            {msg.reply_to.user_id === msg.user_id ? 'You' : 'Peer'}
-                        </p>
-                        <p className="truncate opacity-80">{msg.reply_to.text}</p>
-                    </div>
-                )}
+                    {msg.reply_to && (
+                        <div className="text-xs bg-gray-100 rounded px-2 py-1 mb-1 max-w-xs text-gray-600 border-l-4 border-unity-300 cursor-pointer"
+                            onClick={() => {
+                                // Optional: scroll to original message if implemented
+                            }}
+                        >
+                            <span className="font-semibold">Replied to:</span> {msg.reply_to.text.length > 40 ? msg.reply_to.text.slice(0, 40) + '...' : msg.reply_to.text}
+                        </div>
+                    )}
 
                 <p className="leading-relaxed text-sm sm:text-base">{msg.text}</p>
                 <div className="flex items-center justify-end gap-2 mt-1 opacity-50">

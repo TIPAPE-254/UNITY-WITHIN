@@ -6,16 +6,20 @@
     "type": "module",
     "scripts": {
         "start": "node server.js",
-        "dev": "node --watch server.js"
+        "dev": "node --watch server.js",
+        "prepare:dailydialog": "python3 scripts/prepare_dailydialog_dataset.py",
+        "prepare:counseling": "python3 scripts/prepare_hf_counseling_dataset.py"
     },
     "dependencies": {
         "@google/generative-ai": "^0.24.1",
         "bcrypt": "^6.0.0",
+        "body-parser": "^2.2.2",
         "cors": "^2.8.5",
         "dotenv": "^17.2.3",
         "express": "^5.2.1",
-        "mysql2": "^3.16.0",
+        "nodemailer": "^8.0.1",
         "openai": "^6.15.0",
+        "pg": "^8.16.3",
         "socket.io": "^4.8.3"
     }
 }

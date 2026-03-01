@@ -24,6 +24,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate required build secret
+        env:
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+        run: |
+          if [ -z "$VITE_GEMINI_API_KEY" ]; then
+            echo "Missing required GitHub Secret: VITE_GEMINI_API_KEY"
+            exit 1
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -72,6 +81,74 @@ jobs:
         if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE == '' && env.AZURE_CREDENTIALS != '' }}
         run: az account set --subscription "${{ env.AZURE_SUBSCRIPTION_ID }}"
 
+      # Validate all required runtime secrets for Azure settings sync (Brevo, DB, reset password, Gemini)
+      - name: Validate required runtime secrets for Azure settings sync
+        if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE == '' && env.AZURE_CREDENTIALS != '' }}
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_SSL: ${{ secrets.DB_SSL }}
+          RESET_PASSWORD_BASE_URL: ${{ secrets.RESET_PASSWORD_BASE_URL }}
+          BREVO_SMTP_HOST: ${{ secrets.BREVO_SMTP_HOST }}
+          BREVO_SMTP_PORT: ${{ secrets.BREVO_SMTP_PORT }}
+          BREVO_SMTP_USER: ${{ secrets.BREVO_SMTP_USER }}
+          BREVO_SMTP_PASS: ${{ secrets.BREVO_SMTP_PASS }}
+          BREVO_FROM_EMAIL: ${{ secrets.BREVO_FROM_EMAIL }}
+          BREVO_FROM_NAME: ${{ secrets.BREVO_FROM_NAME }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # List of required secrets for production deployment
+          required_secrets="DB_HOST DB_USER DB_PASSWORD DB_NAME DB_PORT DB_SSL RESET_PASSWORD_BASE_URL BREVO_SMTP_HOST BREVO_SMTP_PORT BREVO_SMTP_USER BREVO_SMTP_PASS BREVO_FROM_EMAIL BREVO_FROM_NAME GEMINI_API_KEY"
+          missing=""
+          for key in $required_secrets; do
+            eval value="\$$key"
+            if [ -z "$value" ]; then
+              missing="$missing $key"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "Missing required GitHub Secret(s):$missing"
+            exit 1
+          fi
+
+      - name: Note manual App Settings requirement for publish-profile deployments
+        if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE != '' }}
+        run: |
+          echo "Using publish-profile deployment."
+          echo "Ensure App Service settings are already configured for DB_* , RESET_PASSWORD_BASE_URL, BREVO_SMTP_* and BREVO_FROM_* ."
+
+      - name: Configure App Service settings
+        if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE == '' && env.AZURE_CREDENTIALS != '' }}
+        run: |
+          az webapp config appsettings set \
+            --name "${{ env.TARGET_WEBAPP_NAME }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --settings \
+              NODE_ENV=production \
+              DB_HOST='${{ secrets.DB_HOST }}' \
+              DB_USER='${{ secrets.DB_USER }}' \
+              DB_PASSWORD='${{ secrets.DB_PASSWORD }}' \
+              DB_NAME='${{ secrets.DB_NAME }}' \
+              DB_PORT='${{ secrets.DB_PORT }}' \
+              DB_SSL='${{ secrets.DB_SSL }}' \
+              RESET_PASSWORD_BASE_URL='${{ secrets.RESET_PASSWORD_BASE_URL }}' \
+              BREVO_SMTP_HOST='${{ secrets.BREVO_SMTP_HOST }}' \
+              BREVO_SMTP_PORT='${{ secrets.BREVO_SMTP_PORT }}' \
+              BREVO_SMTP_USER='${{ secrets.BREVO_SMTP_USER }}' \
+              BREVO_SMTP_PASS='${{ secrets.BREVO_SMTP_PASS }}' \
+              BREVO_FROM_EMAIL='${{ secrets.BREVO_FROM_EMAIL }}' \
+              BREVO_FROM_NAME='${{ secrets.BREVO_FROM_NAME }}' \
+              GEMINI_API_KEY='${{ secrets.GEMINI_API_KEY }}' \
+              OPENAI_API_KEY='${{ secrets.OPENAI_API_KEY }}' \
+              GROQ_API_KEY='${{ secrets.GROQ_API_KEY }}' \
+              HUGGINGFACE_API_KEY='${{ secrets.HUGGINGFACE_API_KEY }}' \
+              MISTRAL_API_KEY='${{ secrets.MISTRAL_API_KEY }}' \
+              DEEPSEEK_API_KEY='${{ secrets.DEEPSEEK_API_KEY }}' \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=false
+
       - name: Validate App Service in resource group
         if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE == '' && env.AZURE_CREDENTIALS != '' }}
         run: |
@@ -88,6 +165,34 @@ jobs:
           app-name: ${{ env.TARGET_WEBAPP_NAME }}
           package: server
           startup-command: 'node server.js'
+
+      - name: Post-deploy smoke test (health + database)
+        if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE != '' || env.AZURE_CREDENTIALS != '' }}
+        run: |
+          HEALTH_URL="https://${{ env.TARGET_WEBAPP_NAME }}.azurewebsites.net/api/health"
+          echo "Running smoke test: $HEALTH_URL"
+
+          for attempt in $(seq 1 12); do
+            echo "Attempt $attempt/12"
+            response="$(curl -sS --max-time 20 "$HEALTH_URL" || true)"
+            echo "Response: $response"
+
+            if echo "$response" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"OK"'; then
+              if echo "$response" | grep -Eq '"database"[[:space:]]*:[[:space:]]*"connected"'; then
+                echo "Smoke test passed: app is healthy and database is connected."
+                exit 0
+              fi
+
+              echo "App is up but database is not connected yet."
+            else
+              echo "App health endpoint not ready yet."
+            fi
+
+            sleep 10
+          done
+
+          echo "Smoke test failed: app health/database did not become ready in time."
+          exit 1
 
       - name: Validate Azure deployment credentials
         if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE == '' && env.AZURE_CREDENTIALS == '' }}
