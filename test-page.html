@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .success {
+            color: green;
+        }
+
+        .error {
+            color: red;
+        }
+
+        .info {
+            color: blue;
+        }
+
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Unity Within - Debug Test</h1>
+    <p class="info">If you see this page loading at <code>http://localhost:3001</code>, check if the actual app renders
+        below:</p>
+
+    <div id="status">
+        <p>Loading status checks...</p>
+    </div>
+
+    <script>
+        const statusDiv = document.getElementById('status');
+
+        // Test 1: Check if we can access localhost:3001
+        statusDiv.innerHTML += `<p class="info">✓ HTML page loaded successfully</p>`;
+
+        // Test 2: Try to load the main app script
+        fetch('/src/index.tsx')
+            .then(response => {
+                if (response.ok) {
+                    statusDiv.innerHTML += `<p class="success">✓ index.tsx is accessible</p>`;
+                } else {
+                    statusDiv.innerHTML += `<p class="error">✗ index.tsx returned status: ${response.status}</p>`;
+                }
+            })
+            .catch(error => {
+                statusDiv.innerHTML += `<p class="error">✗ Error loading index.tsx: ${error.message}</p>`;
+            });
+
+        // Test 3: Check if React is available
+        setTimeout(() => {
+            if (window.React) {
+                statusDiv.innerHTML += `<p class="success">✓ React is loaded</p>`;
+            } else {
+                statusDiv.innerHTML += `<p class="error">✗ React is not available</p>`;
+            }
+        }, 2000);
+    </script>
+</body>
+
+</html>

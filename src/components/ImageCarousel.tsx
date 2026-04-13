@@ -82,7 +82,7 @@ export const ImageCarousel: React.FC = () => {
       ))}
 
       {/* Overlay for better text readability */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white/80 via-white/60 to-white/80"></div>
+      <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-white/20 to-white/40"></div>
 
       {/* Navigation Arrows */}
       <button

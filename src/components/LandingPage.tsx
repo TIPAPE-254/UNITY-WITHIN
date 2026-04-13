@@ -1,18 +1,17 @@
 import React from 'react';
 import { Button } from './Button';
-import { ImageCarousel } from './ImageCarousel';
 import { Heart, Users, Sparkles, Shield, Phone, ExternalLink, Star, ArrowRight, CheckCircle, Wind, Brain, Zap, Flower, Sun, Moon, CloudRain } from 'lucide-react';
 
 export const LandingPage: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <section className="relative overflow-hidden py-20 px-4">
+      <section className="relative overflow-hidden py-20 px-4 bg-gradient-to-br from-pink-50 to-pink-100">
         <div className="max-w-6xl mx-auto text-center">
           <div className="flex items-center justify-center gap-3 mb-8">
             <Heart className="fill-current text-unity-500" size={48} />
-            <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-unity-black">
-              UNITY <span className="text-unity-500">WITHIN</span>
+            <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-gray-900">
+              UNITY <span className="text-pink-500">WITHIN</span>
             </h1>
           </div>
           <p className="text-xl md:text-2xl text-gray-600 mb-12 max-w-3xl mx-auto leading-relaxed">
@@ -21,7 +20,7 @@ export const LandingPage: React.FC<{ onNavigate: (view: string) => void }> = ({ 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button
               size="lg"
-              className="bg-unity-500 hover:bg-unity-600 text-white px-8 py-4 text-lg"
+              className="bg-pink-500 hover:bg-pink-600 text-white px-8 py-4 text-lg"
               onClick={() => onNavigate('signup')}
             >
               Start Your Journey <ArrowRight className="ml-2" size={20} />
@@ -29,18 +28,12 @@ export const LandingPage: React.FC<{ onNavigate: (view: string) => void }> = ({ 
             <Button
               variant="outline"
               size="lg"
-              className="border-unity-300 text-unity-600 hover:bg-unity-50 px-8 py-4 text-lg"
+              className="border-pink-300 text-pink-600 hover:bg-pink-50 px-8 py-4 text-lg"
               onClick={() => onNavigate('wellness')}
             >
               Explore Tools
             </Button>
           </div>
-        </div>
-        <div className="absolute top-10 left-10 opacity-20">
-          <Flower size={60} className="text-unity-300" />
-        </div>
-        <div className="absolute bottom-10 right-10 opacity-20">
-          <Sun size={80} className="text-unity-400" />
         </div>
       </section>
 
