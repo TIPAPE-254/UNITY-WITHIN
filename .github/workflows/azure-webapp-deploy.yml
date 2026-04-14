@@ -33,7 +33,7 @@ jobs:
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          app-name: unitywithin-app
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: .
 
@@ -41,33 +41,24 @@ jobs:
         if: success()
         run: |
           echo "✅ Deployment to Azure successful"
-          echo "App: ${{ secrets.AZURE_WEBAPP_NAME }}"
+          echo "App: unitywithin-app"
           echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           echo "Commit: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
 
-      - name: Set deployment status
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const status = context.payload.workflow_run?.conclusion === 'failure' ? 'failure' : 'success';
-            const deploymentState = status === 'success' ? 'success' : 'failure';
-            console.log(`🚀 Deployment ${deploymentState.toUpperCase()}`);
-            
       - name: Send deployment notification
         if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const status = '${{ job.status }}';
-            const message = status === 'success' 
-              ? '✅ Deployment to Azure completed successfully'
-              : '❌ Deployment to Azure failed';
-            console.log(`\n${'='.repeat(50)}`);
-            console.log(message);
-            console.log(`${'='.repeat(50)}\n`);
-            console.log(`Branch: ${{ github.ref_name }}`);
-            console.log(`Commit: ${{ github.sha }}`);
-            console.log(`Actor: ${{ github.actor }}`);
-            console.log(`Time: ${new Date().toISOString()}`);
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            echo "✅ Deployment to Azure completed successfully"
+          else
+            echo "❌ Deployment to Azure failed"
+          fi
+          echo "==========================================="
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Time: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "==========================================="
+
