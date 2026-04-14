@@ -2,6 +2,7 @@ import { Home, MessageCircleHeart, BookHeart, Wind, GraduationCap, Sparkles } fr
 import { ViewState } from './types';
 
 export const APP_NAME = "UNITY WITHIN";
+export const API_BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 export const NAVIGATION_ITEMS: { id: ViewState; label: string; icon: any }[] = [
   { id: 'dashboard', label: 'Home', icon: Home },

@@ -13,11 +13,16 @@ export function useAnalytics() {
     eventData?: Record<string, string | number | boolean>
   ) => {
     if (isEnabled) {
-      ReactGA.event({
-        action: eventName,
-        ...eventData,
-      });
-      console.log(`[Analytics Event] ${eventName}:`, eventData);
+      try {
+        ReactGA.event({
+          category: 'engagement',
+          action: eventName,
+          ...eventData,
+        } as any);
+        console.log(`[Analytics Event] ${eventName}:`, eventData);
+      } catch (error) {
+        console.error('Analytics error:', error);
+      }
     }
   };
 
