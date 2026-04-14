@@ -36,3 +36,38 @@ jobs:
           app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: .
+
+      - name: Log deployment status
+        if: success()
+        run: |
+          echo "✅ Deployment to Azure successful"
+          echo "App: ${{ secrets.AZURE_WEBAPP_NAME }}"
+          echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+
+      - name: Set deployment status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = context.payload.workflow_run?.conclusion === 'failure' ? 'failure' : 'success';
+            const deploymentState = status === 'success' ? 'success' : 'failure';
+            console.log(`🚀 Deployment ${deploymentState.toUpperCase()}`);
+            
+      - name: Send deployment notification
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ job.status }}';
+            const message = status === 'success' 
+              ? '✅ Deployment to Azure completed successfully'
+              : '❌ Deployment to Azure failed';
+            console.log(`\n${'='.repeat(50)}`);
+            console.log(message);
+            console.log(`${'='.repeat(50)}\n`);
+            console.log(`Branch: ${{ github.ref_name }}`);
+            console.log(`Commit: ${{ github.sha }}`);
+            console.log(`Actor: ${{ github.actor }}`);
+            console.log(`Time: ${new Date().toISOString()}`);
