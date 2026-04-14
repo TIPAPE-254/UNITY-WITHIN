@@ -266,6 +266,114 @@ app.get('/api/health', (req, res) => {
     res.status(200).json({ status: 'OK' });
 });
 
+const readRuntimeSetting = (key) => {
+    const directValue = process.env[key];
+    if (directValue && String(directValue).trim()) {
+        return { value: String(directValue), source: key };
+    }
+
+    const appSettingKey = `APPSETTING_${key}`;
+    const appSettingValue = process.env[appSettingKey];
+    if (appSettingValue && String(appSettingValue).trim()) {
+        return { value: String(appSettingValue), source: appSettingKey };
+    }
+
+    return { value: '', source: 'missing' };
+};
+
+const runtimeSettingStatus = (key) => {
+    const { value, source } = readRuntimeSetting(key);
+    return {
+        configured: Boolean(value),
+        source,
+    };
+};
+
+app.get('/api/admin/integrations/health', requireAdmin, async (req, res) => {
+    const brevoApi = runtimeSettingStatus('BREVO_API_KEY');
+    const brevoSmtpUser = runtimeSettingStatus('BREVO_SMTP_USER');
+    const brevoSmtpPass = runtimeSettingStatus('BREVO_SMTP_PASS');
+    const brevoFromEmail = runtimeSettingStatus('BREVO_FROM_EMAIL');
+
+    const vapidPublic = runtimeSettingStatus('VAPID_PUBLIC_KEY');
+    const vapidPrivate = runtimeSettingStatus('VAPID_PRIVATE_KEY');
+
+    const openai = runtimeSettingStatus('OPENAI_API_KEY');
+    const groq = runtimeSettingStatus('GROQ_API_KEY');
+    const huggingface = runtimeSettingStatus('HUGGINGFACE_API_KEY');
+
+    const brevoConfigured = brevoApi.configured || (brevoSmtpUser.configured && brevoSmtpPass.configured);
+    const vapidConfigured = vapidPublic.configured && vapidPrivate.configured;
+    const aiConfigured = openai.configured || groq.configured || huggingface.configured;
+
+    res.json({
+        success: true,
+        overall: brevoConfigured && vapidConfigured,
+        checks: {
+            brevo: {
+                configured: brevoConfigured,
+                mode: brevoApi.configured ? 'api-key' : (brevoSmtpUser.configured && brevoSmtpPass.configured ? 'smtp' : 'missing'),
+                apiKey: brevoApi,
+                smtpUser: brevoSmtpUser,
+                smtpPass: brevoSmtpPass,
+                fromEmail: brevoFromEmail,
+            },
+            vapid: {
+                configured: vapidConfigured,
+                publicKey: vapidPublic,
+                privateKey: vapidPrivate,
+            },
+            aiProviders: {
+                anyConfigured: aiConfigured,
+                openai,
+                groq,
+                huggingface,
+            },
+        },
+    });
+});
+
+app.post('/api/admin/integrations/test-email', requireAdmin, async (req, res) => {
+    const { to, subject, message } = req.body || {};
+
+    const recipient = String(to || '').trim();
+    const emailSubject = String(subject || '').trim() || 'Unity Within Integration Test';
+    const emailMessage = String(message || '').trim() || 'This is a Brevo integration test from Unity Within.';
+
+    if (!recipient || !recipient.includes('@')) {
+        return res.status(400).json({ success: false, error: 'A valid recipient email is required in "to".' });
+    }
+
+    try {
+        const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px;">
+                <h2 style="margin: 0 0 12px; color: #111827;">Unity Within Email Integration Test</h2>
+                <p style="margin: 0 0 10px; color: #374151;">${emailMessage}</p>
+                <p style="margin: 12px 0 0; font-size: 12px; color: #6b7280;">Sent at: ${new Date().toISOString()}</p>
+            </div>
+        `;
+
+        const result = await sendEmail(recipient, emailSubject, html);
+        if (!result?.success) {
+            return res.status(502).json({
+                success: false,
+                error: result?.error || 'Brevo send failed',
+                mock: Boolean(result?.mock),
+            });
+        }
+
+        return res.json({
+            success: true,
+            delivered: true,
+            messageId: result?.messageId || null,
+            recipient,
+        });
+    } catch (error) {
+        console.error('Brevo integration test email error:', error);
+        return res.status(500).json({ success: false, error: error.message || 'Unexpected error' });
+    }
+});
+
 // Endpoint to check if current user is admin
 // Frontend can call this to determine whether to show admin dashboard
 app.get('/api/user/is-admin', (req, res) => {
@@ -3814,32 +3922,13 @@ const buildTherapistInviteEmail = ({ inviteLink }) => `
 `;
 
 const sendBrevoEmail = async ({ toEmail, subject, htmlContent }) => {
-    const apiKey = process.env.BREVO_API_KEY;
-    if (!apiKey || !toEmail) return { sent: false, reason: 'missing-config-or-recipient' };
+    if (!toEmail) return { sent: false, reason: 'missing-recipient' };
 
-    try {
-        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-            method: 'POST',
-            headers: {
-                'api-key': apiKey,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                sender: {
-                    email: process.env.BREVO_FROM_EMAIL || 'no-reply@unitywithin.app',
-                    name: process.env.BREVO_FROM_NAME || 'Unity Within'
-                },
-                to: [{ email: toEmail }],
-                subject,
-                htmlContent
-            })
-        });
-
-        return { sent: response.ok, reason: response.ok ? null : `status-${response.status}` };
-    } catch (error) {
-        console.error('Brevo send error:', error);
-        return { sent: false, reason: 'request-failed' };
-    }
+    const result = await sendEmail(toEmail, subject, htmlContent);
+    return {
+        sent: Boolean(result?.success),
+        reason: result?.success ? null : result?.error || 'send-failed'
+    };
 };
 
 // Admin creates a therapist invite and gets both invite URL + WhatsApp deep-link.

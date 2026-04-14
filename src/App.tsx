@@ -11,9 +11,11 @@ import { LandingPage } from './components/LandingPage';
 import { Login } from './components/Login';
 import { Signup } from './components/Signup';
 import { AnalyticsTracker } from './components/AnalyticsTracker';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 import { Heart } from 'lucide-react';
 
 export default function App() {
+  const { register: requestPushPermission } = usePushNotifications();
   const [currentView, setCurrentView] = useState<ViewState>('landing');
   const [user, setUser] = useState<User | null>(() => {
     try {
@@ -33,6 +35,10 @@ export default function App() {
     setUser(loggedInUser);
     localStorage.setItem('unity_user', JSON.stringify(loggedInUser));
     setCurrentView('dashboard');
+
+    void requestPushPermission().catch((error) => {
+      console.error('Push permission request failed:', error);
+    });
   };
 
   const renderContent = () => {
