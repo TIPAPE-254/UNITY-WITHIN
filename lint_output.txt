@@ -1,0 +1,8 @@
+
+> unity-within@0.0.0 lint
+> tsc --noEmit
+
+components/AdminDashboard.tsx(648,54): error TS2304: Cannot find name 'Mail'.
+components/AdminDashboard.tsx(883,58): error TS2304: Cannot find name 'Mail'.
+components/AdminDashboard.tsx(913,34): error TS2304: Cannot find name 'Mail'.
+components/AdminDashboard.tsx(916,165): error TS2304: Cannot find name 'X'.
