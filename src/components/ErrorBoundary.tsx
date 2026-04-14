@@ -1,9 +1,9 @@
-import React from 'react';
+import type { FC, ReactNode } from 'react';
 import { AlertTriangle, Home, RefreshCw } from 'lucide-react';
 import { Button } from './Button';
 
 interface Props {
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 /**
@@ -54,6 +54,6 @@ export function ErrorFallback({ error, resetErrorBoundary }: { error: Error; res
 }
 
 // Deprecated: Use react-error-boundary for full Error Boundary functionality
-export const ErrorBoundary: React.FC<Props> = ({ children }) => {
+export const ErrorBoundary: FC<Props> = ({ children }) => {
   return <>{children}</>;
 }
