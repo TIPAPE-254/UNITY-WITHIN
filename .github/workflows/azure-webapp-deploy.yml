@@ -10,6 +10,13 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      AZURE_WEBAPP_NAME: unitywithin-app
+      AZURE_WEBAPP_PUBLISH_PROFILE: ${{ secrets[format('{0}{1}', 'AZURE_WEBAPP_', 'PUBLISH_PROFILE')] }}
+      AZURE_CREDENTIALS: ${{ secrets[format('{0}', 'AZURE_CREDENTIALS')] }}
+      AZURE_CLIENT_ID: ${{ secrets[format('{0}', 'AZURE_CLIENT_ID')] }}
+      AZURE_TENANT_ID: ${{ secrets[format('{0}', 'AZURE_TENANT_ID')] }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets[format('{0}', 'AZURE_SUBSCRIPTION_ID')] }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -22,17 +29,57 @@ jobs:
         run: npm ci
       - name: Build app
         run: npm run build
-      - name: Deploy to Azure Web App
+
+      - name: Resolve Azure auth mode
+        id: auth_mode
+        run: |
+          if [ -n "$AZURE_WEBAPP_PUBLISH_PROFILE" ]; then
+            echo "mode=publish-profile" >> "$GITHUB_OUTPUT"
+            echo "Using publish profile auth"
+          elif [ -n "$AZURE_CREDENTIALS" ] || { [ -n "$AZURE_CLIENT_ID" ] && [ -n "$AZURE_TENANT_ID" ] && [ -n "$AZURE_SUBSCRIPTION_ID" ]; }; then
+            echo "mode=login" >> "$GITHUB_OUTPUT"
+            echo "Using azure/login auth"
+          else
+            echo "Missing Azure deployment credentials. Configure one of:" >&2
+            echo "1) AZURE_WEBAPP_PUBLISH_PROFILE" >&2
+            echo "2) AZURE_CREDENTIALS (JSON)" >&2
+            echo "3) AZURE_CLIENT_ID + AZURE_TENANT_ID + AZURE_SUBSCRIPTION_ID" >&2
+            exit 1
+          fi
+
+      - name: Azure login (AZURE_CREDENTIALS)
+        if: steps.auth_mode.outputs.mode == 'login' && env.AZURE_CREDENTIALS != ''
+        uses: azure/login@v2
+        with:
+          creds: ${{ env.AZURE_CREDENTIALS }}
+
+      - name: Azure login (OIDC/SPN fields)
+        if: steps.auth_mode.outputs.mode == 'login' && env.AZURE_CREDENTIALS == ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Web App (publish profile)
+        if: steps.auth_mode.outputs.mode == 'publish-profile'
         uses: azure/webapps-deploy@v3
         with:
-          app-name: unitywithin-app
-          publish-profile: ${{ secrets[format('{0}{1}', 'AZURE_WEBAPP_', 'PUBLISH_PROFILE')] }}
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: .
+
+      - name: Deploy to Azure Web App (azure login)
+        if: steps.auth_mode.outputs.mode == 'login'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: .
       - name: Log deployment status
         if: success()
         run: |
           echo "✅ Deployment to Azure successful"
-          echo "App: unitywithin-app"
+          echo "App: $AZURE_WEBAPP_NAME"
           echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           echo "Commit: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
