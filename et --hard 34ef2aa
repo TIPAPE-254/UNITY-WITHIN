@@ -1,0 +1,50 @@
+[33m68cce7f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m feat: landing page redesign, realtime events, and navigation connectivity
+[33mcd6e990[m chore: verify landing page deployment is active
+[33mf673fa2[m feat: connect landing page buttons to signup flow
+[33mf5102c2[m fix: enable GoogleOAuthProvider for signup functionality
+[33m10b9c72[m feat: improve routing and tailwind config for wellness UX
+[33m526736d[m chore: trigger Azure deployment from main branch
+[33mdd0fa37[m fix: apply prettier formatting to resolve line wrapping issues
+[33m3916215[m fix: resolve syntax error in server.js and apply prettier formatting
+[33m9c6d61a[m refactor: remove all Google Gemini and Generative AI dependencies
+[33m34ef2aa[m fix: correct Google Generative AI package import from @google/genai to @google/generative-ai and update API calls
+[33m39506a5[m fix: re-sync package.json and package-lock.json using npm install to resolve CI/CD EUSAGE error
+[33mb70742c[m fix: synchronize package-lock.json with updated dependencies
+[33m04d02e9[m fix: finalize PostgreSQL migration and fix Azure deployment
+[33mbb590b5[m fix: remove mysql2, switch to native PostgreSQL, add missing server modules
+[33me825b39[m feat: Complete Azure PostgreSQL production setup
+[33m3b8991a[m chore: Remove MySQL references and clean up for PostgreSQL-only setup
+[33m64a936f[m chore: Update package dependencies
+[33m1e14570[m refactor: Simplify db.js to PostgreSQL only
+[33m0e93683[m fix: Improve Azure PostgreSQL detection and add diagnostic error messages
+[33mc34e637[m docs: Add comprehensive Azure PostgreSQL deployment documentation to db.js
+[33m82c8259[m refactor: Move all documentation files into docs directory
+[33m4c69d5b[m docs: Add comprehensive production security audit report
+[33m18cd515[m fix: Remove hardcoded localhost URLs from Login/Signup and add env files to .gitignore
+[33m706955a[m chore: Remove hardcoded MySQL files - use unified database abstraction layer instead
+[33mcfa2bb2[m feat: Enhance analytics page with comprehensive metrics and engagement indicators
+[33me260ecd[m Fix: Leave DB_TYPE empty for proper auto-detection in Azure
+[33maee5d67[m Configure local MySQL and production PostgreSQL defaults
+[33m9b02a1e[m Hide expired events and standardize local dev ports
+[33m61c895a[m Finalize Azure workflow validation fixes
+[33mfa55038[m Fix Azure deploy workflow to use publish profile
+[33m2d22354[m Replace Azure workflow with requested template
+[33mff48f5f[m Refine Azure deploy workflow credential handling
+[33med5c1e9[m Harden Azure deploy auth fallback in workflow
+[33mceb935a[m Fix workspace diagnostics and update workflow/schema config
+[33m68f24f7[m fix: resolve remaining YAML formatting errors in workflow
+[33m45cf895[m fix: resolve 5 GitHub Actions workflow YAML errors
+[33m4c3c0bf[m docs: add Azure deployment configuration guide
+[33m8fc22ed[m fix: resolve 91+ TypeScript compilation errors
+[33m02bc79a[m feat: enable real-time GitHub Actions deployment tracking
+[33m58f9224[m chore: restrict GitHub Actions deployment to main branch only
+[33mea2f6fb[m Add Azure Web App deploy workflow for main and master
+[33m5a95e67[m Gate push permission on login and add Azure integrations health checks
+[33me4c5de6[m Add latest project changes
+[33mef85b32[m chore: commit all pending workspace changes
+[33mcac33d2[m feat: Add Google Analytics 4 tracking and refactor project structure
+[33me8dad3b[m Reapply "Initial commit"
+[33md8d2f50[m Revert "Initial commit"
+[33mc10c653[m Initial commit
+[33m9fd99ef[m Connect Start Your Journey button to signup flow
+[33mdd0cac3[m Add calming, trauma-safe login and signup pages

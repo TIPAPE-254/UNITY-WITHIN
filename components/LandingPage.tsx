@@ -484,6 +484,59 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onNaviga
                 </div>
             </section>
 
+            {/* Volunteer Promotion */}
+            <section className="py-24 px-6 bg-gradient-to-b from-white via-unity-50 to-pink-50">
+                <div className="max-w-5xl mx-auto">
+                    <a
+                        href="https://wa.me/254715765561?text=Hello%20Unity%20Within%2C%20I%27d%20love%20to%20volunteer%20and%20support%20your%20mission.%20Please%20share%20the%20next%20steps%20and%20available%20roles."
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group block rounded-[2rem] bg-gradient-to-br from-purple-100 via-pink-50 to-blue-100 p-8 md:p-12 shadow-2xl hover:shadow-3xl transition-all duration-300 hover:-translate-y-1"
+                        aria-label="Volunteer with Unity Within on WhatsApp"
+                    >
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-10">
+                            <div className="max-w-2xl">
+                                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-unity-600 mb-4">
+                                    Volunteer with Unity Within
+                                </p>
+                                <h2 className="text-4xl md:text-5xl font-bold text-unity-black mb-5 leading-tight">
+                                    Help us reach more young people and build a safer place to heal.
+                                </h2>
+                                <p className="text-lg md:text-xl text-gray-700 leading-relaxed mb-8 max-w-xl">
+                                    We are looking for compassionate people who want to show up, spread hope, and strengthen emotional wellness across communities in Kenya.
+                                </p>
+                                <div className="inline-flex items-center gap-3 rounded-full bg-white/80 px-5 py-3 text-unity-700 font-semibold shadow-md group-hover:bg-white transition-colors">
+                                    Start the conversation on WhatsApp
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full lg:max-w-xl">
+                                <div className="rounded-2xl bg-white/90 p-5 shadow-md border border-white/70">
+                                    <p className="text-sm uppercase tracking-wide text-unity-500 font-bold mb-2">1. Community Listener</p>
+                                    <p className="text-gray-700 text-sm leading-relaxed">Offer warm, respectful presence and help people feel heard.</p>
+                                </div>
+                                <div className="rounded-2xl bg-white/90 p-5 shadow-md border border-white/70">
+                                    <p className="text-sm uppercase tracking-wide text-unity-500 font-bold mb-2">2. Mental Health Advocate</p>
+                                    <p className="text-gray-700 text-sm leading-relaxed">Share our message and help normalize support-seeking.</p>
+                                </div>
+                                <div className="rounded-2xl bg-white/90 p-5 shadow-md border border-white/70">
+                                    <p className="text-sm uppercase tracking-wide text-unity-500 font-bold mb-2">3. Outreach Ambassador</p>
+                                    <p className="text-gray-700 text-sm leading-relaxed">Connect Unity Within with schools, campuses, and communities.</p>
+                                </div>
+                                <div className="rounded-2xl bg-white/90 p-5 shadow-md border border-white/70">
+                                    <p className="text-sm uppercase tracking-wide text-unity-500 font-bold mb-2">4. Content & Story Volunteer</p>
+                                    <p className="text-gray-700 text-sm leading-relaxed">Create uplifting posts, stories, and campaign materials.</p>
+                                </div>
+                                <div className="rounded-2xl bg-white/90 p-5 shadow-md border border-white/70 sm:col-span-2">
+                                    <p className="text-sm uppercase tracking-wide text-unity-500 font-bold mb-2">5. Wellness Program Support</p>
+                                    <p className="text-gray-700 text-sm leading-relaxed">Assist with events, resources, and guided wellbeing initiatives.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </section>
+
             {/* Footer */}
             <footer className="bg-unity-900 text-white py-16 px-6">
                 <div className="max-w-6xl mx-auto">
