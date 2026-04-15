@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "PORT=3001 npm run server",
+    "dev:all": "sh -c \"npm run dev:api & npm run dev\"",
     "build": "vite build",
-    "preview": "vite preview",
+    "preview": "vite preview --port 5000 --strictPort",
     "server": "node server.js"
   },
   "dependencies": {

@@ -6118,8 +6118,15 @@ app.get('/api/events', async (req, res) => {
         const limit = Math.min(50, Math.max(1, Number(req.query.limit || 12)));
         const offset = (page - 1) * limit;
         const includePrivate = req.query.includePrivate === 'true';
+        const includeExpired = req.query.includeExpired === 'true';
 
         const privacyFilter = includePrivate ? '' : 'AND e.is_private = FALSE';
+        const activeEventsFilter = includeExpired
+            ? ''
+            : `AND COALESCE(
+                   e.end_date,
+                   DATE_ADD(e.date, INTERVAL COALESCE(NULLIF(e.duration, 0), 60) MINUTE)
+               ) >= NOW()`;
 
         const [events] = await pool.query(
             `SELECT
@@ -6164,7 +6171,7 @@ app.get('/api/events', async (req, res) => {
                 COALESCE(SUM(CASE WHEN r.status = 'yes' THEN 1 ELSE 0 END), 0) AS attendees_count
             FROM events e
             LEFT JOIN rsvps r ON r.event_id = e.id
-            WHERE 1=1 ${privacyFilter}
+            WHERE 1=1 ${privacyFilter} ${activeEventsFilter}
             GROUP BY e.id
             ORDER BY e.date ASC
             LIMIT ? OFFSET ?`,
@@ -6174,7 +6181,7 @@ app.get('/api/events', async (req, res) => {
         const [countRows] = await pool.query(
             `SELECT COUNT(*) AS total
              FROM events e
-             WHERE 1=1 ${privacyFilter}`
+               WHERE 1=1 ${privacyFilter} ${activeEventsFilter}`
         );
 
         const total = Number(countRows?.[0]?.total || 0);
@@ -6243,6 +6250,14 @@ app.get('/api/events/private/:token', async (req, res) => {
 
         if (new Date(row.expires_at) < new Date()) {
             return res.status(410).json({ success: false, error: 'Invite link has expired' });
+        }
+
+        const effectiveEndDate = row.end_date
+            ? new Date(row.end_date)
+            : new Date(new Date(row.date).getTime() + 60 * 60 * 1000);
+
+        if (effectiveEndDate < new Date()) {
+            return res.status(410).json({ success: false, error: 'This event has ended' });
         }
 
         return res.json({ success: true, event: row });
@@ -6398,6 +6413,15 @@ app.get('/api/events/:slug', async (req, res) => {
         const row = rows?.[0];
         if (!row) {
             return res.status(404).json({ success: false, error: 'Event not found' });
+        }
+
+        const durationMinutes = Number(row.duration || 60);
+        const effectiveEndDate = row.end_date
+            ? new Date(row.end_date)
+            : new Date(new Date(row.date).getTime() + Math.max(durationMinutes, 1) * 60 * 1000);
+
+        if (effectiveEndDate < new Date()) {
+            return res.status(410).json({ success: false, error: 'This event has ended' });
         }
 
         const attendeesCount = Number(row.attendees_count || 0);
