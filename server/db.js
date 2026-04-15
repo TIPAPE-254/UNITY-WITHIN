@@ -71,7 +71,21 @@ const readRuntimeEnv = (key, fallback = '') => {
 
 loadDatabaseEnv();
 
-const isAzureAppService = Boolean(process.env.WEBSITE_INSTANCE_ID || process.env.WEBSITE_SITE_NAME);
+// CRITICAL: Detect Azure FIRST, before checking local env vars
+// Azure sets these standard environment variables automatically
+const isAzureAppService = Boolean(
+    process.env.WEBSITE_INSTANCE_ID || 
+    process.env.WEBSITE_SITE_NAME || 
+    process.env.APPSETTING_WEBSITE_INSTANCE_ID ||
+    process.env.APPSETTING_WEBSITE_SITE_NAME ||
+    process.env.AZURE_APP_SERVICE // Alternative detection
+);
+
+// Log Azure detection status
+console.log(`🔍 Azure Detection: ${isAzureAppService ? '✅ DETECTED (Will use PostgreSQL)' : '❌ Not detected (Using local MySQL)'}`);
+console.log(`   WEBSITE_INSTANCE_ID: ${process.env.WEBSITE_INSTANCE_ID || 'not set'}`);
+console.log(`   WEBSITE_SITE_NAME: ${process.env.WEBSITE_SITE_NAME || 'not set'}`);
+
 const dbType = readRuntimeEnv('DB_TYPE', '').toLowerCase();
 
 if (dbType && dbType !== 'postgres' && dbType !== 'mysql') {
@@ -85,6 +99,9 @@ if (dbType && dbType !== 'postgres' && dbType !== 'mysql') {
 const usePg = dbType ? dbType === 'postgres' : isAzureAppService;
 const dbEngineLabel = usePg ? 'postgres' : 'mysql';
 
+// Log final decision
+console.log(`📊 Database Selection: ${usePg ? '🐘 PostgreSQL (Production)' : '🐬 MySQL (Development)'}`);
+
 const { Pool } = pg;
 let pgPool = null;
 let mysqlPool = null;
@@ -96,11 +113,13 @@ if (usePg) {
         password: readRuntimeEnv('DB_PASSWORD', ''),
         database: readRuntimeEnv('DB_NAME', 'UNITY_WITHIN'),
         port: parseInt(readRuntimeEnv('DB_PORT', '5432'), 10),
-        ssl: readRuntimeEnv('DB_SSL', 'false') === 'true' ? { rejectUnauthorized: false } : undefined,
+        ssl: readRuntimeEnv('DB_SSL', 'true') === 'true' ? { rejectUnauthorized: false } : undefined,
         max: 10,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 10000,
     });
+    
+    console.log(`🔗 PostgreSQL Config: host=${readRuntimeEnv('DB_HOST', 'localhost')} user=${readRuntimeEnv('DB_USER', 'postgres')} db=${readRuntimeEnv('DB_NAME', 'UNITY_WITHIN')} port=5432`);
 } else {
     mysqlPool = mysql.createPool({
         host: readRuntimeEnv('DB_HOST', 'localhost'),
@@ -113,6 +132,8 @@ if (usePg) {
         queueLimit: 0,
         multipleStatements: true
     });
+    
+    console.log(`🔗 MySQL Config: host=${readRuntimeEnv('DB_HOST', 'localhost')} user=${readRuntimeEnv('DB_USER', 'root')} db=${readRuntimeEnv('DB_NAME', 'UNITY_WITHIN')} port=3306`);
 }
 
 console.log(`🗄️ Database engine: ${dbEngineLabel} (host=${readRuntimeEnv('DB_HOST', 'localhost')}, port=${readRuntimeEnv('DB_PORT', usePg ? '5432' : '3306')}, db=${readRuntimeEnv('DB_NAME', 'UNITY_WITHIN')})`);
@@ -240,6 +261,21 @@ async function testConnection() {
         }
     } catch (error) {
         console.error(`❌ Database connection failed (${dbEngineLabel}):`, error.message);
+        
+        if (usePg && isAzureAppService) {
+            console.error(`\n⚠️  AZURE POSTGRESQL CONNECTION FAILED. Check these settings in Azure Portal:`);
+            console.error(`   1. App Service → Configuration → Application Settings`);
+            console.error(`   2. Verify these are set:`);
+            console.error(`      - DB_HOST: ${readRuntimeEnv('DB_HOST', '⚠️ NOT SET')}`);
+            console.error(`      - DB_USER: ${readRuntimeEnv('DB_USER', '⚠️ NOT SET')}`);
+            console.error(`      - DB_PASSWORD: ${readRuntimeEnv('DB_PASSWORD', '') ? '✅ Set' : '⚠️ NOT SET'}`);
+            console.error(`      - DB_NAME: ${readRuntimeEnv('DB_NAME', '⚠️ NOT SET')}`);
+            console.error(`      - DB_PORT: 5432`);
+            console.error(`      - DB_SSL: true`);
+            console.error(`   3. Ensure PostgreSQL firewall allows App Service IP`);
+            console.error(`   4. Check PostgreSQL is running and credentials are correct`);
+        }
+        
         console.warn('⚠️ Server will continue running without database features.');
     }
 }
