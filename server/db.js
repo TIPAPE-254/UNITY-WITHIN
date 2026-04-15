@@ -86,34 +86,15 @@ const pgPool = new Pool({
 
 console.log(`🐘 PostgreSQL Config: host=${readRuntimeEnv('DB_HOST', 'localhost')} user=${readRuntimeEnv('DB_USER', 'postgres')} db=${readRuntimeEnv('DB_NAME', 'UNITY_WITHIN')} port=5432`);
 
-const convertPlaceholders = (sql) => {
-    let index = 0;
-    return sql.replace(/\?/g, () => `$${++index}`);
-};
-
-const normalizeSql = (sql) => {
-    let normalized = sql.replace(
-        /NOW\(\)\s*-\s*INTERVAL\s+(\d+)\s+(DAY|WEEK|MONTH|YEAR)\b/gi,
-        "NOW() - INTERVAL '$1 $2'"
-    );
-    normalized = normalized.replace(/\bDATETIME\b/gi, 'TIMESTAMP');
-    return normalized;
-};
-
-const toSqlDateTime = (value) => {
-    return new Date(value).toISOString().slice(0, 19).replace('T', ' ');
-};
-
 const pool = {
     async query(sql, params = []) {
         try {
             if (!pgPool) {
                 throw new Error('PostgreSQL pool not initialized. Check DB_HOST, DB_USER, DB_PASSWORD, DB_NAME env vars');
             }
-            const normalized = normalizeSql(sql);
-            const converted = convertPlaceholders(normalized);
-            const isInsert = /^\s*INSERT\s+/i.test(converted) && !/\bRETURNING\b/i.test(converted);
-            const finalSql = isInsert ? `${converted} RETURNING id` : converted;
+            
+            const isInsert = /^\s*INSERT\s+/i.test(sql) && !/\bRETURNING\b/i.test(sql);
+            const finalSql = isInsert ? `${sql} RETURNING id` : sql;
 
             const result = await pgPool.query(finalSql, params);
 
@@ -394,9 +375,9 @@ async function initializeDatabase() {
             await pool.query(
                 `INSERT INTO events (slug, title, description, category, date, end_date, location, is_online, is_paid, price, capacity, is_private, thumbnail_url, video_url)
                  VALUES
-                 (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
-                 (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
-                 (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14),
+                 ($15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28),
+                 ($29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42)`,
                 [
                     'morning-grounding-circle',
                     'Morning Grounding Circle',
@@ -540,9 +521,9 @@ async function initializeDatabase() {
             await pool.query(
                 `INSERT INTO therapists (name, photo, email, phone, specialization, bio, qualifications, experience, languages, availability, availability_schedule, session_price, rating, status)
                  VALUES
-                 (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
-                 (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
-                 (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14),
+                 ($15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28),
+                 ($29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42)`,
                 [
                     'Dr. Amina Otieno', '', 'amina@unitywithin.app', '+254700000001', 'Anxiety, Depression', 'Trauma-informed counsellor focused on student and young-adult wellbeing.', 'MSc Clinical Psychology, KCPA Licensed', '7+ years', 'English, Swahili', 'online', 'Mon-Fri, 9:00 AM - 5:00 PM', '$5 chat / $10 video', 4.8, 'approved',
                     'Kevin Mwangi, MFT', '', 'kevin@unitywithin.app', '+254700000002', 'Trauma, Relationships', 'Helps clients with stress, trauma recovery, and relationship communication.', 'MFT, CBT Practitioner', '5+ years', 'English, Swahili, Kikuyu', 'hybrid', 'Mon-Sat, 10:00 AM - 7:00 PM', '$5 chat / $10 video', 4.7, 'approved',
@@ -649,7 +630,7 @@ async function initializeDatabase() {
         console.log('✅ Users table initialized');
     } catch (error) {
         console.error('❌ Failed to initialize database:', error.message);
-        console.error('ℹ️ Check DB_TYPE/DB_HOST/DB_PORT/DB_USER/DB_PASSWORD in .env.local or server/.env and ensure your DB service is running.');
+        console.error('ℹ️ Check DB_HOST/DB_PORT/DB_USER/DB_PASSWORD in .env.local or server/.env and ensure your local PostgreSQL service is running.');
         // Don't rethrow, just log.
     }
 }

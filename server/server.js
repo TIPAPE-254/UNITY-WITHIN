@@ -435,12 +435,12 @@ const requireUnityUser = async (req, res, next) => {
         let userRows = [];
         if (resolvedUserId) {
             [userRows] = await pool.query(
-                'SELECT id, name, email, display_name, profile_image, trusted, role, emergency_contact, auth_provider, clerk_user_id, email_verified FROM users WHERE id = ? LIMIT 1',
+                'SELECT id, name, email, display_name, profile_image, trusted, role, emergency_contact, auth_provider, clerk_user_id, email_verified FROM users WHERE id = $1 LIMIT 1',
                 [resolvedUserId]
             );
         } else if (resolvedEmail) {
             [userRows] = await pool.query(
-                'SELECT id, name, email, display_name, profile_image, trusted, role, emergency_contact, auth_provider, clerk_user_id, email_verified FROM users WHERE email = ? LIMIT 1',
+                'SELECT id, name, email, display_name, profile_image, trusted, role, emergency_contact, auth_provider, clerk_user_id, email_verified FROM users WHERE email = $1 LIMIT 1',
                 [resolvedEmail]
             );
         }
@@ -639,7 +639,7 @@ const verifyEventsAuthTicket = (ticket) => {
 
 const resolveUserFromEventsTicket = async (ticketPayload) => {
     const [rows] = await pool.query(
-        'SELECT id, email, role, clerk_user_id FROM users WHERE id = ? LIMIT 1',
+        'SELECT id, email, role, clerk_user_id FROM users WHERE id = $1 LIMIT 1',
         [Number(ticketPayload.userId)]
     );
 
@@ -704,12 +704,12 @@ const resolveEventsIdentity = async (req) => {
         let userRows = [];
         if (candidateUserId > 0) {
             [userRows] = await pool.query(
-                'SELECT id, email, role, clerk_user_id FROM users WHERE id = ? LIMIT 1',
+                'SELECT id, email, role, clerk_user_id FROM users WHERE id = $1 LIMIT 1',
                 [candidateUserId]
             );
         } else if (candidateEmail.includes('@')) {
             [userRows] = await pool.query(
-                'SELECT id, email, role, clerk_user_id FROM users WHERE email = ? LIMIT 1',
+                'SELECT id, email, role, clerk_user_id FROM users WHERE email = $1 LIMIT 1',
                 [candidateEmail]
             );
         }
@@ -735,7 +735,7 @@ const resolveEventsIdentity = async (req) => {
 
         if (sharedPayload) {
             const [rows] = await pool.query(
-                'SELECT id, email, role, clerk_user_id FROM users WHERE id = ? LIMIT 1',
+                'SELECT id, email, role, clerk_user_id FROM users WHERE id = $1 LIMIT 1',
                 [Number(sharedPayload.userId)]
             );
 
@@ -931,19 +931,19 @@ function isTherapistRequest(req) {
 const resolveTherapistIdFromHeaders = async (headers = {}) => {
     const therapistIdHeader = Number(headers['x-therapist-id'] || 0);
     if (therapistIdHeader) {
-        const [rows] = await pool.query('SELECT id FROM therapists WHERE id = ? LIMIT 1', [therapistIdHeader]);
+        const [rows] = await pool.query('SELECT id FROM therapists WHERE id = $1 LIMIT 1', [therapistIdHeader]);
         if (rows?.length) return Number(rows[0].id);
     }
 
     const userIdHeader = Number(headers['x-user-id'] || 0);
     if (userIdHeader) {
-        const [rows] = await pool.query('SELECT id FROM therapists WHERE user_id = ? LIMIT 1', [userIdHeader]);
+        const [rows] = await pool.query('SELECT id FROM therapists WHERE user_id = $1 LIMIT 1', [userIdHeader]);
         if (rows?.length) return Number(rows[0].id);
     }
 
     const emailHeader = (headers['x-user-email'] || '').toString().toLowerCase().trim();
     if (emailHeader) {
-        const [rows] = await pool.query('SELECT id FROM therapists WHERE LOWER(email) = LOWER(?) LIMIT 1', [emailHeader]);
+        const [rows] = await pool.query('SELECT id FROM therapists WHERE LOWER(email) = LOWER($1) LIMIT 1', [emailHeader]);
         if (rows?.length) return Number(rows[0].id);
     }
 
@@ -1071,7 +1071,7 @@ const persistSupportNotification = async ({
     try {
         if (eventKey) {
             const [existingRows] = await pool.query(
-                'SELECT id FROM support_notifications WHERE user_id = ? AND event_key = ? LIMIT 1',
+                'SELECT id FROM support_notifications WHERE user_id = $1 AND event_key = $2 LIMIT 1',
                 [parsedUserId, String(eventKey)]
             );
             if (existingRows?.length) {
@@ -1081,7 +1081,7 @@ const persistSupportNotification = async ({
 
         const [insertResult] = await pool.query(
             `INSERT INTO support_notifications (user_id, session_id, type, title, message, event_key, payload, channel, is_read)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
                 parsedUserId,
                 sessionId ? Number(sessionId) : null,
@@ -1325,7 +1325,7 @@ const runSupportSessionAutomation = async () => {
             }
 
             if ((normalizedStatus === 'confirmed' || normalizedStatus === 'accepted') && joinState.phase === 'live') {
-                await pool.query('UPDATE support_sessions SET status = ? WHERE id = ?', ['live', session.id]);
+                await pool.query('UPDATE support_sessions SET status = $1 WHERE id = $2', ['live', session.id]);
 
                 io.emit('support_session_status_changed', {
                     sessionId: Number(session.id),
@@ -1420,7 +1420,7 @@ app.delete('/api/support/sessions/:id', async (req, res) => {
         const [sessionRows] = await pool.query(
             `SELECT id, therapist_id, user_id
              FROM support_sessions
-             WHERE id = ?
+             WHERE id = $1
              LIMIT 1`,
             [sessionId]
         );
@@ -1437,9 +1437,9 @@ app.delete('/api/support/sessions/:id', async (req, res) => {
             }
         }
 
-        await pool.query('DELETE FROM support_session_messages WHERE session_id = ?', [sessionId]);
-        await pool.query('DELETE FROM support_notifications WHERE session_id = ?', [sessionId]);
-        await pool.query('DELETE FROM support_sessions WHERE id = ?', [sessionId]);
+        await pool.query('DELETE FROM support_session_messages WHERE session_id = $1', [sessionId]);
+        await pool.query('DELETE FROM support_notifications WHERE session_id = $1', [sessionId]);
+        await pool.query('DELETE FROM support_sessions WHERE id = $1', [sessionId]);
 
         io.emit('support_session_status_changed', {
             sessionId,
@@ -2596,7 +2596,7 @@ const ensureDefaultRoomsSeeded = async () => {
         if (count > 0) return;
 
         for (const room of DEFAULT_CHAT_ROOMS) {
-            await pool.query('INSERT INTO chat_rooms (name, description, type) VALUES (?, ?, ?)', room);
+            await pool.query('INSERT INTO chat_rooms (name, description, type) VALUES ($1, $2, $3)', room);
         }
         console.log('✅ Default chat rooms seeded');
     } catch (err) {
@@ -2812,7 +2812,7 @@ app.use(async (req, res, next) => {
         }
 
         try {
-            const [rows] = await pool.query('SELECT id FROM events WHERE slug = ? LIMIT 1', [slug]);
+            const [rows] = await pool.query('SELECT id FROM events WHERE slug = $1 LIMIT 1', [slug]);
             if (!rows?.length) {
                 return next();
             }
@@ -2854,7 +2854,7 @@ app.post('/api/signup', async (req, res) => {
 
         // Check if user already exists
         const [existingUsers] = await pool.query(
-            'SELECT id FROM users WHERE email = ?',
+            'SELECT id FROM users WHERE email = $1',
             [email]
         );
 
@@ -2873,7 +2873,7 @@ app.post('/api/signup', async (req, res) => {
         // We populate both emergency_contact (our new col) and emergency_phone (legacy col)
         // just to be safe and consistent.
         const [result] = await pool.query(
-            'INSERT INTO users (name, email, password_hash, emergency_contact, emergency_phone) VALUES (?, ?, ?, ?, ?)',
+            'INSERT INTO users (name, email, password_hash, emergency_contact, emergency_phone) VALUES ($1, $2, $3, $4, $5)',
             [name || null, email, hashedPassword, emergencyContact || null, emergencyContact || null]
         );
 
@@ -2918,7 +2918,7 @@ app.post('/api/login', async (req, res) => {
         // Find user by email
         // Note: selecting password_hash as password for internal use
         const [users] = await pool.query(
-            'SELECT id, name, email, password_hash as password, emergency_contact, role FROM users WHERE email = ?',
+            'SELECT id, name, email, password_hash as password, emergency_contact, role FROM users WHERE email = $1',
             [email]
         );
 
@@ -2980,7 +2980,7 @@ app.post('/api/support/therapist-login', async (req, res) => {
         const [rows] = await pool.query(
             `SELECT id, name, email, password_hash, specialization, status
              FROM therapists
-             WHERE LOWER(email) = LOWER(?)
+             WHERE LOWER(email) = LOWER($1)
              LIMIT 1`,
             [email]
         );
@@ -3035,7 +3035,7 @@ app.post('/api/forgot-password', async (req, res) => {
             });
         }
 
-        const [users] = await pool.query('SELECT id, email FROM users WHERE email = ?', [email]);
+        const [users] = await pool.query('SELECT id, email FROM users WHERE email = $1', [email]);
         const user = users[0];
 
         if (!user) {
@@ -3046,7 +3046,7 @@ app.post('/api/forgot-password', async (req, res) => {
         const expires = new Date(Date.now() + 60 * 60 * 1000);
 
         await pool.query(
-            'UPDATE users SET reset_password_token = ?, reset_password_expires = ? WHERE email = ?',
+            'UPDATE users SET reset_password_token = $1, reset_password_expires = $2 WHERE email = $3',
             [token, expires, email]
         );
 
@@ -3074,7 +3074,7 @@ app.get('/api/auth/unity-user', async (req, res) => {
         }
 
         const [rows] = await pool.query(
-            'SELECT id, name, email, role, emergency_contact, display_name, profile_image, auth_provider, clerk_user_id FROM users WHERE id = ? LIMIT 1',
+            'SELECT id, name, email, role, emergency_contact, display_name, profile_image, auth_provider, clerk_user_id FROM users WHERE id = $1 LIMIT 1',
             [Number(payload.userId)]
         );
 
@@ -3122,7 +3122,7 @@ app.post('/api/reset-password/:token', async (req, res) => {
         }
 
         const [users] = await pool.query(
-            'SELECT id FROM users WHERE reset_password_token = ? AND reset_password_expires > NOW()',
+            'SELECT id FROM users WHERE reset_password_token = $1 AND reset_password_expires > NOW()',
             [token]
         );
 
@@ -3138,7 +3138,7 @@ app.post('/api/reset-password/:token', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         await pool.query(
-            'UPDATE users SET password_hash = ?, reset_password_token = NULL, reset_password_expires = NULL WHERE id = ?',
+            'UPDATE users SET password_hash = $1, reset_password_token = NULL, reset_password_expires = NULL WHERE id = $2',
             [hashedPassword, user.id]
         );
 
@@ -3157,7 +3157,7 @@ app.post('/api/reset-password/:token', async (req, res) => {
 // GET profile
 app.get('/api/profile', requireUnityUser, async (req, res) => {
     try {
-        const [users] = await pool.query('SELECT * FROM users WHERE id = ?', [req.user.id]);
+        const [users] = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
         const user = users[0];
         if (!user) return res.status(404).json({ error: 'User not found' });
         res.json({ success: true, user });
@@ -3181,7 +3181,7 @@ app.put('/api/profile', requireUnityUser, async (req, res) => {
         });
         if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
         values.push(req.user.id);
-        await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+        await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = $1`, values);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed to update profile' });
@@ -3191,7 +3191,7 @@ app.put('/api/profile', requireUnityUser, async (req, res) => {
 // DELETE profile (account deletion)
 app.delete('/api/profile', requireUnityUser, async (req, res) => {
     try {
-        await pool.query('DELETE FROM users WHERE id = ?', [req.user.id]);
+        await pool.query('DELETE FROM users WHERE id = $1', [req.user.id]);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete account' });
@@ -3201,7 +3201,7 @@ app.delete('/api/profile', requireUnityUser, async (req, res) => {
 // Download profile data
 app.get('/api/profile/download', requireUnityUser, async (req, res) => {
     try {
-        const [users] = await pool.query('SELECT * FROM users WHERE id = ?', [req.user.id]);
+        const [users] = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
         const user = users[0];
         if (!user) return res.status(404).json({ error: 'User not found' });
         res.setHeader('Content-Disposition', 'attachment; filename="unitywithin-profile.json"');
@@ -3470,7 +3470,7 @@ io.on('connection', (socket) => {
             const [unreadRows] = await pool.query(
                 `SELECT id, user_id, session_id, type, title, message, payload, channel, is_read, created_at
                  FROM support_notifications
-                 WHERE user_id = ? AND is_read = ?
+                 WHERE user_id = $1 AND is_read = $2
                  ORDER BY created_at DESC
                  LIMIT 50`,
                 [userId, false]
@@ -3529,7 +3529,7 @@ io.on('connection', (socket) => {
             const [rows] = await pool.query(
                 `SELECT id
                  FROM rsvps
-                 WHERE user_id = ? AND event_id = ? AND status = 'yes'
+                 WHERE user_id = $1 AND event_id = $2 AND status = 'yes'
                  LIMIT 1`,
                 [userId, eventId]
             );
@@ -3562,7 +3562,7 @@ io.on('connection', (socket) => {
             const [rsvpRows] = await pool.query(
                 `SELECT id
                  FROM rsvps
-                 WHERE user_id = ? AND event_id = ? AND status = 'yes'
+                 WHERE user_id = $1 AND event_id = $2 AND status = 'yes'
                  LIMIT 1`,
                 [userId, eventId]
             );
@@ -3573,7 +3573,7 @@ io.on('connection', (socket) => {
             }
 
             const [result] = await pool.query(
-                'INSERT INTO event_messages (event_id, user_id, message) VALUES (?, ?, ?)',
+                'INSERT INTO event_messages (event_id, user_id, message) VALUES ($1, $2, $3)',
                 [eventId, userId, message]
             );
 
@@ -3625,7 +3625,7 @@ io.on('connection', (socket) => {
             // Log to database
             try {
                 await pool.query(
-                    'INSERT INTO moderation_logs (user_id, content, reason, flag_type, ip_address) VALUES (?, ?, ?, ?, ?)',
+                    'INSERT INTO moderation_logs (user_id, content, reason, flag_type, ip_address) VALUES ($1, $2, $3, $4, $5)',
                     [userId, content, 'AI Detection', moderation.reason, socket.handshake.address]
                 );
             } catch (logLimit) {
@@ -3656,7 +3656,7 @@ io.on('connection', (socket) => {
 
         try {
             const [result] = await pool.query(
-                'INSERT INTO chat_messages (room_id, user_id, content, is_anonymous) VALUES (?, ?, ?, ?)',
+                'INSERT INTO chat_messages (room_id, user_id, content, is_anonymous) VALUES ($1, $2, $3, $4)',
                 [roomId, userId, content, isAnonymous]
             );
 
@@ -3690,7 +3690,7 @@ io.on('connection', (socket) => {
             if (!parsedSessionId) return;
 
             const [rows] = await pool.query(
-                'SELECT id, therapist_id, user_id, call_mode, status FROM support_sessions WHERE id = ? LIMIT 1',
+                'SELECT id, therapist_id, user_id, call_mode, status FROM support_sessions WHERE id = $1 LIMIT 1',
                 [parsedSessionId]
             );
             const session = rows?.[0];
@@ -3703,7 +3703,7 @@ io.on('connection', (socket) => {
 
             if (normalizedStatus !== 'in_progress') {
                 await pool.query(
-                    'UPDATE support_sessions SET status = ?, start_time = COALESCE(start_time, NOW()) WHERE id = ?',
+                    'UPDATE support_sessions SET status = $1, start_time = COALESCE(start_time, NOW()) WHERE id = $2',
                     ['in_progress', parsedSessionId]
                 );
             }
@@ -3729,7 +3729,7 @@ io.on('connection', (socket) => {
                 eventKey: `session:${parsedSessionId}:started:user`
             });
 
-            const [therapistRows] = await pool.query('SELECT user_id FROM therapists WHERE id = ? LIMIT 1', [session.therapist_id]);
+            const [therapistRows] = await pool.query('SELECT user_id FROM therapists WHERE id = $1 LIMIT 1', [session.therapist_id]);
             await emitNotificationToUser({
                 userId: Number(therapistRows?.[0]?.user_id || 0) || null,
                 sessionId: parsedSessionId,
@@ -3780,7 +3780,7 @@ io.on('connection', (socket) => {
         try {
             const [result] = await pool.query(
                 `INSERT INTO support_session_messages (session_id, sender_role, sender_name, content, attachment_name)
-                 VALUES (?, ?, ?, ?, ?)`,
+                 VALUES ($1, $2, $3, $4, $5)`,
                 [sessionId, senderRole, senderName, content, attachmentName]
             );
 
@@ -3823,7 +3823,7 @@ app.get('/api/chat/rooms/:roomId/messages', async (req, res) => {
             CASE WHEN m.is_anonymous = TRUE THEN NULL ELSE u.name END as user_name
             FROM chat_messages m
             LEFT JOIN users u ON m.user_id = u.id
-            WHERE m.room_id = ?
+            WHERE m.room_id = $1
             ORDER BY m.created_at ASC
             LIMIT 50
         `, [roomId]);
@@ -3836,7 +3836,7 @@ app.get('/api/chat/rooms/:roomId/messages', async (req, res) => {
 app.post('/api/reports', async (req, res) => {
     try {
         const { userId, messageId, reason } = req.body;
-        await pool.query('INSERT INTO reports (user_id, message_id, reason) VALUES (?, ?, ?)', [userId, messageId, reason]);
+        await pool.query('INSERT INTO reports (user_id, message_id, reason) VALUES ($1, $2, $3)', [userId, messageId, reason]);
         res.json({ success: true, message: 'Report submitted' });
     } catch (error) {
         console.error('Report error:', error);
@@ -3957,7 +3957,7 @@ app.post('/api/admin/invite-volunteer', requireAdmin, async (req, res) => {
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
         await pool.query(
-            'INSERT INTO volunteer_invites (email, token, expires_at) VALUES (?, ?, ?)',
+            'INSERT INTO volunteer_invites (email, token, expires_at) VALUES ($1, $2, $3)',
             [email, token, expiresAt]
         );
 
@@ -4038,7 +4038,7 @@ app.get('/api/volunteer/invite/:token', async (req, res) => {
     const { token } = req.params;
     try {
         const [rows] = await pool.query(
-            'SELECT email FROM volunteer_invites WHERE token = ? AND expires_at > NOW() AND status = ?',
+            'SELECT email FROM volunteer_invites WHERE token = $1 AND expires_at > NOW() AND status = $2',
             [token, 'pending']
         );
         if (rows.length === 0) return res.status(404).json({ success: false, error: 'Invalid or expired token' });
@@ -4061,27 +4061,27 @@ app.post('/api/volunteer/onboarding', async (req, res) => {
     const { token, name, email, phone, county, skills, matched_role_id, commitment_level, tier } = req.body;
     try {
         // Validate token again
-        const [invites] = await pool.query('SELECT id FROM volunteer_invites WHERE token = ? AND status = ?', [token, 'pending']);
+        const [invites] = await pool.query('SELECT id FROM volunteer_invites WHERE token = $1 AND status = $2', [token, 'pending']);
         if (invites.length === 0) return res.status(400).json({ success: false, error: 'Invalid token' });
 
         // Cross-dialect upsert: check if volunteer exists, then insert or update
-        const [existingVols] = await pool.query('SELECT id FROM volunteers WHERE email = ? LIMIT 1', [email]);
+        const [existingVols] = await pool.query('SELECT id FROM volunteers WHERE email = $1 LIMIT 1', [email]);
         if (existingVols && existingVols.length > 0) {
             await pool.query(
-                `UPDATE volunteers SET name = ?, phone = ?, county = ?, skills = ?, 
-                 matched_role_id = ?, commitment_level = ?, tier = ?, status = 'pending_review' 
-                 WHERE email = ?`,
+                `UPDATE volunteers SET name = $1, phone = $2, county = $3, skills = $4, 
+                 matched_role_id = $5, commitment_level = $6, tier = $7, status = 'pending_review' 
+                 WHERE email = $8`,
                 [name, phone, county, JSON.stringify(skills), matched_role_id, commitment_level, tier, email]
             );
         } else {
             await pool.query(
                 `INSERT INTO volunteers (name, email, phone, county, skills, matched_role_id, commitment_level, tier, status) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                 [name, email, phone, county, JSON.stringify(skills), matched_role_id, commitment_level, tier, 'pending_review']
             );
         }
 
-        await pool.query('UPDATE volunteer_invites SET status = ? WHERE token = ?', ['accepted', token]);
+        await pool.query('UPDATE volunteer_invites SET status = $1 WHERE token = $2', ['accepted', token]);
 
         res.json({ success: true });
     } catch (error) {
@@ -4095,13 +4095,13 @@ app.get('/api/volunteer/dashboard', async (req, res) => {
     if (!email) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
     try {
-        const [volunteers] = await pool.query('SELECT * FROM volunteers WHERE email = ?', [email]);
+        const [volunteers] = await pool.query('SELECT * FROM volunteers WHERE email = $1', [email]);
         if (volunteers.length === 0) return res.status(404).json({ success: false, error: 'Volunteer not found' });
 
         const volunteer = volunteers[0];
-        const [tasks] = await pool.query('SELECT * FROM volunteer_tasks WHERE volunteer_id = ? ORDER BY due_date ASC', [volunteer.id]);
-        const [training] = await pool.query('SELECT * FROM volunteer_training WHERE volunteer_id = ?', [volunteer.id]);
-        const [shifts] = await pool.query('SELECT * FROM volunteer_shifts WHERE volunteer_id = ? ORDER BY start_time ASC', [volunteer.id]);
+        const [tasks] = await pool.query('SELECT * FROM volunteer_tasks WHERE volunteer_id = $1 ORDER BY due_date ASC', [volunteer.id]);
+        const [training] = await pool.query('SELECT * FROM volunteer_training WHERE volunteer_id = $1', [volunteer.id]);
+        const [shifts] = await pool.query('SELECT * FROM volunteer_shifts WHERE volunteer_id = $1 ORDER BY start_time ASC', [volunteer.id]);
 
         res.json({
             success: true,
@@ -4132,7 +4132,7 @@ app.post('/api/admin/invite-therapist', requireAdmin, async (req, res) => {
 
         await pool.query(
             `INSERT INTO therapist_invites (email, phone, token, status, expires_at)
-             VALUES (?, ?, ?, 'pending', NOW() + INTERVAL '3 days')`,
+             VALUES ($1, $2, $3, 'pending', NOW() + INTERVAL '3 days')`,
             [email, phoneRaw || null, token]
         );
 
@@ -4170,7 +4170,7 @@ app.get('/api/invite/:token', async (req, res) => {
         const [rows] = await pool.query(
             `SELECT id, email, phone, token, status, expires_at, created_at
              FROM therapist_invites
-             WHERE token = ?
+             WHERE token = $1
              LIMIT 1`,
             [token]
         );
@@ -4223,7 +4223,7 @@ app.post('/api/invite/complete', async (req, res) => {
         const [inviteRows] = await pool.query(
             `SELECT id, email, phone, status, expires_at
              FROM therapist_invites
-             WHERE token = ?
+             WHERE token = $1
              LIMIT 1`,
             [token]
         );
@@ -4241,12 +4241,12 @@ app.post('/api/invite/complete', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Invite has expired' });
         }
 
-        const [existingUsers] = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1', [invite.email]);
+        const [existingUsers] = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1', [invite.email]);
         if (existingUsers?.length) {
             return res.status(409).json({ success: false, error: 'A user with this email already exists' });
         }
 
-        const [existingTherapists] = await pool.query('SELECT id FROM therapists WHERE LOWER(email) = LOWER(?) LIMIT 1', [invite.email]);
+        const [existingTherapists] = await pool.query('SELECT id FROM therapists WHERE LOWER(email) = LOWER($1) LIMIT 1', [invite.email]);
         if (existingTherapists?.length) {
             return res.status(409).json({ success: false, error: 'A therapist profile for this email already exists' });
         }
@@ -4255,21 +4255,21 @@ app.post('/api/invite/complete', async (req, res) => {
 
         const [userInsert] = await pool.query(
             `INSERT INTO users (name, email, password_hash, role)
-             VALUES (?, ?, ?, 'therapist')`,
+             VALUES ($1, $2, $3, 'therapist')`,
             [name, invite.email, passwordHash]
         );
 
         const userId = userInsert?.insertId;
         await pool.query(
             `INSERT INTO therapists (user_id, name, email, phone, password_hash, specialization, bio, languages, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')`,
             [userId, name, invite.email, invite.phone || '', passwordHash, specialization, bio, languages || 'English, Swahili']
         );
 
         await pool.query(
             `UPDATE therapist_invites
              SET status = 'accepted', accepted_at = NOW()
-             WHERE id = ?`,
+             WHERE id = $1`,
             [invite.id]
         );
 
@@ -4297,7 +4297,7 @@ app.get('/api/support/therapists/profile/self', async (req, res) => {
             `SELECT id, name, photo, email, phone, specialization, bio, qualifications, experience, 
                     languages, availability, availability_schedule, session_price, rating, status, created_at
              FROM therapists
-             WHERE id = ?
+             WHERE id = $1
              LIMIT 1`,
             [therapistIdFromHeader]
         );
@@ -4398,7 +4398,7 @@ app.get('/api/support/therapists/:id', async (req, res) => {
         const [rows] = await pool.query(
             `SELECT id, name, photo, email, phone, specialization, bio, qualifications, experience, languages, availability, availability_schedule, session_price, rating, status, created_at
              FROM therapists
-             WHERE id = ?
+             WHERE id = $1
              LIMIT 1`,
             [therapistId]
         );
@@ -4459,7 +4459,7 @@ app.get('/api/support/users/:userId/sessions/active', async (req, res) => {
                     t.name AS therapist_name
              FROM support_sessions s
              LEFT JOIN therapists t ON t.id = s.therapist_id
-             WHERE s.user_id = ?
+             WHERE s.user_id = $1
                AND s.status IN ('new', 'pending', 'accepted', 'confirmed', 'live', 'in_progress', 'ongoing')
              ORDER BY s.created_at DESC
              LIMIT 1`,
@@ -4514,7 +4514,7 @@ app.post('/api/sessions/book', async (req, res) => {
         }
 
         const [therapistRows] = await pool.query(
-            'SELECT id, name, email, user_id FROM therapists WHERE id = ? LIMIT 1',
+            'SELECT id, name, email, user_id FROM therapists WHERE id = $1 LIMIT 1',
             [therapistId]
         );
         if (!therapistRows?.length) {
@@ -4522,7 +4522,7 @@ app.post('/api/sessions/book', async (req, res) => {
         }
 
         const [userRows] = await pool.query(
-            'SELECT id, name, email FROM users WHERE id = ? LIMIT 1',
+            'SELECT id, name, email FROM users WHERE id = $1 LIMIT 1',
             [userId]
         );
         if (!userRows?.length) {
@@ -4533,8 +4533,8 @@ app.post('/api/sessions/book', async (req, res) => {
         const [activeRows] = await pool.query(
             `SELECT id, status
              FROM support_sessions
-             WHERE user_id = ?
-               AND therapist_id = ?
+             WHERE user_id = $1
+               AND therapist_id = $2
                              AND status IN ('new', 'pending', 'in_progress', 'ongoing')
              ORDER BY created_at DESC
              LIMIT 1`,
@@ -4550,7 +4550,7 @@ app.post('/api/sessions/book', async (req, res) => {
 
         const [insertResult] = await pool.query(
             `INSERT INTO support_sessions (user_id, therapist_id, type, call_mode, status, priority, scheduled_date, scheduled_time, preferred_timeframe, client_name, client_phone, client_age, client_email, issue_description)
-             VALUES (?, ?, 'call', ?, 'new', 'normal', ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES ($1, $2, 'call', $3, 'new', 'normal', $4, $5, $6, $7, $8, $9, $10, $11)`,
             [userId, therapistId, callMode, date, time, preferredTimeFrame || null, clientName || null, clientPhone || null, clientAge || null, clientEmail || null, issueDescription || null]
         );
 
@@ -4628,7 +4628,7 @@ app.patch('/api/sessions/:id', async (req, res) => {
         }
 
         const [sessionRows] = await pool.query(
-            'SELECT id, user_id, status FROM support_sessions WHERE id = ? LIMIT 1',
+            'SELECT id, user_id, status FROM support_sessions WHERE id = $1 LIMIT 1',
             [sessionId]
         );
 
@@ -4672,7 +4672,7 @@ app.patch('/api/sessions/:id', async (req, res) => {
         updateValues.push(sessionId);
 
         await pool.query(
-            `UPDATE support_sessions SET ${updateFields.join(', ')} WHERE id = ?`,
+            `UPDATE support_sessions SET ${updateFields.join(', ')} WHERE id = $1`,
             updateValues
         );
 
@@ -4699,7 +4699,7 @@ app.delete('/api/sessions/:id', async (req, res) => {
         }
 
         const [sessionRows] = await pool.query(
-            'SELECT id, user_id, status FROM support_sessions WHERE id = ? LIMIT 1',
+            'SELECT id, user_id, status FROM support_sessions WHERE id = $1 LIMIT 1',
             [sessionId]
         );
 
@@ -4712,9 +4712,9 @@ app.delete('/api/sessions/:id', async (req, res) => {
             return res.status(403).json({ success: false, error: 'You can only delete your own sessions' });
         }
 
-        await pool.query('DELETE FROM support_session_messages WHERE session_id = ?', [sessionId]);
-        await pool.query('DELETE FROM support_notifications WHERE session_id = ?', [sessionId]);
-        await pool.query('DELETE FROM support_sessions WHERE id = ?', [sessionId]);
+        await pool.query('DELETE FROM support_session_messages WHERE session_id = $1', [sessionId]);
+        await pool.query('DELETE FROM support_notifications WHERE session_id = $1', [sessionId]);
+        await pool.query('DELETE FROM support_sessions WHERE id = $1', [sessionId]);
 
         io.emit('support_session_status_changed', {
             sessionId,
@@ -4742,7 +4742,7 @@ app.get('/api/therapist/sessions', async (req, res) => {
                     u.name AS client_name, u.email AS client_email
              FROM support_sessions s
              LEFT JOIN users u ON s.user_id = u.id
-             WHERE s.therapist_id = ?
+             WHERE s.therapist_id = $1
              ORDER BY s.start_time DESC, s.created_at DESC
              LIMIT 300`,
             [therapistId]
@@ -4769,7 +4769,7 @@ app.get('/api/support/sessions/:id', async (req, res) => {
              FROM support_sessions s
              LEFT JOIN users u ON u.id = s.user_id
              LEFT JOIN therapists t ON t.id = s.therapist_id
-             WHERE s.id = ?
+             WHERE s.id = $1
              LIMIT 1`,
             [sessionId]
         );
@@ -4803,12 +4803,12 @@ app.post('/api/sessions/:id/accept', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Invalid session or therapist identity' });
         }
 
-        const [sessionRows] = await pool.query('SELECT id, therapist_id, user_id, call_mode FROM support_sessions WHERE id = ? LIMIT 1', [sessionId]);
+        const [sessionRows] = await pool.query('SELECT id, therapist_id, user_id, call_mode FROM support_sessions WHERE id = $1 LIMIT 1', [sessionId]);
         const session = sessionRows?.[0];
         if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
         if (Number(session.therapist_id) !== therapistId) return res.status(403).json({ success: false, error: 'Not your session' });
 
-        await pool.query('UPDATE support_sessions SET status = ? WHERE id = ?', ['confirmed', sessionId]);
+        await pool.query('UPDATE support_sessions SET status = $1 WHERE id = $2', ['confirmed', sessionId]);
 
         const callMode = String(session.call_mode || 'voice').toLowerCase() === 'video' ? 'video' : 'voice';
 
@@ -4821,13 +4821,13 @@ app.post('/api/sessions/:id/accept', async (req, res) => {
         });
 
         const [sessionScheduleRows] = await pool.query(
-            'SELECT scheduled_date, scheduled_time FROM support_sessions WHERE id = ? LIMIT 1',
+            'SELECT scheduled_date, scheduled_time FROM support_sessions WHERE id = $1 LIMIT 1',
             [sessionId]
         );
         const scheduledDate = sessionScheduleRows?.[0]?.scheduled_date || null;
         const scheduledTime = sessionScheduleRows?.[0]?.scheduled_time || null;
 
-        const [therapistRows] = await pool.query('SELECT email, name, user_id FROM therapists WHERE id = ? LIMIT 1', [therapistId]);
+        const [therapistRows] = await pool.query('SELECT email, name, user_id FROM therapists WHERE id = $1 LIMIT 1', [therapistId]);
 
         io.emit('support_session_confirmed', {
             sessionId,
@@ -4870,7 +4870,7 @@ app.post('/api/sessions/:id/accept', async (req, res) => {
             eventKey: `session:${sessionId}:confirmed:therapist`
         });
 
-        const [userRows] = await pool.query('SELECT email, name FROM users WHERE id = ? LIMIT 1', [session.user_id]);
+        const [userRows] = await pool.query('SELECT email, name FROM users WHERE id = $1 LIMIT 1', [session.user_id]);
         if (userRows?.[0]?.email) {
             await sendBrevoEmail({
                 toEmail: userRows?.[0]?.email,
@@ -4902,12 +4902,12 @@ app.post('/api/sessions/:id/reject', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Invalid session or therapist identity' });
         }
 
-        const [sessionRows] = await pool.query('SELECT id, therapist_id FROM support_sessions WHERE id = ? LIMIT 1', [sessionId]);
+        const [sessionRows] = await pool.query('SELECT id, therapist_id FROM support_sessions WHERE id = $1 LIMIT 1', [sessionId]);
         const session = sessionRows?.[0];
         if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
         if (Number(session.therapist_id) !== therapistId) return res.status(403).json({ success: false, error: 'Not your session' });
 
-        await pool.query('UPDATE support_sessions SET status = ? WHERE id = ?', ['rejected', sessionId]);
+        await pool.query('UPDATE support_sessions SET status = $1 WHERE id = $2', ['rejected', sessionId]);
         io.emit('support_session_status_changed', { sessionId, status: 'rejected', therapistId });
 
         return res.json({ success: true, status: 'rejected' });
@@ -4923,7 +4923,7 @@ app.post('/api/sessions/:id/start', async (req, res) => {
         if (!sessionId) return res.status(400).json({ success: false, error: 'Invalid session id' });
 
         await pool.query(
-            'UPDATE support_sessions SET status = ?, start_time = COALESCE(start_time, NOW()) WHERE id = ?',
+            'UPDATE support_sessions SET status = $1, start_time = COALESCE(start_time, NOW()) WHERE id = $2',
             ['in_progress', sessionId]
         );
         io.emit('support_session_status_changed', { sessionId, status: 'ongoing' });
@@ -4939,7 +4939,7 @@ app.post('/api/sessions/:id/complete', async (req, res) => {
         const sessionId = Number(req.params.id);
         if (!sessionId) return res.status(400).json({ success: false, error: 'Invalid session id' });
 
-        await pool.query('UPDATE support_sessions SET status = ?, end_time = NOW() WHERE id = ?', ['ended', sessionId]);
+        await pool.query('UPDATE support_sessions SET status = $1, end_time = NOW() WHERE id = $2', ['ended', sessionId]);
         io.emit('support_session_status_changed', { sessionId, status: 'completed' });
         return res.json({ success: true, status: 'completed' });
     } catch (error) {
@@ -5061,7 +5061,7 @@ app.post('/api/support/sessions', async (req, res) => {
         let clientEmail = null;
 
         if (parsedUserId) {
-            const [userRows] = await pool.query('SELECT name, email FROM users WHERE id = ? LIMIT 1', [parsedUserId]);
+            const [userRows] = await pool.query('SELECT name, email FROM users WHERE id = $1 LIMIT 1', [parsedUserId]);
             if (userRows?.[0]) {
                 clientName = userRows[0].name;
                 clientEmail = userRows[0].email;
@@ -5070,7 +5070,7 @@ app.post('/api/support/sessions', async (req, res) => {
 
         const [insertResult] = await pool.query(
             `INSERT INTO support_sessions (user_id, therapist_id, type, call_mode, status, priority, client_name, client_email, start_time)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
             [parsedUserId, therapistId, resolvedType, resolvedCallMode, resolvedStatus, resolvedPriority, clientName, clientEmail]
         );
 
@@ -5094,13 +5094,13 @@ app.patch('/api/support/sessions/:id/assign', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Valid sessionId and therapistId are required' });
         }
 
-        const [sessionRows] = await pool.query('SELECT id FROM support_sessions WHERE id = ? LIMIT 1', [sessionId]);
+        const [sessionRows] = await pool.query('SELECT id FROM support_sessions WHERE id = $1 LIMIT 1', [sessionId]);
         if (!sessionRows?.length) {
             return res.status(404).json({ success: false, error: 'Session not found' });
         }
 
         const [therapistRows] = await pool.query(
-            'SELECT id, name, specialization FROM therapists WHERE id = ? LIMIT 1',
+            'SELECT id, name, specialization FROM therapists WHERE id = $1 LIMIT 1',
             [therapistId]
         );
         if (!therapistRows?.length) {
@@ -5109,8 +5109,8 @@ app.patch('/api/support/sessions/:id/assign', async (req, res) => {
 
         await pool.query(
             `UPDATE support_sessions
-             SET therapist_id = ?
-             WHERE id = ?`,
+             SET therapist_id = $1
+             WHERE id = $2`,
             [therapistId, sessionId]
         );
 
@@ -5147,7 +5147,7 @@ app.patch('/api/support/sessions/:id/state', async (req, res) => {
         const [sessionRows] = await pool.query(
             `SELECT id, therapist_id, status, priority
              FROM support_sessions
-             WHERE id = ?
+             WHERE id = $1
              LIMIT 1`,
             [sessionId]
         );
@@ -5178,18 +5178,18 @@ app.patch('/api/support/sessions/:id/state', async (req, res) => {
 
         await pool.query(
             `UPDATE support_sessions
-             SET status = ?,
-                 priority = ?,
+             SET status = $1,
+                 priority = $2,
                  start_time = CASE
-                     WHEN ? IN ('live', 'ongoing', 'in_progress') THEN COALESCE(start_time, NOW())
+                     WHEN $3 IN ('live', 'ongoing', 'in_progress') THEN COALESCE(start_time, NOW())
                      ELSE start_time
                  END,
                  end_time = CASE
-                     WHEN ? = 'ended' THEN COALESCE(end_time, NOW())
-                     WHEN ? <> 'ended' AND ? <> 'completed' THEN NULL
+                     WHEN $4 = 'ended' THEN COALESCE(end_time, NOW())
+                     WHEN $5 <> 'ended' AND $6 <> 'completed' THEN NULL
                      ELSE end_time
                  END
-             WHERE id = ?`,
+             WHERE id = $7`,
             [nextStatus, nextPriority, nextStatus, nextStatus, nextStatus, nextStatus, sessionId]
         );
 
@@ -5231,7 +5231,7 @@ app.patch('/api/support/sessions/:id/end', async (req, res) => {
              FROM support_sessions s
              LEFT JOIN therapists t ON t.id = s.therapist_id
              LEFT JOIN users u ON u.id = s.user_id
-             WHERE s.id = ?
+             WHERE s.id = $1
              LIMIT 1`,
             [sessionId]
         );
@@ -5242,8 +5242,8 @@ app.patch('/api/support/sessions/:id/end', async (req, res) => {
 
         await pool.query(
             `UPDATE support_sessions
-             SET status = ?, end_time = NOW()
-             WHERE id = ?`,
+             SET status = $1, end_time = NOW()
+             WHERE id = $2`,
             [nextStatus, sessionId]
         );
 
@@ -5299,17 +5299,17 @@ app.post('/api/support/sessions/:id/rate', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Invalid rating request' });
         }
 
-        await pool.query('UPDATE support_sessions SET rating = ? WHERE id = ?', [rating, sessionId]);
+        await pool.query('UPDATE support_sessions SET rating = $1 WHERE id = $2', [rating, sessionId]);
 
-        const [sessionRows] = await pool.query('SELECT therapist_id FROM support_sessions WHERE id = ? LIMIT 1', [sessionId]);
+        const [sessionRows] = await pool.query('SELECT therapist_id FROM support_sessions WHERE id = $1 LIMIT 1', [sessionId]);
         const therapistId = sessionRows?.[0]?.therapist_id;
         if (therapistId) {
             const [ratingRows] = await pool.query(
-                'SELECT COALESCE(ROUND(AVG(rating)::numeric, 1), 4.5) AS avg_rating FROM support_sessions WHERE therapist_id = ? AND rating IS NOT NULL',
+                'SELECT COALESCE(ROUND(AVG(rating)::numeric, 1), 4.5) AS avg_rating FROM support_sessions WHERE therapist_id = $1 AND rating IS NOT NULL',
                 [therapistId]
             );
             const avgRating = Number(ratingRows?.[0]?.avg_rating || 4.5);
-            await pool.query('UPDATE therapists SET rating = ? WHERE id = ?', [avgRating, therapistId]);
+            await pool.query('UPDATE therapists SET rating = $1 WHERE id = $2', [avgRating, therapistId]);
         }
 
         return res.json({ success: true });
@@ -5329,7 +5329,7 @@ app.get('/api/support/sessions/:id/messages', async (req, res) => {
         const [rows] = await pool.query(
             `SELECT id, session_id, sender_role, sender_name, content, attachment_name, created_at
              FROM support_session_messages
-             WHERE session_id = ?
+             WHERE session_id = $1
              ORDER BY created_at ASC`,
             [sessionId]
         );
@@ -5402,8 +5402,8 @@ app.patch('/api/notifications/:id/read', async (req, res) => {
 
         await pool.query(
             `UPDATE support_notifications
-             SET is_read = ?, read_at = NOW()
-             WHERE id = ? AND user_id = ?`,
+             SET is_read = $1, read_at = NOW()
+             WHERE id = $2 AND user_id = $3`,
             [true, notificationId, userId]
         );
 
@@ -5423,8 +5423,8 @@ app.post('/api/notifications/read-all', async (req, res) => {
 
         await pool.query(
             `UPDATE support_notifications
-             SET is_read = ?, read_at = NOW()
-             WHERE user_id = ? AND is_read = ?`,
+             SET is_read = $1, read_at = NOW()
+             WHERE user_id = $2 AND is_read = $3`,
             [true, userId, false]
         );
 
@@ -5464,7 +5464,7 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
 
 app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
     try {
-        await pool.query('DELETE FROM users WHERE id = ?', [req.params.id]);
+        await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete user' });
@@ -5502,7 +5502,7 @@ app.get('/api/admin/chat/messages', requireAdmin, async (req, res) => {
 
 app.delete('/api/admin/chat/messages/:id', requireAdmin, async (req, res) => {
     try {
-        await pool.query('DELETE FROM chat_messages WHERE id = ?', [req.params.id]);
+        await pool.query('DELETE FROM chat_messages WHERE id = $1', [req.params.id]);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete message' });
@@ -5516,7 +5516,7 @@ app.patch('/api/admin/users/:id/role', requireAdmin, async (req, res) => {
         if (!['user', 'admin'].includes(role)) {
             return res.status(400).json({ error: 'Invalid role' });
         }
-        await pool.query('UPDATE users SET role = ? WHERE id = ?', [role, req.params.id]);
+        await pool.query('UPDATE users SET role = $1 WHERE id = $2', [role, req.params.id]);
         res.json({ success: true, message: `User role updated to ${role}` });
     } catch (error) {
         res.status(500).json({ error: 'Failed to update user role' });
@@ -5555,16 +5555,16 @@ app.delete('/api/admin/events/:id', requireAdmin, async (req, res) => {
         const eventId = parseInt(req.params.id);
         
         // Delete all related RSVPs first
-        await pool.query('DELETE FROM rsvps WHERE event_id = ?', [eventId]);
+        await pool.query('DELETE FROM rsvps WHERE event_id = $1', [eventId]);
         
         // Delete all event messages
-        await pool.query('DELETE FROM event_messages WHERE event_id = ?', [eventId]);
+        await pool.query('DELETE FROM event_messages WHERE event_id = $1', [eventId]);
         
         // Delete event invites
-        await pool.query('DELETE FROM invites WHERE event_id = ?', [eventId]);
+        await pool.query('DELETE FROM invites WHERE event_id = $1', [eventId]);
         
         // Finally delete the event
-        const [result] = await pool.query('DELETE FROM events WHERE id = ?', [eventId]);
+        const [result] = await pool.query('DELETE FROM events WHERE id = $1', [eventId]);
         
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, error: 'Event not found' });
@@ -5594,7 +5594,7 @@ app.get('/api/admin/events/:eventId/rsvps', requireAdmin, async (req, res) => {
                 r.updated_at as rsvped_at
             FROM rsvps r
             LEFT JOIN users u ON r.user_id = u.id
-            WHERE r.event_id = ?
+            WHERE r.event_id = $1
             ORDER BY r.created_at DESC
         `, [eventId]);
         res.json({ success: true, rsvps });
@@ -5611,7 +5611,7 @@ app.delete('/api/admin/events/:eventId/rsvps/:rsvpId', requireAdmin, async (req,
         const eventId = parseInt(req.params.eventId);
         
         const [result] = await pool.query(
-            'DELETE FROM rsvps WHERE id = ? AND event_id = ?',
+            'DELETE FROM rsvps WHERE id = $1 AND event_id = $2',
             [rsvpId, eventId]
         );
         
@@ -5691,7 +5691,7 @@ app.get('/api/admin/reports', requireAdmin, async (req, res) => {
 app.post('/api/admin/chat/rooms', requireAdmin, async (req, res) => {
     try {
         const { name, description, type } = req.body;
-        await pool.query('INSERT INTO chat_rooms (name, description, type) VALUES (?, ?, ?)', [name, description, type || 'public']);
+        await pool.query('INSERT INTO chat_rooms (name, description, type) VALUES ($1, $2, $3)', [name, description, type || 'public']);
         res.json({ success: true, message: 'Room created' });
     } catch (error) {
         res.status(500).json({ error: 'Failed to create room' });
@@ -5700,7 +5700,7 @@ app.post('/api/admin/chat/rooms', requireAdmin, async (req, res) => {
 
 app.delete('/api/admin/chat/rooms/:id', requireAdmin, async (req, res) => {
     try {
-        await pool.query('DELETE FROM chat_rooms WHERE id = ?', [req.params.id]);
+        await pool.query('DELETE FROM chat_rooms WHERE id = $1', [req.params.id]);
         res.json({ success: true, message: 'Room deleted' });
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete room' });
@@ -5745,7 +5745,7 @@ app.post('/api/admin/therapists', requireAdmin, async (req, res) => {
 
         const [result] = await pool.query(
             `INSERT INTO therapists (name, photo, email, password_hash, phone, specialization, bio, qualifications, experience, languages, availability, availability_schedule, session_price, rating, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
             [
                 name,
                 photo || '',
@@ -5801,9 +5801,9 @@ app.patch('/api/admin/therapists/:id', requireAdmin, async (req, res) => {
         if (hashedTherapistPassword) {
             await pool.query(
                 `UPDATE therapists
-                 SET name = ?, photo = ?, email = ?, password_hash = ?, phone = ?, specialization = ?, bio = ?, qualifications = ?, experience = ?,
-                     languages = ?, availability = ?, availability_schedule = ?, session_price = ?, rating = ?, status = ?
-                 WHERE id = ?`,
+                 SET name = $1, photo = $2, email = $3, password_hash = $4, phone = $5, specialization = $6, bio = $7, qualifications = $8, experience = $9,
+                     languages = $10, availability = $11, availability_schedule = $12, session_price = $13, rating = $14, status = $15
+                 WHERE id = $16`,
                 [
                     name,
                     photo || '',
@@ -5826,9 +5826,9 @@ app.patch('/api/admin/therapists/:id', requireAdmin, async (req, res) => {
         } else {
             await pool.query(
                 `UPDATE therapists
-                 SET name = ?, photo = ?, email = ?, phone = ?, specialization = ?, bio = ?, qualifications = ?, experience = ?,
-                     languages = ?, availability = ?, availability_schedule = ?, session_price = ?, rating = ?, status = ?
-                 WHERE id = ?`,
+                 SET name = $1, photo = $2, email = $3, phone = $4, specialization = $5, bio = $6, qualifications = $7, experience = $8,
+                     languages = $9, availability = $10, availability_schedule = $11, session_price = $12, rating = $13, status = $14
+                 WHERE id = $15`,
                 [
                     name,
                     photo || '',
@@ -5863,7 +5863,7 @@ app.patch('/api/admin/therapists/:id/approve', requireAdmin, async (req, res) =>
             return res.status(400).json({ success: false, error: 'Invalid therapist id' });
         }
 
-        await pool.query('UPDATE therapists SET status = ? WHERE id = ?', [status, therapistId]);
+        await pool.query('UPDATE therapists SET status = $1 WHERE id = $2', [status, therapistId]);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, error: 'Failed to update therapist status' });
@@ -5877,7 +5877,7 @@ app.delete('/api/admin/therapists/:id', requireAdmin, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Invalid therapist id' });
         }
 
-        await pool.query('DELETE FROM therapists WHERE id = ?', [therapistId]);
+        await pool.query('DELETE FROM therapists WHERE id = $1', [therapistId]);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, error: 'Failed to remove therapist' });
@@ -5913,7 +5913,7 @@ app.post('/api/chat/messages', requireUnityUser, async (req, res) => {
         }
 
         const [result] = await pool.query(
-            'INSERT INTO chat_messages (user_id, content, reply_to_id) VALUES (?, ?, ?)',
+            'INSERT INTO chat_messages (user_id, content, reply_to_id) VALUES ($1, $2, $3)',
             [req.user.id, content, replyToId || null]
         );
         console.log(`✅ Message saved. ID: ${result.insertId}`);
@@ -5959,7 +5959,7 @@ app.post('/api/moods', async (req, res) => {
         const normalizedMood = mood.charAt(0).toUpperCase() + mood.slice(1).toLowerCase();
 
         const [result] = await pool.query(
-            'INSERT INTO user_moods (user_id, mood, intensity, note) VALUES (?, ?, ?, ?)',
+            'INSERT INTO user_moods (user_id, mood, intensity, note) VALUES ($1, $2, $3, $4)',
             [userId, normalizedMood, intensity || 5, note || null]
         );
 
@@ -5997,7 +5997,7 @@ app.get('/api/moods', async (req, res) => {
         const [rows] = await pool.query(
             `SELECT id, mood, intensity, note, created_at 
              FROM user_moods 
-             WHERE user_id = ? ${timeFilter}
+             WHERE user_id = $1 ${timeFilter}
              ORDER BY created_at ASC`,
             [userId]
         );
@@ -6019,7 +6019,7 @@ app.get('/api/mood-logs', async (req, res) => {
         const [rows] = await pool.query(
             `SELECT id, mood, intensity, note, created_at
              FROM user_moods
-             WHERE user_id = ?
+             WHERE user_id = $1
              ORDER BY created_at DESC`,
             [userId]
         );
@@ -6047,7 +6047,7 @@ app.post('/api/journals', async (req, res) => {
         }
 
         const [result] = await pool.query(
-            'INSERT INTO journal_entries (user_id, content, mood_id) VALUES (?, ?, ?)',
+            'INSERT INTO journal_entries (user_id, content, mood_id) VALUES ($1, $2, $3)',
             [userId, content, moodId || null]
         );
 
@@ -6083,7 +6083,7 @@ app.get('/api/journals/:userId', async (req, res) => {
             `SELECT j.*, um.mood 
              FROM journal_entries j 
              LEFT JOIN user_moods um ON j.mood_id = um.id
-             WHERE j.user_id = ? 
+             WHERE j.user_id = $1 
              ORDER BY j.created_at DESC`,
             [scopedUserId]
         );
@@ -6100,7 +6100,7 @@ app.post('/api/tiny-wins', requireUnityUser, async (req, res) => {
         const { content } = req.body;
         if (!content) return res.status(400).json({ error: 'Missing fields' });
 
-        await pool.query('INSERT INTO tiny_wins (user_id, content) VALUES (?, ?)', [req.user.id, content]);
+        await pool.query('INSERT INTO tiny_wins (user_id, content) VALUES ($1, $2)', [req.user.id, content]);
         res.status(201).json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed' });
@@ -6118,7 +6118,7 @@ app.get('/api/tiny-wins/:userId', requireUnityUser, async (req, res) => {
         }
 
         const scopedUserId = isAdmin && requestedUserId ? requestedUserId : req.user.id;
-        const [rows] = await pool.query('SELECT * FROM tiny_wins WHERE user_id = ? ORDER BY created_at DESC LIMIT 5', [scopedUserId]);
+        const [rows] = await pool.query('SELECT * FROM tiny_wins WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5', [scopedUserId]);
         res.json({ success: true, data: rows });
     } catch (error) {
         res.status(500).json({ error: 'Failed' });
@@ -6188,7 +6188,7 @@ app.get('/api/events', async (req, res) => {
             WHERE 1=1 ${privacyFilter} ${activeEventsFilter}
             GROUP BY e.id
             ORDER BY e.date ASC
-            LIMIT ? OFFSET ?`,
+            LIMIT $1 OFFSET $2`,
             [limit, offset]
         );
 
@@ -6252,7 +6252,7 @@ app.get('/api/events/private/:token', async (req, res) => {
                 e.video_url
              FROM invites i
              JOIN events e ON e.id = i.event_id
-             WHERE i.token = ?
+             WHERE i.token = $1
              LIMIT 1`,
             [token]
         );
@@ -6289,7 +6289,7 @@ app.get('/api/events/:eventId/calendar', async (req, res) => {
         }
 
         const [rows] = await pool.query(
-            'SELECT id, slug, title, description, date, end_date, location FROM events WHERE id = ? LIMIT 1',
+            'SELECT id, slug, title, description, date, end_date, location FROM events WHERE id = $1 LIMIT 1',
             [eventId]
         );
 
@@ -6348,10 +6348,10 @@ app.get('/api/events/recommendations', async (req, res) => {
              LEFT JOIN rsvps r ON r.event_id = e.id
              WHERE e.date >= NOW()
                AND e.is_private = FALSE
-               AND (? = '' OR LOWER(e.category) = ?)
+               AND ($1 = '' OR LOWER(e.category) = $2)
              GROUP BY e.id
              ORDER BY attendees_count DESC, e.date ASC
-             LIMIT ?`,
+             LIMIT $3`,
             [hasCategoryFilter ? category : '', hasCategoryFilter ? category : '', limit]
         );
 
@@ -6418,7 +6418,7 @@ app.get('/api/events/:slug', async (req, res) => {
                 COALESCE(SUM(CASE WHEN r.status = 'yes' THEN 1 ELSE 0 END), 0) AS attendees_count
              FROM events e
              LEFT JOIN rsvps r ON r.event_id = e.id
-             WHERE e.slug = ? ${isNumericSlug ? 'OR e.id = ?' : ''}
+             WHERE e.slug = $1 ${isNumericSlug ? 'OR e.id = $2' : ''}
              GROUP BY e.id
              LIMIT 1`,
             isNumericSlug ? [slug, parseInt(slug, 10)] : [slug]
@@ -6453,7 +6453,7 @@ app.get('/api/events/:slug', async (req, res) => {
         const identifiedUser = await resolveEventsIdentity(req);
         if (identifiedUser) {
             const [rsvpRows] = await pool.query(
-                "SELECT id FROM rsvps WHERE user_id = ? AND event_id = ? AND status = 'yes' LIMIT 1",
+                "SELECT id FROM rsvps WHERE user_id = $1 AND event_id = $2 AND status = 'yes' LIMIT 1",
                 [identifiedUser.id, row.id]
             );
             event.has_rsvpd = rsvpRows?.length > 0;
@@ -6529,7 +6529,7 @@ app.post('/api/events', requireEventsRsvpIdentity, requireAdminOrTherapist, asyn
         const eventSlug = toEventSlug(slug || title);
         
         // Check for duplicate slug
-        const [existingRows] = await pool.query('SELECT id FROM events WHERE slug = ? LIMIT 1', [eventSlug]);
+        const [existingRows] = await pool.query('SELECT id FROM events WHERE slug = $1 LIMIT 1', [eventSlug]);
         if (existingRows?.length) {
             return res.status(409).json({ success: false, error: 'Event slug already exists', message: 'An event with this title already exists. Please use a different title.' });
         }
@@ -6577,7 +6577,7 @@ app.post('/api/events', requireEventsRsvpIdentity, requireAdminOrTherapist, asyn
         const [result] = await pool.query(
             `INSERT INTO events
                 (slug, title, tagline, description, category, tags, template_type, date, end_date, duration, location, is_online, meeting_link, is_paid, price, currency, payment_method, early_bird_price, discount_code, discount_percent, capacity, is_private, is_recurring, allow_anonymous, allow_maybe, waitlist_enabled, chat_enabled, recording_allowed, send_invite_emails, reminder_one_hour, reminder_ten_minutes, recommendations_enabled, featured, thumbnail_url, video_url, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)`,
             eventData
         );
 
@@ -6635,14 +6635,14 @@ app.post('/api/events/:eventId/media', requireUnityUser, requireAdmin, async (re
             return res.status(400).json({ success: false, error: 'Provide thumbnailUrl or videoUrl' });
         }
 
-        const [rows] = await pool.query('SELECT id, thumbnail_url, video_url FROM events WHERE id = ? LIMIT 1', [eventId]);
+        const [rows] = await pool.query('SELECT id, thumbnail_url, video_url FROM events WHERE id = $1 LIMIT 1', [eventId]);
         const eventRow = rows?.[0];
         if (!eventRow) {
             return res.status(404).json({ success: false, error: 'Event not found' });
         }
 
         await pool.query(
-            'UPDATE events SET thumbnail_url = COALESCE(?, thumbnail_url), video_url = COALESCE(?, video_url) WHERE id = ?',
+            'UPDATE events SET thumbnail_url = COALESCE($1, thumbnail_url), video_url = COALESCE($2, video_url) WHERE id = $3',
             [thumbnailUrl || null, videoUrl || null, eventId]
         );
 
@@ -6669,7 +6669,7 @@ app.post('/api/events/:eventId/invites', requireEventsRsvpIdentity, requireAdmin
             return res.status(400).json({ success: false, error: 'Invalid event id' });
         }
 
-        const [eventRows] = await pool.query('SELECT id, is_private FROM events WHERE id = ? LIMIT 1', [eventId]);
+        const [eventRows] = await pool.query('SELECT id, is_private FROM events WHERE id = $1 LIMIT 1', [eventId]);
         if (!eventRows?.length) {
             return res.status(404).json({ success: false, error: 'Event not found' });
         }
@@ -6687,7 +6687,7 @@ app.post('/api/events/:eventId/invites', requireEventsRsvpIdentity, requireAdmin
             const token = crypto.randomBytes(24).toString('hex');
 
             await pool.query(
-                'INSERT INTO invites (event_id, email, token, expires_at) VALUES (?, ?, ?, ?)',
+                'INSERT INTO invites (event_id, email, token, expires_at) VALUES ($1, $2, $3, $4)',
                 [eventId, normalizedEmail, token, expiresAt.toISOString()]
             );
 
@@ -6719,7 +6719,7 @@ app.post('/api/events/:eventId/rsvp', requireEventsRsvpIdentity, async (req, res
             return res.status(400).json({ success: false, error: 'Invalid RSVP payload' });
         }
 
-        const [eventRows] = await pool.query('SELECT id, capacity FROM events WHERE id = ? LIMIT 1', [eventId]);
+        const [eventRows] = await pool.query('SELECT id, capacity FROM events WHERE id = $1 LIMIT 1', [eventId]);
         if (!eventRows?.length) {
             return res.status(404).json({ success: false, error: 'Event not found' });
         }
@@ -6734,7 +6734,7 @@ app.post('/api/events/:eventId/rsvp', requireEventsRsvpIdentity, async (req, res
             // Create minimal user record
             try {
                 const [created] = await pool.query(
-                    'INSERT INTO users (name, email, clerk_user_id, auth_provider, email_verified, trusted) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)',
+                    'INSERT INTO users (name, email, clerk_user_id, auth_provider, email_verified, trusted) VALUES ($1, $2, $3, $4, $5, $6) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)',
                     [req.user.email.split('@')[0], req.user.email, req.user.clerkUserId, 'clerk', true, false]
                 );
                 userId = created.insertId || created.affectedRows;
@@ -6742,7 +6742,7 @@ app.post('/api/events/:eventId/rsvp', requireEventsRsvpIdentity, async (req, res
                 // If insert didn't return an ID, fetch it by clerk_user_id
                 if (!userId) {
                     const [userRows] = await pool.query(
-                        'SELECT id FROM users WHERE clerk_user_id = ? LIMIT 1',
+                        'SELECT id FROM users WHERE clerk_user_id = $1 LIMIT 1',
                         [req.user.clerkUserId]
                     );
                     userId = userRows?.[0]?.id;
@@ -6754,7 +6754,7 @@ app.post('/api/events/:eventId/rsvp', requireEventsRsvpIdentity, async (req, res
             } catch (userCreateError) {
                 // User might exist now, try to fetch
                 const [userRows] = await pool.query(
-                    'SELECT id FROM users WHERE clerk_user_id = ? OR email = ? LIMIT 1',
+                    'SELECT id FROM users WHERE clerk_user_id = $1 OR email = $2 LIMIT 1',
                     [req.user.clerkUserId, req.user.email]
                 );
                 userId = userRows?.[0]?.id;
@@ -6766,7 +6766,7 @@ app.post('/api/events/:eventId/rsvp', requireEventsRsvpIdentity, async (req, res
             }
         }
 
-        const [existingRsvpRows] = await pool.query('SELECT id, status FROM rsvps WHERE user_id = ? AND event_id = ? LIMIT 1', [userId, eventId]);
+        const [existingRsvpRows] = await pool.query('SELECT id, status FROM rsvps WHERE user_id = $1 AND event_id = $2 LIMIT 1', [userId, eventId]);
         if (existingRsvpRows?.length) {
             // User has already RSVP'd - enforce one RSVP per user per event
             const existingStatus = existingRsvpRows[0].status;
@@ -6777,7 +6777,7 @@ app.post('/api/events/:eventId/rsvp', requireEventsRsvpIdentity, async (req, res
             // If they previously said "no" or "maybe", allow them to update to "yes"
             if (status === 'yes') {
                 await pool.query(
-                    'UPDATE rsvps SET status = ?, paid = ?, redirect_source = ?, redirect_context = ?, clerk_user_id = ?, user_email_snapshot = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    'UPDATE rsvps SET status = $1, paid = $2, redirect_source = $3, redirect_context = $4, clerk_user_id = $5, user_email_snapshot = $6, updated_at = CURRENT_TIMESTAMP WHERE id = $7',
                     [status, paid, redirectSource || null, redirectContext, req.user.clerkUserId || null, req.user.email || null, existingRsvpRows[0].id]
                 );
             } else {
@@ -6786,7 +6786,7 @@ app.post('/api/events/:eventId/rsvp', requireEventsRsvpIdentity, async (req, res
             }
         } else {
             await pool.query(
-                'INSERT INTO rsvps (user_id, event_id, status, paid, redirect_source, redirect_context, clerk_user_id, user_email_snapshot, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
+                'INSERT INTO rsvps (user_id, event_id, status, paid, redirect_source, redirect_context, clerk_user_id, user_email_snapshot, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)',
                 [userId, eventId, status, paid, redirectSource || null, redirectContext, req.user.clerkUserId || null, req.user.email || null]
             );
         }
@@ -6795,7 +6795,7 @@ app.post('/api/events/:eventId/rsvp', requireEventsRsvpIdentity, async (req, res
             `SELECT
                 COALESCE(SUM(CASE WHEN status = 'yes' THEN 1 ELSE 0 END), 0) AS attendees_count
              FROM rsvps
-             WHERE event_id = ?`,
+             WHERE event_id = $1`,
             [eventId]
         );
 
@@ -6827,7 +6827,7 @@ app.get('/api/events/:eventId/messages', requireUnityUser, async (req, res) => {
         const [rsvpRows] = await pool.query(
             `SELECT id
              FROM rsvps
-             WHERE user_id = ? AND event_id = ? AND status = 'yes'
+             WHERE user_id = $1 AND event_id = $2 AND status = 'yes'
              LIMIT 1`,
             [req.user.id, eventId]
         );
@@ -6840,7 +6840,7 @@ app.get('/api/events/:eventId/messages', requireUnityUser, async (req, res) => {
             `SELECT em.id, em.event_id, em.user_id, em.message, em.created_at, u.name AS user_name
              FROM event_messages em
              LEFT JOIN users u ON u.id = em.user_id
-             WHERE em.event_id = ?
+             WHERE em.event_id = $1
              ORDER BY em.created_at ASC
              LIMIT 120`,
             [eventId]
@@ -7213,15 +7213,15 @@ app.get('/api/ai/insights', async (req, res) => {
 
     try {
         const [moods] = await pool.query(
-            "SELECT mood, intensity, note, created_at FROM user_moods WHERE user_id = ? AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
+            "SELECT mood, intensity, note, created_at FROM user_moods WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
             [userId]
         );
         const [journals] = await pool.query(
-            "SELECT content, created_at FROM journal_entries WHERE user_id = ? AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
+            "SELECT content, created_at FROM journal_entries WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
             [userId]
         );
         const [wins] = await pool.query(
-            "SELECT content, created_at FROM tiny_wins WHERE user_id = ? AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
+            "SELECT content, created_at FROM tiny_wins WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
             [userId]
         );
 
@@ -7315,7 +7315,7 @@ app.post('/api/ai/values-affirmation', async (req, res) => {
 app.get('/community/:slug', async (req, res) => {
     const { slug } = req.params;
     const [communities] = await pool.query(
-        'SELECT * FROM communities WHERE slug = ?',
+        'SELECT * FROM communities WHERE slug = $1',
         [slug]
     );
     const community = communities[0];
@@ -7325,7 +7325,7 @@ app.get('/community/:slug', async (req, res) => {
     }
     await pool.query(
         `INSERT INTO community_members (community_id, user_id)
-         VALUES (?, ?)
+         VALUES ($1, $2)
          ON CONFLICT DO NOTHING`,
         [community.id, req.session.user.id]
     );
@@ -7335,7 +7335,7 @@ app.get('/community/:slug', async (req, res) => {
 // --- Dynamic Open Graph meta tags for community social previews ---
 app.get('/og/community/:slug', async (req, res) => {
     const { slug } = req.params;
-    const [communities] = await pool.query('SELECT * FROM communities WHERE slug = ?', [slug]);
+    const [communities] = await pool.query('SELECT * FROM communities WHERE slug = $1', [slug]);
     const community = communities[0];
     if (!community) return res.status(404).send('Community not found');
     const ogTitle = `Join ${community.name} on UnityWithin!`;
@@ -7371,7 +7371,7 @@ app.get('/og/community/:slug', async (req, res) => {
 app.get('/buddy/:code', async (req, res) => {
     const { code } = req.params;
     const [invites] = await pool.query(
-        'SELECT * FROM buddy_invites WHERE invite_code = ?',
+        'SELECT * FROM buddy_invites WHERE invite_code = $1',
         [code]
     );
     const invite = invites[0];
@@ -7381,12 +7381,12 @@ app.get('/buddy/:code', async (req, res) => {
     }
     await pool.query(
         `INSERT INTO buddies (user_id, buddy_id)
-         VALUES (?, ?)
+         VALUES ($1, $2)
          ON CONFLICT DO NOTHING`,
         [req.session.user.id, invite.inviter_id]
     );
     await pool.query(
-        'UPDATE buddy_invites SET uses = uses + 1 WHERE id = ?',
+        'UPDATE buddy_invites SET uses = uses + 1 WHERE id = $1',
         [invite.id]
     );
     res.redirect('/buddy');

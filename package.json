@@ -5,12 +5,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "node server/server.js",
     "dev": "vite",
     "dev:api": "PORT=3001 npm run server",
     "dev:all": "sh -c \"npm run dev:api & npm run dev\"",
     "build": "vite build",
     "preview": "vite preview --port 5000 --strictPort",
-    "server": "node server.js"
+    "server": "node server/server.js"
   },
   "dependencies": {
     "@google/genai": "^1.31.0",

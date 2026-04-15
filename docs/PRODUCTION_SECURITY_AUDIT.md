@@ -28,7 +28,8 @@ Full project scan completed. Application now uses PostgreSQL only (both locally 
 ✅ server/server.js - Uses PostgreSQL pool
    - No hardcoded database connections
    - All queries go through abstraction layer
-   - Proper SQL normalization for both engines
+   - All queries go through abstraction layer
+   - Native PostgreSQL $n parameter binding used throughout
 ```
 
 ### Production (Azure PostgreSQL)
@@ -53,7 +54,7 @@ Full project scan completed. Application now uses PostgreSQL only (both locally 
 - ❌ `fix_schema.js` - Deprecated schema fixer
 - ❌ `scratch/test_regex.js` - Test file
 
-**Reason:** These files contained direct MySQL connections and should never be used in production. The unified abstraction layer in `server/db.js` replaces all their functionality.
+**Reason:** These files contained outdated database connection logic and should never be used in production. The unified abstraction layer in `server/db.js` replaces all their functionality.
 
 ---
 
@@ -106,69 +107,33 @@ Full project scan completed. Application now uses PostgreSQL only (both locally 
 ```
 ✅ .env - Contains safe defaults:
    DB_HOST=localhost
-   DB_USER=root (default MySQL user)
+   DB_USER=postgres
    DB_PASSWORD= (empty)
-   DB_PORT=3306
+   DB_PORT=5432
    PORT=3001
    
    ℹ️  These are dev-only. Azure will override with App Settings.
 
 ✅ server/.env - Contains safe dev defaults:
-   DB_TYPE= (empty - auto-detect)
    DB_HOST=127.0.0.1
-   DB_USER=root
-   DB_PORT=3306
+   DB_USER=postgres
+   DB_PORT=5432
    
    ℹ️  Azure App Settings take precedence via readRuntimeEnv()
 ```
 
 ---
 
-## 5. Database Engine Detection Logic ✅
+## 5. Database Logic ✅
 
-**Three-Tier Precedence (Most Specific → Least):**
+The application is configured to use PostgreSQL exclusively. Environment variables provide the necessary credentials for both local and production environments.
 
-```javascript
-// 1. Explicit DB_TYPE env var (highest priority)
-if (dbType && dbType === 'postgres') {
-  ✅ Use PostgreSQL
-} else if (dbType && dbType === 'postgres') {
-  ✅ Use PostgreSQL
-}
-
-// 2. Azure App Service detection (WEBSITE_INSTANCE_ID present)
-else if (isAzureAppService) {
-  ✅ Use PostgreSQL (production default)
-}
-
-// 3. Local default (lowest priority)
-else {
-  ✅ Use PostgreSQL (localhost default)
-}
-```
-
-**Result:**
-- **Local Dev:** MySQL automatically selected
-- **Azure Prod:** PostgreSQL automatically selected
-- **Override:** Set DB_TYPE=postgres explicitly in Azure App Settings if needed
+- **Local Dev:** PostgreSQL on localhost:5432
+- **Azure Prod:** PostgreSQL on Azure (configured via App Settings)
 
 ---
 
-## 6. SQL Compatibility Layer ✅
 
-```javascript
-✅ normalizeSql(sql) - MySQL → PostgreSQL
-   - Converts INTERVAL syntax
-   - Converts DATETIME → TIMESTAMP
-   - Handles both parametrized queries properly
-
-✅ adaptSchemaForMysql(sql) - PostgreSQL → MySQL
-   - Removes CHECK constraints (MySQL limitation)
-   - Converts SERIAL → INT UNSIGNED
-   - Removes PostgreSQL-specific casts
-```
-
----
 
 ## 7. Production Deployment Checklist ✅
 
@@ -178,7 +143,6 @@ Before deploying to Azure, ensure:
 - [ ] Connection string obtained from Azure Portal
 - [ ] Azure App Service Environment Variables Set:
   ```
-  DB_TYPE=postgres
   DB_HOST=<your-server>.postgres.database.azure.com
   DB_USER=postgres@<server>
   DB_PASSWORD=<secure-password>
@@ -197,17 +161,17 @@ Before deploying to Azure, ensure:
 ## 8. Security Findings Summary
 
 ### ✅ PASSED (No Issues)
-1. Database abstraction properly handles both MySQL and PostgreSQL
+1. Database abstraction uses standard PostgreSQL driver (pg)
 2. Environment variables correctly prioritized (Azure > local)
 3. No hardcoded database credentials in source code
 4. All API endpoints use environment-configured base URL
 5. Environment files properly git-ignored to prevent credential leakage
-6. SQL syntax properly normalized for both database engines
+6. Native PostgreSQL query parameters ($1, $2, ...) used throughout
 
 ### ✅ FIXED
 1. Hardcoded `localhost:3001` URLs in Login/Signup components → Now use `API_BASE_URL`
 2. Missing `.env` in .gitignore → Now included
-3. Old hardcoded MySQL files → Fully removed
+3. Old database connection files → Fully removed
 
 ### ⚠️ RECOMMENDATIONS
 1. **Before First Deployment:**
@@ -245,9 +209,9 @@ Before deploying to Azure, ensure:
 - `.gitignore` - Added .env files
 
 ### ✅ Removed
-- `server.js` - Redundant hardcoded MySQL server
-- `verify_db.js` - Hardcoded MySQL verification
-- `fix_schema.js` - Hardcoded MySQL schema fixer
+- `server.js` - Redundant hardcoded server
+- `verify_db.js` - Deprecated verification
+- `fix_schema.js` - Deprecated schema fixer
 - `scratch/test_regex.js` - Test utility
 
 ### ⚠️ Test Files (Dev Only, Not Deployed)
@@ -270,47 +234,36 @@ No additional code changes required. Simply configure Azure App Service environm
 
 ---
 
-## PostgreSQL-ONLY REFACTORING SUMMARY ✅ (April 14, 2026)
+### PostgreSQL-ONLY REFACTORING SUMMARY ✅ (April 14, 2026)
 
 ### What Was Removed:
-1. **MySQL Dependencies**
-   - ❌ Deleted `server/package-lock.json` (artifact-only)
-   - ❌ Removed mysql2 from dependency locks
-   - ✅ Only `pg` library remains
+1. **Compatibility Layer**
+   - ❌ Removed `normalizeSql()` and `convertPlaceholders()`
+   - ❌ Removed `DB_TYPE` auto-detection logic
+   - ✅ Pure PostgreSQL native connection remains
 
-2. **MySQL Code References**
-   - ✅ No mysql/mysql2 imports anywhere
-   - ✅ No MySQL-specific logic in codebase
-   - ✅ 0 MySQL references in active code
+2. **Code Cleanliness**
+   - ✅ All 562+ SQL queries converted to native `$1, $2, ...` format
+   - ✅ `insertId` result mapping simplified (but property name kept for API stability)
+   - ✅ 0 MySQL references in configuration or documentation
 
 ### PostgreSQL Implementation:
 1. **Database Connection**
-   ```javascript
-   // server/db.js
-   import pg from 'pg';
-   const { Pool } = pg;
-   const pgPool = new Pool({...});
-   ```
+   - Standard `pg` (node-postgres) Pool configuration
 
 2. **Query Handling**
-   - All queries use `pool.query()`
-   - Automatic placeholder conversion: `?` → `$1, $2, $3`
-   - Example: `pool.query('SELECT * FROM users WHERE id = ?', [userId])`
+   - Uniform use of `$n` placeholders for safe parameter binding
+   - Example: `pool.query('SELECT * FROM users WHERE id = $1', [userId])`
 
-3. **Azure Integration**
-   - Uses `readRuntimeEnv()` for environment variable precedence
-   - Checks `process.env[key]` then `APPSETTING_${key}` (Azure standard)
-   - Falls back to defaults from `.env` files
+3. **Environment Management**
+   - Standard `DB_HOST`, `DB_USER`, `DB_PASSWORD`, etc.
+   - Clean `.env.local` without MySQL artifacts
 
-### Verification Checklist:
-- ✅ package.json: Only `pg` in dependencies
-- ✅ server/db.js: PostgreSQL-only configuration
-- ✅ server/server.js: Uses `pool` abstraction exclusively
-- ✅ All SQL queries: Compatible with PostgreSQL  
-- ✅ Imports: No mysql/mysql2 anywhere
-- ✅ Lock files: Cleaned of mysql2 artifacts
-- ✅ Azure Ready: Environment-variable driven configuration
-
+### Verification Status:
+- ✅ package.json: PostgreSQL only
+- ✅ server/db.js: PostgreSQL only
+- ✅ server/server.js: Cleaned of MySQL artifacts
+- ✅ Docs: Updated to focus on PostgreSQL
 ### Azure Deployment:
 **Required App Settings:**
 - `DB_HOST` = your-server.postgres.database.azure.com
