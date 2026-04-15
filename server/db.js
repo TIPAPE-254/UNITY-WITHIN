@@ -71,72 +71,22 @@ const readRuntimeEnv = (key, fallback = '') => {
 
 loadDatabaseEnv();
 
-// CRITICAL: Detect Azure FIRST, before checking local env vars
-// Azure sets these standard environment variables automatically
-const isAzureAppService = Boolean(
-    process.env.WEBSITE_INSTANCE_ID || 
-    process.env.WEBSITE_SITE_NAME || 
-    process.env.APPSETTING_WEBSITE_INSTANCE_ID ||
-    process.env.APPSETTING_WEBSITE_SITE_NAME ||
-    process.env.AZURE_APP_SERVICE // Alternative detection
-);
-
-// Log Azure detection status
-console.log(`🔍 Azure Detection: ${isAzureAppService ? '✅ DETECTED (Will use PostgreSQL)' : '❌ Not detected (Using local MySQL)'}`);
-console.log(`   WEBSITE_INSTANCE_ID: ${process.env.WEBSITE_INSTANCE_ID || 'not set'}`);
-console.log(`   WEBSITE_SITE_NAME: ${process.env.WEBSITE_SITE_NAME || 'not set'}`);
-
-const dbType = readRuntimeEnv('DB_TYPE', '').toLowerCase();
-
-if (dbType && dbType !== 'postgres' && dbType !== 'mysql') {
-    throw new Error(`Unsupported DB_TYPE "${dbType}". Use "postgres" or "mysql".`);
-}
-
-// Selection rules:
-// 1) Explicit DB_TYPE always wins.
-// 2) On Azure App Service with no DB_TYPE, default to PostgreSQL.
-// 3) Locally with no DB_TYPE, default to MySQL.
-const usePg = dbType ? dbType === 'postgres' : isAzureAppService;
-const dbEngineLabel = usePg ? 'postgres' : 'mysql';
-
-// Log final decision
-console.log(`📊 Database Selection: ${usePg ? '🐘 PostgreSQL (Production)' : '🐬 MySQL (Development)'}`);
-
+// PostgreSQL only - Azure production
 const { Pool } = pg;
-let pgPool = null;
-let mysqlPool = null;
 
-if (usePg) {
-    pgPool = new Pool({
-        host: readRuntimeEnv('DB_HOST', 'localhost'),
-        user: readRuntimeEnv('DB_USER', 'postgres'),
-        password: readRuntimeEnv('DB_PASSWORD', ''),
-        database: readRuntimeEnv('DB_NAME', 'UNITY_WITHIN'),
-        port: parseInt(readRuntimeEnv('DB_PORT', '5432'), 10),
-        ssl: readRuntimeEnv('DB_SSL', 'true') === 'true' ? { rejectUnauthorized: false } : undefined,
-        max: 10,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
-    });
-    
-    console.log(`🔗 PostgreSQL Config: host=${readRuntimeEnv('DB_HOST', 'localhost')} user=${readRuntimeEnv('DB_USER', 'postgres')} db=${readRuntimeEnv('DB_NAME', 'UNITY_WITHIN')} port=5432`);
-} else {
-    mysqlPool = mysql.createPool({
-        host: readRuntimeEnv('DB_HOST', 'localhost'),
-        user: readRuntimeEnv('DB_USER', 'root'),
-        password: readRuntimeEnv('DB_PASSWORD', ''),
-        database: readRuntimeEnv('DB_NAME', 'UNITY_WITHIN'),
-        port: parseInt(readRuntimeEnv('DB_PORT', '3306'), 10),
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
-        multipleStatements: true
-    });
-    
-    console.log(`🔗 MySQL Config: host=${readRuntimeEnv('DB_HOST', 'localhost')} user=${readRuntimeEnv('DB_USER', 'root')} db=${readRuntimeEnv('DB_NAME', 'UNITY_WITHIN')} port=3306`);
-}
+const pgPool = new Pool({
+    host: readRuntimeEnv('DB_HOST', 'localhost'),
+    user: readRuntimeEnv('DB_USER', 'postgres'),
+    password: readRuntimeEnv('DB_PASSWORD', ''),
+    database: readRuntimeEnv('DB_NAME', 'UNITY_WITHIN'),
+    port: parseInt(readRuntimeEnv('DB_PORT', '5432'), 10),
+    ssl: readRuntimeEnv('DB_SSL', 'true') === 'true' ? { rejectUnauthorized: false } : undefined,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+});
 
-console.log(`🗄️ Database engine: ${dbEngineLabel} (host=${readRuntimeEnv('DB_HOST', 'localhost')}, port=${readRuntimeEnv('DB_PORT', usePg ? '5432' : '3306')}, db=${readRuntimeEnv('DB_NAME', 'UNITY_WITHIN')})`);
+console.log(`🐘 PostgreSQL Config: host=${readRuntimeEnv('DB_HOST', 'localhost')} user=${readRuntimeEnv('DB_USER', 'postgres')} db=${readRuntimeEnv('DB_NAME', 'UNITY_WITHIN')} port=5432`);
 
 const convertPlaceholders = (sql) => {
     let index = 0;
@@ -144,42 +94,12 @@ const convertPlaceholders = (sql) => {
 };
 
 const normalizeSql = (sql) => {
-    // Convert MySQL-style interval syntax to PostgreSQL syntax.
-    // Example: NOW() - INTERVAL 1 WEEK -> NOW() - INTERVAL '1 WEEK'
     let normalized = sql.replace(
         /NOW\(\)\s*-\s*INTERVAL\s+(\d+)\s+(DAY|WEEK|MONTH|YEAR)\b/gi,
         "NOW() - INTERVAL '$1 $2'"
     );
-    
-    // Convert MySQL DATETIME type to PostgreSQL TIMESTAMP
     normalized = normalized.replace(/\bDATETIME\b/gi, 'TIMESTAMP');
-    
     return normalized;
-};
-
-// Convert PostgreSQL specific types/constraints into MySQL/MariaDB friendly ones.
-// MariaDB requires exact type+signedness match for FK references, so we use
-// INT UNSIGNED consistently for both PK (auto_increment) and FK (INTEGER) columns.
-const adaptSchemaForMysql = (sql) => {
-    if (usePg) return sql;
-    return sql
-        // MUST strip CHECK constraints FIRST before type conversion rename
-        .replace(/SMALLINT\s+CHECK\s+\([^)]+\)/gi, 'INT')
-        .replace(/INT\s+CHECK\s+\([^)]*BETWEEN[^)]+\)/gi, 'INT')
-        // PK: Use INT UNSIGNED AUTO_INCREMENT to match MariaDB convention
-        .replace(/\bSERIAL PRIMARY KEY\b/gi, 'INT UNSIGNED AUTO_INCREMENT PRIMARY KEY')
-        // FK / general integer columns: must be UNSIGNED to match PK columns
-        .replace(/\bINTEGER\b/gi, 'INT UNSIGNED')
-        .replace(/\bSMALLINT\b/gi, 'INT')
-        .replace(/\bNUMERIC\(\d+,\d+\)\b/gi, 'DECIMAL(10,2)')
-        .replace(/\bBOOLEAN\b/gi, 'TINYINT(1)')
-        // Remove PG-only casts
-        .replace(/::int/gi, '')
-        // MySQL: CREATE UNIQUE INDEX partial index (WHERE clause) not supported
-        .replace(/WHERE\s+clerk_user_id\s+IS\s+NOT\s+NULL/gi, '')
-        // MariaDB: ALTER TABLE ADD COLUMN IF NOT EXISTS is supported natively
-        // MariaDB: CREATE INDEX IF NOT EXISTS is supported natively
-    ;
 };
 
 const toSqlDateTime = (value) => {
@@ -189,48 +109,29 @@ const toSqlDateTime = (value) => {
 const pool = {
     async query(sql, params = []) {
         try {
-            if (usePg) {
-                if (!pgPool) {
-                    throw new Error('PostgreSQL pool not initialized. Check DB_HOST, DB_USER, DB_PASSWORD, DB_NAME env vars');
-                }
-                const normalized = normalizeSql(sql);
-                const converted = convertPlaceholders(normalized);
-                const isInsert = /^\s*INSERT\s+/i.test(converted) && !/\bRETURNING\b/i.test(converted);
-                const finalSql = isInsert ? `${converted} RETURNING id` : converted;
-
-                const result = await pgPool.query(finalSql, params);
-
-                if (isInsert) {
-                    return [{
-                        insertId: result.rows[0]?.id || null,
-                        affectedRows: result.rowCount || 0
-                    }];
-                }
-
-                return [result.rows];
-            } else {
-                if (!mysqlPool) {
-                    throw new Error('MySQL pool not initialized. Check DB_HOST, DB_USER, DB_PASSWORD, DB_NAME env vars');
-                }
-                const isInsert = /^\s*INSERT\s+/i.test(sql);
-                const normalizedSql = adaptSchemaForMysql(sql);
-
-                const [rows] = await mysqlPool.query(normalizedSql, params);
-
-                if (isInsert && !Array.isArray(rows)) {
-                    return [{
-                        insertId: rows.insertId !== undefined ? rows.insertId : null,
-                        affectedRows: rows.affectedRows || 0
-                    }];
-                }
-                return [rows];
+            if (!pgPool) {
+                throw new Error('PostgreSQL pool not initialized. Check DB_HOST, DB_USER, DB_PASSWORD, DB_NAME env vars');
             }
+            const normalized = normalizeSql(sql);
+            const converted = convertPlaceholders(normalized);
+            const isInsert = /^\s*INSERT\s+/i.test(converted) && !/\bRETURNING\b/i.test(converted);
+            const finalSql = isInsert ? `${converted} RETURNING id` : converted;
+
+            const result = await pgPool.query(finalSql, params);
+
+            if (isInsert) {
+                return [{
+                    insertId: result.rows[0]?.id || null,
+                    affectedRows: result.rowCount || 0
+                }];
+            }
+
+            return [result.rows];
         } catch (error) {
-            console.error(`❌ Database query failed (${dbEngineLabel}):`, {
+            console.error(`❌ Database query failed:`, {
                 error: error.message,
                 sql: sql.substring(0, 100),
                 params: params.length > 0 ? `${params.length} params` : 'no params',
-                isAzure: isAzureAppService,
                 dbHost: readRuntimeEnv('DB_HOST', 'not set'),
             });
             throw error;
@@ -250,32 +151,19 @@ async function isDatabaseAvailable() {
 // Test the connection
 async function testConnection() {
     try {
-        if (usePg) {
-            const connection = await pgPool.connect();
-            console.log('✅ PostgreSQL Database connected successfully!');
-            connection.release();
-        } else {
-            const connection = await mysqlPool.getConnection();
-            console.log('✅ MySQL Database connected successfully!');
-            connection.release();
-        }
+        const connection = await pgPool.connect();
+        console.log('✅ PostgreSQL Database connected successfully!');
+        connection.release();
     } catch (error) {
-        console.error(`❌ Database connection failed (${dbEngineLabel}):`, error.message);
-        
-        if (usePg && isAzureAppService) {
-            console.error(`\n⚠️  AZURE POSTGRESQL CONNECTION FAILED. Check these settings in Azure Portal:`);
-            console.error(`   1. App Service → Configuration → Application Settings`);
-            console.error(`   2. Verify these are set:`);
-            console.error(`      - DB_HOST: ${readRuntimeEnv('DB_HOST', '⚠️ NOT SET')}`);
-            console.error(`      - DB_USER: ${readRuntimeEnv('DB_USER', '⚠️ NOT SET')}`);
-            console.error(`      - DB_PASSWORD: ${readRuntimeEnv('DB_PASSWORD', '') ? '✅ Set' : '⚠️ NOT SET'}`);
-            console.error(`      - DB_NAME: ${readRuntimeEnv('DB_NAME', '⚠️ NOT SET')}`);
-            console.error(`      - DB_PORT: 5432`);
-            console.error(`      - DB_SSL: true`);
-            console.error(`   3. Ensure PostgreSQL firewall allows App Service IP`);
-            console.error(`   4. Check PostgreSQL is running and credentials are correct`);
-        }
-        
+        console.error(`❌ Database connection failed:`, error.message);
+        console.error(`\n⚠️ POSTGRESQL CONNECTION FAILED. Check these settings:`);
+        console.error(`   1. Verify these environment variables are set:`);
+        console.error(`      - DB_HOST: ${readRuntimeEnv('DB_HOST', '⚠️ NOT SET')}`);
+        console.error(`      - DB_USER: ${readRuntimeEnv('DB_USER', '⚠️ NOT SET')}`);
+        console.error(`      - DB_PASSWORD: ${readRuntimeEnv('DB_PASSWORD', '') ? '✅ Set' : '⚠️ NOT SET'}`);
+        console.error(`      - DB_NAME: ${readRuntimeEnv('DB_NAME', '⚠️ NOT SET')}`);
+        console.error(`   2. Ensure PostgreSQL firewall allows your IP`);
+        console.error(`   3. Check PostgreSQL is running and credentials are correct`);
         console.warn('⚠️ Server will continue running without database features.');
     }
 }
