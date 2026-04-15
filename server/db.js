@@ -4,6 +4,43 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+/**
+ * UNITY WITHIN Database Configuration
+ * 
+ * ✅ ENVIRONMENT DETECTION LOGIC:
+ * 
+ * LOCAL DEVELOPMENT (npm run dev:all):
+ * - Uses MySQL on localhost:3306
+ * - Reads from server/.env and .env files
+ * - DB_TYPE is empty → defaults to MySQL (non-Azure)
+ * 
+ * AZURE PRODUCTION (Web App):
+ * - Uses PostgreSQL automatically detected via WEBSITE_INSTANCE_ID
+ * - Reads credentials from App Service Configuration (APPSETTING_* prefix)
+ * - DB_TYPE is empty → auto-detects Azure → uses PostgreSQL
+ * 
+ * 📋 REQUIRED AZURE APP SETTINGS:
+ * ─────────────────────────────────────────────────────────
+ * Name                  | Value
+ * ─────────────────────────────────────────────────────────
+ * DB_HOST               | your-server.postgres.database.azure.com
+ * DB_USER               | postgres@your-server
+ * DB_PASSWORD           | <your-secure-password>
+ * DB_NAME               | UNITY_WITHIN
+ * DB_PORT               | 5432
+ * DB_SSL                | true
+ * ─────────────────────────────────────────────────────────
+ * 
+ * 🔗 GET THESE VALUES FROM:
+ * Azure Portal → PostgreSQL resource → Connection strings
+ * 
+ * ⚠️ CRITICAL: If app fails to connect on production deploy:
+ * 1. Check APP SERVICE LOGS (Monitoring → Logs)
+ * 2. Verify DB_HOST, DB_USER, DB_PASSWORD are set
+ * 3. Confirm PostgreSQL firewall allows App Service IP
+ * 4. Ensure DB_SSL=true for Azure PostgreSQL
+ */
+
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(serverDir, '..');
 
