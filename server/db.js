@@ -1,5 +1,5 @@
 import pg from 'pg';
-import mysql from 'mysql2/promise';
+
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -7,17 +7,15 @@ import { fileURLToPath } from 'url';
 /**
  * UNITY WITHIN Database Configuration
  * 
- * ✅ ENVIRONMENT DETECTION LOGIC:
+ * ✅ PostgreSQL Only Configuration:
  * 
  * LOCAL DEVELOPMENT (npm run dev:all):
- * - Uses MySQL on localhost:3306
+ * - Uses PostgreSQL on localhost:5432
  * - Reads from server/.env and .env files
- * - DB_TYPE is empty → defaults to MySQL (non-Azure)
  * 
  * AZURE PRODUCTION (Web App):
  * - Uses PostgreSQL automatically detected via WEBSITE_INSTANCE_ID
  * - Reads credentials from App Service Configuration (APPSETTING_* prefix)
- * - DB_TYPE is empty → auto-detects Azure → uses PostgreSQL
  * 
  * 📋 REQUIRED AZURE APP SETTINGS:
  * ─────────────────────────────────────────────────────────

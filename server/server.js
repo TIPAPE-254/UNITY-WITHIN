@@ -1371,7 +1371,7 @@ void (async () => {
     await runSupportSessionAutomation();
 })();
 
-// Use the unified pool from db.js (handles MySQL locally / PostgreSQL on Azure)
+// Use the unified PostgreSQL pool from db.js
 
 /* ============================
      API ROUTES FOR ADMIN

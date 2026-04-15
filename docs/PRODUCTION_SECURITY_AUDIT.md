@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-Full project scan completed. All hardcoded MySQL references removed. Application now uses unified database abstraction layer that automatically switches between MySQL (local dev) and PostgreSQL (Azure production) based on environment detection.
+Full project scan completed. Application now uses PostgreSQL only (both locally and on Azure production).
 
 **Critical Finding:** Hardcoded localhost URLs in Login/Signup components fixed. Application now properly uses environment-configured API endpoints.
 
@@ -49,9 +49,9 @@ Full project scan completed. All hardcoded MySQL references removed. Application
 ## 2. Removed Hardcoded Files ✅
 
 **Deleted (previously used hardcoded MySQL):**
-- ❌ `server.js` - Old standalone MySQL server (duplicate)
-- ❌ `verify_db.js` - Hardcoded MySQL verification
-- ❌ `fix_schema.js` - Hardcoded MySQL schema fixer
+- ❌ `server.js` - Old standalone server (deprecated)
+- ❌ `verify_db.js` - Deprecated verification script
+- ❌ `fix_schema.js` - Deprecated schema fixer
 - ❌ `scratch/test_regex.js` - Test file
 
 **Reason:** These files contained direct MySQL connections and should never be used in production. The unified abstraction layer in `server/db.js` replaces all their functionality.
@@ -133,8 +133,8 @@ Full project scan completed. All hardcoded MySQL references removed. Application
 // 1. Explicit DB_TYPE env var (highest priority)
 if (dbType && dbType === 'postgres') {
   ✅ Use PostgreSQL
-} else if (dbType && dbType === 'mysql') {
-  ✅ Use MySQL
+} else if (dbType && dbType === 'postgres') {
+  ✅ Use PostgreSQL
 }
 
 // 2. Azure App Service detection (WEBSITE_INSTANCE_ID present)
@@ -144,7 +144,7 @@ else if (isAzureAppService) {
 
 // 3. Local default (lowest priority)
 else {
-  ✅ Use MySQL (localhost:3306 default)
+  ✅ Use PostgreSQL (localhost default)
 }
 ```
 
@@ -238,7 +238,7 @@ Before deploying to Azure, ensure:
 - `src/components/AIChat.tsx` - Uses API_BASE_URL
 - `src/components/Journal.tsx` - Uses API_BASE_URL
 - `src/constants.ts` - Proper API_BASE_URL configuration
-- `package.json` - Contains both `pg` and `mysql2` (required for abstraction)
+- `package.json` - Contains `pg` only (PostgreSQL only)
 
 ### ✅ Fixed
 - `src/components/Login.tsx` - Updated hardcoded URL
