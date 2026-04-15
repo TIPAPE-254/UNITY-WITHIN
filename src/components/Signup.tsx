@@ -4,7 +4,7 @@ import { GoogleButton } from './GoogleButton';
 import { useGoogleLogin } from '@react-oauth/google';
 import axios from 'axios';
 import { Heart, Eye, EyeOff, Mail, Lock, User as UserIcon, Chrome, Apple, Phone } from 'lucide-react';
-
+import { API_BASE_URL } from '../constants';
 import { User } from '../types';
 
 export const Signup: React.FC<{ onNavigate: (view: string) => void; onLoginSuccess: (user: User) => void }> = ({ onNavigate, onLoginSuccess }) => {
@@ -45,7 +45,7 @@ export const Signup: React.FC<{ onNavigate: (view: string) => void; onLoginSucce
   const handleSignup = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:3001/api/signup', {
+      const response = await fetch(`${API_BASE_URL}/api/signup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
