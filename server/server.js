@@ -262,8 +262,24 @@ if (!process.env.ADMIN_EMAIL && process.env.ENCRYPTED_ADMIN_EMAIL) {
     }
 }
 
-app.get('/api/health', (req, res) => {
-    res.status(200).json({ status: 'OK' });
+app.get('/api/health', async (req, res) => {
+    try {
+        const dbAvailable = await isDatabaseAvailable();
+        res.status(dbAvailable ? 200 : 503).json({
+            status: dbAvailable ? 'healthy' : 'degraded',
+            database: dbAvailable ? 'connected' : 'disconnected',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            environment: process.env.NODE_ENV || 'development'
+        });
+    } catch (error) {
+        res.status(503).json({
+            status: 'unhealthy',
+            database: 'disconnected',
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
 });
 
 const readRuntimeSetting = (key) => {
@@ -4012,8 +4028,6 @@ app.get('/api/admin/volunteer-stats', requireAdmin, async (req, res) => {
                 SUM(CASE WHEN status = 'pending_review' THEN 1 ELSE 0 END) as pending
             FROM volunteers
         `);
-        // Note: FILTER (WHERE ...) is PG specific. For MySQL compatibility:
-        // SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active
         res.json({ success: true, stats: stats[0] });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -7464,7 +7478,15 @@ app.get(/^(?!\/api).*/, (req, res, next) => {
 // Start server
 validateProductionConfig();
 
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+server.listen(PORT, async () => {
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    
+    // Test database connection
+    console.log('\n📊 Initializing database...');
+    await testConnection();
+    await initializeDatabase();
+    
+    console.log(`\n✅ Application ready at http://localhost:${PORT}`);
 });
 
