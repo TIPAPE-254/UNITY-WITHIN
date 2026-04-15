@@ -39,7 +39,6 @@ import { decrypt } from "./encryption.js";
 
 // Import AI libraries
 import OpenAI from "openai";
-import fetch from "node-fetch";
 
 // Import other required modules
 import cors from "cors";
