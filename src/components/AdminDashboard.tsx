@@ -674,6 +674,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
                                             </div>
                                         </div>
 
+                                        {/* Primary Metrics */}
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
                                                 <p className="text-[10px] font-bold uppercase text-blue-600">Registered Users</p>
@@ -704,6 +705,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
                                             </div>
                                         </div>
 
+                                        {/* Secondary Metrics */}
+                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                            <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                                                <p className="text-[10px] font-bold uppercase text-gray-500">Chat Rooms</p>
+                                                <p className="text-2xl font-bold text-gray-800 mt-2">{rooms.length}</p>
+                                                <p className="text-xs text-gray-400 mt-1">Active spaces</p>
+                                            </div>
+                                            <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                                                <p className="text-[10px] font-bold uppercase text-gray-500">Journals Shared</p>
+                                                <p className="text-2xl font-bold text-gray-800 mt-2">{journals.length}</p>
+                                                <p className="text-xs text-gray-400 mt-1">Total entries</p>
+                                            </div>
+                                            <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                                                <p className="text-[10px] font-bold uppercase text-gray-500">Tiny Wins</p>
+                                                <p className="text-2xl font-bold text-gray-800 mt-2">{wins.length}</p>
+                                                <p className="text-xs text-gray-400 mt-1">Celebrations</p>
+                                            </div>
+                                            <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                                                <p className="text-[10px] font-bold uppercase text-gray-500">Safety Flags</p>
+                                                <p className="text-2xl font-bold text-red-600 mt-2">{blockedLogs.length}</p>
+                                                <p className="text-xs text-gray-400 mt-1">Moderated</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Engagement Indicators */}
+                                        <div className="rounded-2xl border border-gray-100 p-4 bg-white">
+                                            <h4 className="font-bold text-gray-800 mb-4">User Engagement</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="space-y-3">
+                                                    <div>
+                                                        <div className="flex justify-between text-sm mb-1">
+                                                            <span className="text-gray-600">Message Activity Ratio</span>
+                                                            <span className="font-semibold text-gray-800">{stats.userCount > 0 ? (stats.messageCount / stats.userCount).toFixed(1) : 0}</span>
+                                                        </div>
+                                                        <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                                                            <div className="bg-violet-500 h-2 rounded-full" style={{ width: `${Math.min(100, ((stats.messageCount / Math.max(1, stats.userCount)) / 10) * 100)}%` }} />
+                                                        </div>
+                                                        <p className="text-xs text-gray-400 mt-1">Messages per user</p>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-3">
+                                                    <div>
+                                                        <div className="flex justify-between text-sm mb-1">
+                                                            <span className="text-gray-600">Mood Tracking Rate</span>
+                                                            <span className="font-semibold text-gray-800">{stats.userCount > 0 ? ((stats.moodCount / stats.userCount) * 100).toFixed(1) : 0}%</span>
+                                                        </div>
+                                                        <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                                                            <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${Math.min(100, (stats.moodCount / Math.max(1, stats.userCount)) * 100)}%` }} />
+                                                        </div>
+                                                        <p className="text-xs text-gray-400 mt-1">Users tracking moods</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Trend Chart */}
                                         <div className="rounded-2xl border border-gray-100 p-4 bg-white">
                                             <h4 className="font-bold text-gray-800 mb-3">Recent Trend (last 30 samples)</h4>
                                             <div className="space-y-3">
@@ -726,6 +783,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
                                             </div>
                                         </div>
 
+                                        {/* Content Distribution */}
+                                        <div className="rounded-2xl border border-gray-100 p-4 bg-white">
+                                            <h4 className="font-bold text-gray-800 mb-4">Content Distribution</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div className="flex flex-col items-center justify-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl">
+                                                    <p className="text-2xl font-bold text-blue-900">{blockedLogs.length}</p>
+                                                    <p className="text-xs text-blue-700 font-semibold mt-1">Flagged Messages</p>
+                                                    <p className="text-[10px] text-blue-600 mt-2">{stats.messageCount > 0 ? ((blockedLogs.length / stats.messageCount) * 100).toFixed(2) : 0}% flag rate</p>
+                                                </div>
+                                                <div className="flex flex-col items-center justify-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl">
+                                                    <p className="text-2xl font-bold text-purple-900">{reports.length}</p>
+                                                    <p className="text-xs text-purple-700 font-semibold mt-1">User Reports</p>
+                                                    <p className="text-[10px] text-purple-600 mt-2">Community feedback</p>
+                                                </div>
+                                                <div className="flex flex-col items-center justify-center p-4 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl">
+                                                    <p className="text-2xl font-bold text-emerald-900">{therapists.length}</p>
+                                                    <p className="text-xs text-emerald-700 font-semibold mt-1">Therapists</p>
+                                                    <p className="text-[10px] text-emerald-600 mt-2">{volunteers.length} volunteers</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Google Analytics */}
                                         <div className="rounded-2xl border border-gray-100 p-4 bg-white">
                                             <h4 className="font-bold text-gray-800 mb-2 flex items-center gap-2"><Eye size={16} /> Google Analytics</h4>
                                             {gaMeasurementId ? (
