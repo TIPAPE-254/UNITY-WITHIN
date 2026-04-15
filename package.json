@@ -14,7 +14,6 @@
     "server": "node server/server.js"
   },
   "dependencies": {
-    "@google/genai": "^1.31.0",
     "@react-oauth/google": "^0.12.2",
     "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
@@ -22,14 +21,20 @@
     "dotenv": "^17.2.3",
     "express": "^4.18.2",
     "lucide-react": "^0.556.0",
-    
     "pg": "^8.20.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "react-ga4": "^3.0.1",
     "react-icons": "^5.5.0",
     "react-markdown": "^10.1.0",
-    "recharts": "^3.5.1"
+    "recharts": "^3.5.1",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^3.3.2",
+    "nodemailer": "^6.9.13",
+    "openai": "^4.28.4",
+    "socket.io": "^4.7.5",
+    "web-push": "^3.6.7",
+    "@google/generative-ai": "^0.11.4"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
