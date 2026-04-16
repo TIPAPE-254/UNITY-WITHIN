@@ -27,6 +27,16 @@ async function testConnection() {
     }
 }
 
+async function isDatabaseAvailable() {
+    try {
+        const connection = await pool.getConnection();
+        connection.release();
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 // Create users table if it doesn't exist
 async function initializeDatabase() {
     try {
@@ -197,4 +207,4 @@ async function initializeDatabase() {
     }
 }
 
-export { pool, testConnection, initializeDatabase };
+export { pool, testConnection, initializeDatabase, isDatabaseAvailable };
