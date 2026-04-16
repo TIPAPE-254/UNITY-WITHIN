@@ -14,6 +14,7 @@ const Journal = lazy(() => import('./components/Journal').then(module => ({ defa
 const Breathe = lazy(() => import('./components/Breathe').then(module => ({ default: module.Breathe })));
 const Education = lazy(() => import('./components/Education').then(module => ({ default: module.Education })));
 const WellnessToolkit = lazy(() => import('./components/WellnessToolkit').then(module => ({ default: module.WellnessToolkit })));
+const TherapySupport = lazy(() => import('./components/TherapySupport').then(module => ({ default: module.TherapySupport })));
 const NameTheFeeling = lazy(() => import('./components/NameTheFeeling').then(module => ({ default: module.NameTheFeeling })));
 const CompassionBuilder = lazy(() => import('./components/CompassionBuilder').then(module => ({ default: module.CompassionBuilder })));
 const ValuesDirection = lazy(() => import('./components/ValuesDirection').then(module => ({ default: module.ValuesDirection })));
@@ -111,6 +112,15 @@ export default function App() {
         />;
       case 'wellness':
         return <WellnessToolkit onNavigate={handleNavigate} />;
+      case 'support':
+        return (
+          <TherapySupport
+            userId={user?.id}
+            userName={user?.name}
+            userEmail={user?.email}
+            userRole={user?.role}
+          />
+        );
       case 'chat':
         return <AIChat />;
       case 'community':

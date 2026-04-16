@@ -61,6 +61,28 @@ jobs:
           package: server
           startup-command: 'npm install --omit=dev && node server.js'
 
+      - name: Configure Azure App Settings for Buddie AI (Publish Profile)
+        if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE != '' }}
+        run: |
+          az webapp config appsettings set \
+            --name "${{ env.TARGET_WEBAPP_NAME }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --settings \
+              OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              AZURE_OPENAI_ENDPOINT="${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
+              AZURE_OPENAI_DEPLOYMENT="${{ secrets.AZURE_OPENAI_DEPLOYMENT }}" \
+              AZURE_OPENAI_API_KEY="${{ secrets.AZURE_OPENAI_API_KEY }}" \
+              GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
+              GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+              MISTRAL_API_KEY="${{ secrets.MISTRAL_API_KEY }}" \
+              DEEPSEEK_API_KEY="${{ secrets.DEEPSEEK_API_KEY }}" \
+              HUGGINGFACE_API_KEY="${{ secrets.HUGGINGFACE_API_KEY }}" \
+              BUDDIE_HF_DATASET="${{ secrets.BUDDIE_HF_DATASET }}" \
+              BUDDIE_HF_CONFIG="${{ secrets.BUDDIE_HF_CONFIG }}" \
+              ENCRYPTION_KEY="${{ secrets.ENCRYPTION_KEY }}" \
+              CLERK_SECRET_KEY="${{ secrets.CLERK_SECRET_KEY }}" \
+              CLERK_JWT_KEY="${{ secrets.CLERK_JWT_KEY }}"
+
       # ── Deploy to Azure App Service (Service Principal) ─────────────────────
       - name: Azure Login (Service Principal)
         if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE == '' && env.AZURE_CREDENTIALS != '' }}
@@ -88,6 +110,28 @@ jobs:
           app-name: ${{ env.TARGET_WEBAPP_NAME }}
           package: server
           startup-command: 'npm install --omit=dev && node server.js'
+
+      - name: Configure Azure App Settings for Buddie AI
+        if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE == '' && env.AZURE_CREDENTIALS != '' }}
+        run: |
+          az webapp config appsettings set \
+            --name "${{ env.TARGET_WEBAPP_NAME }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --settings \
+              OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              AZURE_OPENAI_ENDPOINT="${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
+              AZURE_OPENAI_DEPLOYMENT="${{ secrets.AZURE_OPENAI_DEPLOYMENT }}" \
+              AZURE_OPENAI_API_KEY="${{ secrets.AZURE_OPENAI_API_KEY }}" \
+              GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
+              GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+              MISTRAL_API_KEY="${{ secrets.MISTRAL_API_KEY }}" \
+              DEEPSEEK_API_KEY="${{ secrets.DEEPSEEK_API_KEY }}" \
+              HUGGINGFACE_API_KEY="${{ secrets.HUGGINGFACE_API_KEY }}" \
+              BUDDIE_HF_DATASET="${{ secrets.BUDDIE_HF_DATASET }}" \
+              BUDDIE_HF_CONFIG="${{ secrets.BUDDIE_HF_CONFIG }}" \
+              ENCRYPTION_KEY="${{ secrets.ENCRYPTION_KEY }}" \
+              CLERK_SECRET_KEY="${{ secrets.CLERK_SECRET_KEY }}" \
+              CLERK_JWT_KEY="${{ secrets.CLERK_JWT_KEY }}"
 
       - name: Validate Azure deployment credentials
         if: ${{ env.AZURE_WEBAPP_PUBLISH_PROFILE == '' && env.AZURE_CREDENTIALS == '' }}

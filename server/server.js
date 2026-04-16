@@ -18,7 +18,7 @@ import {
   sendVolunteerInvite,
   sendTherapistInvite,
   sendEmail,
-} from "./brevoMailer.js";
+} from "./brevo.js";
 import {
   detectEmotionWithKenyanLayer,
   getKenyanCrisisBridgeResponse,
@@ -712,13 +712,11 @@ const clearSharedUserCookie = (req, res) => {
   res.setHeader("Set-Cookie", cookie);
 };
 const getEventsAuthSecret = () => {
-  const explicitSecret =
-    process.env.EVENTS_AUTH_SECRET || process.env.APPSETTING_EVENTS_AUTH_SECRET;
+  const explicitSecret = process.env.EVENTS_AUTH_SECRET;
   if (explicitSecret && String(explicitSecret).trim()) {
     return String(explicitSecret).trim();
   }
-  const clerkSecret =
-    process.env.CLERK_SECRET_KEY || process.env.APPSETTING_CLERK_SECRET_KEY;
+  const clerkSecret = process.env.CLERK_SECRET_KEY;
   return clerkSecret ? String(clerkSecret).trim() : "";
 };
 
@@ -4601,9 +4599,7 @@ const toEventSlug = (value = "") => {
 
 const buildEventPublicLink = (req, slug) => {
   const configuredBase = (
-    process.env.EVENTS_APP_BASE_URL ||
-    process.env.APPSETTING_EVENTS_APP_BASE_URL ||
-    ""
+    process.env.EVENTS_APP_BASE_URL || ""
   )
     .toString()
     .trim();
@@ -4641,9 +4637,7 @@ const buildEventPublicLink = (req, slug) => {
 
 const resolveCanonicalEventsBase = (req) => {
   const configuredBase = (
-    process.env.EVENTS_APP_BASE_URL ||
-    process.env.APPSETTING_EVENTS_APP_BASE_URL ||
-    ""
+    process.env.EVENTS_APP_BASE_URL || ""
   )
     .toString()
     .trim();
@@ -4787,8 +4781,7 @@ app.post("/api/admin/send-email", requireAdmin, async (req, res) => {
 app.get("/api/push/public-key", (req, res) => {
   const publicKey =
     process.env.VITE_VAPID_PUBLIC_KEY ||
-    process.env.VAPID_PUBLIC_KEY ||
-    process.env.APPSETTING_VAPID_PUBLIC_KEY;
+    process.env.VAPID_PUBLIC_KEY;
   if (!publicKey) {
     return res.status(404).json({ error: "VAPID public key not configured" });
   }

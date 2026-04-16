@@ -1,4 +1,4 @@
-import { Home, MessageCircleHeart, BookHeart, Wind, GraduationCap, Sparkles, Users, Shield } from 'lucide-react';
+import { Home, MessageCircleHeart, BookHeart, Wind, GraduationCap, Sparkles, Users, Shield, Stethoscope } from 'lucide-react';
 import { ViewState } from './types';
 
 export const APP_NAME = "UNITY WITHIN";
@@ -6,6 +6,7 @@ export const API_BASE_URL = "/api";
 
 export const NAVIGATION_ITEMS: { id: ViewState; label: string; icon: any }[] = [
   { id: 'dashboard', label: 'Home', icon: Home },
+  { id: 'support', label: 'Support', icon: Stethoscope },
   { id: 'wellness', label: 'Toolkit', icon: Sparkles },
   { id: 'chat', label: 'Buddie', icon: MessageCircleHeart },
   { id: 'community', label: 'Community', icon: Users },
