@@ -126,6 +126,19 @@ function isBase64DataUrl(str) {
   return str.startsWith("data:") && str.includes("base64,");
 }
 
+function isDbConnectivityError(error) {
+  const code = String(error?.code || "").toUpperCase();
+  return [
+    "ETIMEDOUT",
+    "ESOCKET",
+    "ECONNREFUSED",
+    "ECONNRESET",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "PROTOCOL_CONNECTION_LOST",
+  ].includes(code);
+}
+
 const isAzureAppService = Boolean(
   process.env.WEBSITE_INSTANCE_ID || process.env.WEBSITE_SITE_NAME,
 );
@@ -3519,6 +3532,13 @@ app.post("/api/signup", async (req, res) => {
     });
   } catch (error) {
     console.error("Signup error:", error);
+    if (isDbConnectivityError(error)) {
+      return res.status(503).json({
+        error: "Database unavailable",
+        message:
+          "Signup is temporarily unavailable. Please try again shortly.",
+      });
+    }
     res.status(500).json({
       error: "Server error",
       message: "Something went wrong. Please try again.",
@@ -3582,6 +3602,13 @@ app.post("/api/login", async (req, res) => {
     });
   } catch (error) {
     console.error("Login error:", error);
+    if (isDbConnectivityError(error)) {
+      return res.status(503).json({
+        error: "Database unavailable",
+        message:
+          "Authentication is temporarily unavailable. Please try again shortly.",
+      });
+    }
     res.status(500).json({
       error: "Server error",
       message: "Something went wrong. Please try again.",
@@ -4360,6 +4387,13 @@ io.on("connection", (socket) => {
       io.to(roomId).emit("receive_message", messageData);
     } catch (err) {
       console.error("Error saving socket message:", err);
+      if (isDbConnectivityError(error)) {
+        return res.status(503).json({
+          error: "Database unavailable",
+          message:
+            "Therapist authentication is temporarily unavailable. Please try again shortly.",
+        });
+      }
       io.to(roomId).emit("receive_message", messageData);
     }
   });

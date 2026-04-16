@@ -3,13 +3,33 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const isProduction = process.env.NODE_ENV === 'production';
+const dbHost = process.env.DB_HOST || (isProduction ? '' : 'localhost');
+const dbUser = process.env.DB_USER || (isProduction ? '' : 'root');
+const dbPassword = process.env.DB_PASSWORD || '';
+const dbName = process.env.DB_NAME || (isProduction ? '' : 'UNITY_WITHIN');
+const dbPort = Number(process.env.DB_PORT || 3306);
+const dbConnectTimeout = Number(process.env.DB_CONNECT_TIMEOUT_MS || 10000);
+const dbEnableSsl =
+    (process.env.DB_SSL || (isProduction ? 'true' : 'false')).toLowerCase() === 'true';
+const dbRejectUnauthorized =
+    (process.env.DB_SSL_REJECT_UNAUTHORIZED || 'true').toLowerCase() === 'true';
+
+if (isProduction && (!dbHost || !dbUser || !dbName)) {
+    console.warn('⚠️ DB connection is missing required Azure settings (DB_HOST, DB_USER, DB_NAME).');
+}
+
 // Create connection pool
 const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'UNITY_WITHIN',
-    port: process.env.DB_PORT || 3306,
+    host: dbHost,
+    user: dbUser,
+    password: dbPassword,
+    database: dbName,
+    port: dbPort,
+    connectTimeout: dbConnectTimeout,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
+    ssl: dbEnableSsl ? { rejectUnauthorized: dbRejectUnauthorized } : undefined,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
