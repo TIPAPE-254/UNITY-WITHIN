@@ -53,7 +53,7 @@ import cron from "node-cron";
 // ============================================
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const UPLOADS_DIR = path.join(__dirname, "uploads");
+const UPLOADS_DIR = "/tmp/uploads";
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
