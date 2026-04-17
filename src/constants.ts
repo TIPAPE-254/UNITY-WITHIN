@@ -1,5 +1,5 @@
 import { Home, MessageCircleHeart, BookHeart, Wind, GraduationCap, Sparkles } from 'lucide-react';
-import { ViewState } from './types';
+import { ViewState } from '../types';
 
 export const APP_NAME = "UNITY WITHIN";
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';

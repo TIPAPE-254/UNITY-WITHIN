@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useSignUp } from '@clerk/react';
 import { Heart, Lock, Mail, User, Eye, EyeOff, Phone } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
 
@@ -9,7 +8,6 @@ interface SignupProps {
 }
 
 export const Signup: React.FC<SignupProps> = ({ onSignupComplete, onSwitchToLogin }) => {
-    const { signUp } = useSignUp();
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -95,28 +93,9 @@ export const Signup: React.FC<SignupProps> = ({ onSignupComplete, onSwitchToLogi
         }
     };
 
-    const handleGoogleSignup = async () => {
-        if (!signUp) {
-            setMessage('Google sign-up is not available. Please try again in a moment.');
-            return;
-        }
-
-        try {
-            setMessage('Connecting gently...');
-            // Use the signUp resource to authenticate with Google OAuth
-            if ('authenticateWithRedirect' in signUp) {
-                await (signUp as any).authenticateWithRedirect({
-                    strategy: 'oauth_google',
-                    redirectUrl: `${window.location.origin}/sso-callback`,
-                    redirectUrlComplete: `${window.location.origin}/`,
-                });
-            } else {
-                setMessage('Google sign-up is not available. Please try again later.');
-            }
-        } catch (oauthError) {
-            console.error('Google signup error:', oauthError);
-            setMessage('Google sign-up failed. Please try again.');
-        }
+    const handleGoogleSignup = () => {
+        setMessage('Connecting gently...');
+        // Google OAuth would go here
     };
 
     return (

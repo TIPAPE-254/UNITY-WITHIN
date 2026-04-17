@@ -13,8 +13,6 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@clerk/express": "^2.1.5",
-    "@clerk/react": "^6.4.2",
     "chart.js": "^4.5.1",
     "chartjs-adapter-date-fns": "^3.0.0",
     "date-fns": "^4.1.0",

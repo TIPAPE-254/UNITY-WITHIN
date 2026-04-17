@@ -66,75 +66,74 @@ export async function syncClerkAppUser(clerkAuth) {
     throw new Error("Clerk user ID is required");
   }
 
-  let result = null;
+  let rows = [];
   try {
-    result = await pool.query(
-      "SELECT * FROM users WHERE clerk_user_id = $1 LIMIT 1",
+    [rows] = await pool.query(
+      "SELECT * FROM users WHERE clerk_user_id = ? LIMIT 1",
       [userId]
     );
   } catch (e) {
     console.error("Database query error:", e);
   }
 
-  if (result && result.rows && result.rows.length > 0) {
-    return result.rows[0];
+  if (rows.length > 0) {
+    return rows[0];
   }
 
   if (!email) {
     throw new Error("Email required for new user creation");
   }
 
-  let existingResult = null;
+  let existingRows = [];
   try {
-    existingResult = await pool.query(
-      "SELECT * FROM users WHERE email = $1 LIMIT 1",
+    [existingRows] = await pool.query(
+      "SELECT * FROM users WHERE email = ? LIMIT 1",
       [email]
     );
   } catch (e) {
-    existingResult = null;
+    existingRows = [];
   }
 
-  if (existingResult && existingResult.rows && existingResult.rows.length > 0) {
+  if (existingRows.length > 0) {
     await pool.query(
-      "UPDATE users SET clerk_user_id = $1, auth_provider = 'clerk' WHERE id = $2",
-      [userId, existingResult.rows[0].id]
+      "UPDATE users SET clerk_user_id = ?, auth_provider = 'clerk' WHERE id = ?",
+      [userId, existingRows[0].id]
     );
-    const updatedResult = await pool.query("SELECT * FROM users WHERE id = $1 LIMIT 1", [existingResult.rows[0].id]);
-    return updatedResult.rows[0];
+    [rows] = await pool.query("SELECT * FROM users WHERE id = ? LIMIT 1", [existingRows[0].id]);
+    return rows[0];
   }
 
-  const insertResult = await pool.query(
+  const [result] = await pool.query(
     `INSERT INTO users (name, email, clerk_user_id, auth_provider, email_verified, trusted, profile_image, created_at) 
-     VALUES ($1, $2, $3, 'clerk', true, false, '', NOW()) RETURNING id`,
+     VALUES (?, ?, ?, 'clerk', 1, 0, '', NOW())`,
     [email.split("@")[0], email, userId]
   );
 
-  const newUserId = insertResult.rows[0].id;
-  const finalResult = await pool.query("SELECT * FROM users WHERE id = $1 LIMIT 1", [newUserId]);
-  return finalResult.rows[0];
+  [rows] = await pool.query("SELECT * FROM users WHERE id = ? LIMIT 1", [result.insertId]);
+  return rows[0];
 }
 
 export async function getClerkUser(clerkUserId) {
   if (!clerkUserId) return null;
   
-  let result = null;
+  let rows = [];
   try {
-    result = await pool.query(
-      "SELECT * FROM users WHERE clerk_user_id = $1 LIMIT 1",
+    [rows] = await pool.query(
+      "SELECT * FROM users WHERE clerk_user_id = ? LIMIT 1",
       [clerkUserId]
     );
   } catch (e) {
     return null;
   }
   
-  return result && result.rows && result.rows.length > 0 ? result.rows[0] : null;
+  return rows.length > 0 ? rows[0] : null;
 }
 
 export async function linkClerkUser(userId, clerkUserId) {
   if (!userId || !clerkUserId) return false;
   
   await pool.query(
-    "UPDATE users SET clerk_user_id = $1, auth_provider = 'clerk' WHERE id = $2",
+    "UPDATE users SET clerk_user_id = ?, auth_provider = 'clerk' WHERE id = ?",
     [clerkUserId, userId]
   );
   return true;
