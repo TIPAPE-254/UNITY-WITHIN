@@ -9,7 +9,7 @@ export const NAVIGATION_ITEMS: { id: ViewState; label: string; icon: any }[] = [
   { id: 'support', label: 'Support', icon: Stethoscope },
   { id: 'wellness', label: 'Toolkit', icon: Sparkles },
   { id: 'chat', label: 'Buddie', icon: MessageCircleHeart },
-  { id: 'community', label: 'Community', icon: Users },
+  { id: 'community', label: 'Communities', icon: Users },
   { id: 'journal', label: 'Journal', icon: BookHeart },
   { id: 'breathe', label: 'Breathe', icon: Wind },
   { id: 'education', label: 'Learn', icon: GraduationCap },

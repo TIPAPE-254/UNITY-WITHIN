@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSignIn } from '@clerk/react';
 import { Heart, Lock, Mail, Eye, EyeOff, Wind } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
 
@@ -9,6 +10,7 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onLoginComplete, onSwitchToSignup, onForgotPassword }) => {
+    const { signIn } = useSignIn();
     const [formData, setFormData] = useState({
         email: '',
         password: ''
@@ -85,9 +87,30 @@ export const Login: React.FC<LoginProps> = ({ onLoginComplete, onSwitchToSignup,
         }
     };
 
-    const handleGoogleLogin = () => {
-        setMessage('Connecting gently...');
-        // Google OAuth would go here
+    const handleGoogleLogin = async () => {
+        if (!signIn) {
+            setError('Authentication system is initializing. Please try again in a moment.');
+            return;
+        }
+
+        try {
+            setError('');
+            setMessage('Connecting gently...');
+            // Use the signIn resource to authenticate with Google OAuth
+            if ('authenticateWithRedirect' in signIn) {
+                await (signIn as any).authenticateWithRedirect({
+                    strategy: 'oauth_google',
+                    redirectUrl: `${window.location.origin}/sso-callback`,
+                    redirectUrlComplete: `${window.location.origin}/`,
+                });
+            } else {
+                setError('Google sign-in is not available. Please try again later.');
+            }
+        } catch (oauthError) {
+            console.error('Google login error:', oauthError);
+            setMessage('');
+            setError('Google sign-in failed. Please try again.');
+        }
     };
 
     return (

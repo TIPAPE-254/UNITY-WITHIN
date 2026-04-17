@@ -192,3 +192,23 @@ async function initializeDatabase() {
 }
 
 export { pool, testConnection, initializeDatabase, isDatabaseAvailable };
+
+export async function query(sql, params = []) {
+    try {
+        const result = await pool.query(sql, params);
+        return result.rows || [];
+    } catch (error) {
+        console.error('DB query error:', error.message);
+        return [];
+    }
+}
+
+export async function queryOne(sql, params = []) {
+    try {
+        const result = await pool.query(sql, params);
+        return result.rows?.[0] || null;
+    } catch (error) {
+        console.error('DB queryOne error:', error.message);
+        return null;
+    }
+}

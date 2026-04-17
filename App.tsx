@@ -40,11 +40,13 @@ type AppView = ViewState | 'landing' | 'signup' | 'login' | 'forgot-password' | 
 export default function App() {
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [navData, setNavData] = useState<any>({});
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<{ id: number; name: string; email: string; role?: string } | null>(null);
 
   const handleNavigate = (view: AppView, data?: any) => {
     setCurrentView(view);
+    setIsMobileMenuOpen(false);
     if (data) {
       setNavData(data);
     } else {
@@ -152,6 +154,10 @@ export default function App() {
 
   // Helper to check if we're on an auth/landing page (no sidebar/nav)
   const isAuthPage = ['landing', 'signup', 'login', 'forgot-password', 'why-unity'].includes(currentView);
+  const visibleNavItems = NAVIGATION_ITEMS.filter(item => item.id !== 'admin' || user?.role === 'admin' || user?.email === 'lepiromatayo@gmail.com');
+  const stickyBottomNavIds: AppView[] = ['dashboard', 'chat', 'community'];
+  const mobileBottomNavItems = visibleNavItems.filter(item => stickyBottomNavIds.includes(item.id as AppView));
+  const mobileMenuItems = visibleNavItems.filter(item => !stickyBottomNavIds.includes(item.id as AppView));
 
   return (
     <div className="min-h-screen bg-[#FFF5F7] flex flex-col md:flex-row text-unity-black font-sans selection:bg-unity-200 selection:text-unity-900">
@@ -210,8 +216,47 @@ export default function App() {
               <Heart className="fill-current" size={24} />
               <span className="font-extrabold text-lg text-unity-black">UNITY</span>
             </div>
-            <div className="w-8 h-8 rounded-full bg-unity-100 flex items-center justify-center text-unity-600 text-xs font-bold">
-              {user ? user.name?.charAt(0).toUpperCase() || 'U' : 'U'}
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-unity-100 flex items-center justify-center text-unity-600 text-xs font-bold">
+                {user ? user.name?.charAt(0).toUpperCase() || 'U' : 'U'}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+                className="h-9 w-9 rounded-xl bg-white border border-unity-100 text-unity-600 shadow-sm flex items-center justify-center"
+                aria-label="Open mobile menu"
+              >
+                {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!isAuthPage && isMobileMenuOpen && (
+          <div className="md:hidden mb-4 rounded-2xl border border-unity-100 bg-white/95 backdrop-blur-sm shadow-lg p-3 space-y-1 animate-in slide-in-from-top-2 duration-200">
+            <p className="px-2 pt-1 pb-2 text-[11px] uppercase tracking-[0.18em] text-unity-400 font-bold">More</p>
+            {mobileMenuItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => handleNavigate(item.id as AppView)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${currentView === item.id
+                  ? 'bg-unity-50 text-unity-600'
+                  : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <item.icon size={18} className={currentView === item.id ? 'stroke-[2.4px]' : 'stroke-2'} />
+                <span>{item.label}</span>
+              </button>
+            ))}
+            <div className="pt-2 mt-2 border-t border-unity-100">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50 transition-colors"
+              >
+                <LogOut size={18} />
+                <span>Log out</span>
+              </button>
             </div>
           </div>
         )}
@@ -227,12 +272,12 @@ export default function App() {
       {/* Bottom Navigation (Mobile) - Hidden on auth pages */}
       {!isAuthPage && (
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-unity-100 p-2 z-50 flex justify-around items-center pb-safe">
-          {NAVIGATION_ITEMS.filter(item => item.id !== 'admin' || user?.role === 'admin' || user?.email === 'lepiromatayo@gmail.com').map((item) => (
+          {mobileBottomNavItems.map((item) => (
             <button
               key={item.id}
               onClick={() => handleNavigate(item.id as AppView)}
-              className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${currentView === item.id
-                ? 'text-unity-500'
+              className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-xl transition-all ${currentView === item.id
+                ? 'text-unity-500 bg-unity-50/70'
                 : 'text-gray-400'
                 }`}
             >

@@ -487,12 +487,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onNaviga
             {/* Volunteer Promotion */}
             <section className="py-24 px-6 bg-gradient-to-b from-white via-unity-50 to-pink-50">
                 <div className="max-w-5xl mx-auto">
-                    <a
-                        href="https://wa.me/254715765561?text=Hello%20Unity%20Within%2C%20I%27d%20love%20to%20volunteer%20and%20support%20your%20mission.%20Please%20share%20the%20next%20steps%20and%20available%20roles."
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group block rounded-[2rem] bg-gradient-to-br from-purple-100 via-pink-50 to-blue-100 p-8 md:p-12 shadow-2xl hover:shadow-3xl transition-all duration-300 hover:-translate-y-1"
-                        aria-label="Volunteer with Unity Within on WhatsApp"
+                    <button
+                        onClick={() => onNavigate && onNavigate('volunteer')}
+                        className="group block w-full rounded-[2rem] bg-gradient-to-br from-purple-100 via-pink-50 to-blue-100 p-8 md:p-12 shadow-2xl hover:shadow-3xl transition-all duration-300 hover:-translate-y-1 text-left"
+                        aria-label="Volunteer with Unity Within"
                     >
                         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-10">
                             <div className="max-w-2xl">
@@ -506,7 +504,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onNaviga
                                     We are looking for compassionate people who want to show up, spread hope, and strengthen emotional wellness across communities in Kenya.
                                 </p>
                                 <div className="inline-flex items-center gap-3 rounded-full bg-white/80 px-5 py-3 text-unity-700 font-semibold shadow-md group-hover:bg-white transition-colors">
-                                    Start the conversation on WhatsApp
+                                    Learn more about volunteering
                                 </div>
                             </div>
 
@@ -533,7 +531,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onNaviga
                                 </div>
                             </div>
                         </div>
-                    </a>
+                    </button>
                 </div>
             </section>
 
