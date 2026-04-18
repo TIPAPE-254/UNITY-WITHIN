@@ -273,15 +273,15 @@ No additional code changes required. Simply configure Azure App Service environm
 ## PostgreSQL-ONLY REFACTORING SUMMARY ✅ (April 14, 2026)
 
 ### What Was Removed:
-1. **MySQL Dependencies**
+1. **Legacy SQL Dependencies**
    - ❌ Deleted `server/package-lock.json` (artifact-only)
-   - ❌ Removed mysql2 from dependency locks
+   - ❌ Removed legacy SQL-client lockfile artifacts
    - ✅ Only `pg` library remains
 
-2. **MySQL Code References**
-   - ✅ No mysql/mysql2 imports anywhere
-   - ✅ No MySQL-specific logic in codebase
-   - ✅ 0 MySQL references in active code
+2. **Legacy SQL Code References**
+   - ✅ No legacy SQL client imports anywhere
+   - ✅ No non-PostgreSQL SQL logic in codebase
+   - ✅ 0 legacy SQL references in active application code
 
 ### PostgreSQL Implementation:
 1. **Database Connection**
@@ -294,8 +294,8 @@ No additional code changes required. Simply configure Azure App Service environm
 
 2. **Query Handling**
    - All queries use `pool.query()`
-   - Automatic placeholder conversion: `?` → `$1, $2, $3`
-   - Example: `pool.query('SELECT * FROM users WHERE id = ?', [userId])`
+   - PostgreSQL parameter placeholders: `$1, $2, $3`
+   - Example: `pool.query('SELECT * FROM users WHERE id = $1', [userId])`
 
 3. **Azure Integration**
    - Uses `readRuntimeEnv()` for environment variable precedence
@@ -307,8 +307,8 @@ No additional code changes required. Simply configure Azure App Service environm
 - ✅ server/db.js: PostgreSQL-only configuration
 - ✅ server/server.js: Uses `pool` abstraction exclusively
 - ✅ All SQL queries: Compatible with PostgreSQL  
-- ✅ Imports: No mysql/mysql2 anywhere
-- ✅ Lock files: Cleaned of mysql2 artifacts
+- ✅ Imports: No legacy SQL-client imports
+- ✅ Lock files: Cleaned of legacy SQL-client artifacts
 - ✅ Azure Ready: Environment-variable driven configuration
 
 ### Azure Deployment:

@@ -219,7 +219,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/moods?userId=${encodeURIComponent(userId)}&range=week`);
+      const response = await fetch(`${API_BASE_URL}/moods?userId=${encodeURIComponent(userId)}&range=week`);
       if (!response.ok) {
         throw new Error('Failed to fetch mood history');
       }
@@ -237,7 +237,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
     if (!userId) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/moods`, {
+      const response = await fetch(`${API_BASE_URL}/moods`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -266,7 +266,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
 
     void fetchMoodHistory();
 
-    const streamUrl = `${API_BASE_URL}/api/moods/stream?userId=${encodeURIComponent(userId)}`;
+    const streamUrl = `${API_BASE_URL}/moods/stream?userId=${encodeURIComponent(userId)}`;
     const stream = new EventSource(streamUrl);
 
     const handleMoodUpdate = (event: MessageEvent) => {

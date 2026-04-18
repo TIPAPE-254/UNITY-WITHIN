@@ -71,8 +71,11 @@ const [isLive, setIsLive] = useState(true);
         const incomingHeaders = (options.headers || {}) as Record<string, string>;
         return fetch(url, {
             ...options,
+            cache: 'no-store',
             headers: {
                 ...baseHeaders,
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                Pragma: 'no-cache',
                 ...incomingHeaders,
             },
         });
@@ -163,14 +166,33 @@ const [isLive, setIsLive] = useState(true);
         }
     }, []);
 
+    const fetchAllAdminData = useCallback(async () => {
+        const tasks: Array<Promise<void>> = [
+            fetchStats(),
+            fetchTabData('users', null),
+            fetchTabData('volunteers', null),
+            fetchTabData('rooms', null),
+            fetchTabData('messages', null),
+            fetchTabData('blocked', null),
+            fetchTabData('moods', null),
+            fetchTabData('journals', null),
+            fetchTabData('wins', null),
+            fetchTabData('reports', null),
+        ];
+
+        await Promise.allSettled(tasks);
+    }, [fetchStats, fetchTabData]);
+
     const refreshNow = useCallback(async (showLoader = false) => {
         if (showLoader) setIsLoading(true);
         setIsSyncing(true);
         try {
-            await Promise.all([
-                fetchStats(),
-                fetchTabData(activeTab, selectedRoom)
-            ]);
+            await fetchAllAdminData();
+
+            if (selectedRoom) {
+                await fetchTabData(activeTab, selectedRoom);
+            }
+
             setLastUpdated(new Date());
         } catch (e) {
             console.error(e);
@@ -178,7 +200,7 @@ const [isLive, setIsLive] = useState(true);
             if (showLoader) setIsLoading(false);
             setIsSyncing(false);
         }
-    }, [activeTab, selectedRoom, fetchStats, fetchTabData]);
+    }, [activeTab, selectedRoom, fetchTabData, fetchAllAdminData]);
 
     useEffect(() => {
         void refreshNow(true);
@@ -187,7 +209,7 @@ const [isLive, setIsLive] = useState(true);
     useEffect(() => {
         if (!isLive) return;
 
-        const intervalMs = selectedRoom ? 3000 : 5000;
+        const intervalMs = selectedRoom ? 4000 : 8000;
         const timer = window.setInterval(() => {
             void refreshNow(false);
         }, intervalMs);

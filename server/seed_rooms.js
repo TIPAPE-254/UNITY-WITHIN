@@ -13,9 +13,9 @@ async function updateRooms() {
         console.log('🔄 Seeding new rooms...');
         for (const room of newRooms) {
             // Check if exists
-            const [rows] = await pool.query('SELECT id FROM chat_rooms WHERE name = ?', [room[0]]);
-            if (rows.length === 0) {
-                await pool.query('INSERT INTO chat_rooms (name, description, type) VALUES (?, ?, ?)', room);
+            const result = await pool.query('SELECT id FROM chat_rooms WHERE name = $1', [room[0]]);
+            if (!result.rows?.length) {
+                await pool.query('INSERT INTO chat_rooms (name, description, type) VALUES ($1, $2, $3)', room);
                 console.log(`✅ Created room: ${room[0]}`);
             } else {
                 console.log(`ℹ️ Room already exists: ${room[0]}`);

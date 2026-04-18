@@ -20,6 +20,14 @@ export const Login: React.FC<LoginProps> = ({ onLoginComplete, onSwitchToSignup,
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
 
+    const parseJsonSafely = async (response: Response) => {
+        try {
+            return await response.json();
+        } catch {
+            return null;
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
@@ -39,11 +47,11 @@ export const Login: React.FC<LoginProps> = ({ onLoginComplete, onSwitchToSignup,
                 })
             });
 
-            const data = await response.json();
+            const data = await parseJsonSafely(response);
 
             if (response.ok) {
                 // Store user data in localStorage
-                localStorage.setItem('user', JSON.stringify(data.user));
+                localStorage.setItem('user', JSON.stringify(data?.user));
 
                 setIsLoading(false);
                 setMessage('welcome');
@@ -55,12 +63,28 @@ export const Login: React.FC<LoginProps> = ({ onLoginComplete, onSwitchToSignup,
             } else {
                 // Handle error
                 setIsLoading(false);
-                setError(data.message || 'Email or password is incorrect');
+                const backendError = data?.message || data?.error;
+                setError(backendError || `Login failed (${response.status}). Please try again.`);
             }
         } catch (error) {
             console.error('Login error:', error);
-            setIsLoading(false);
-            setError('Unable to reach the server. Please ensure the backend is running (run npm run dev:all) and you have a stable connection.');
+            try {
+                const health = await fetch(`${API_BASE_URL}/health`);
+                if (health.ok) {
+                    const healthData = await parseJsonSafely(health);
+                    if (healthData?.database === 'disconnected') {
+                        setError('Server is running, but Azure database is not reachable. Check Azure DB host, user, password, and network access.');
+                    } else {
+                        setError('Server is running, but login failed unexpectedly. Please try again.');
+                    }
+                } else {
+                    setError('Backend responded with an error. Please try again.');
+                }
+            } catch {
+                setError('Unable to reach the backend API. Start both frontend and backend with npm run dev:all.');
+            } finally {
+                setIsLoading(false);
+            }
         }
     };
 

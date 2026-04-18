@@ -30,7 +30,7 @@ To provide every young person in Kenya with a safe, non-judgmental space to brea
 - **Frontend**: React, Vite, TailwindCSS (Lazy Loaded).
 - **Backend**: Node.js, Express, Socket.io.
 - **AI**: Google Gemini API (v2.0 Flash).
-- **Database**: MySQL.
+- **Database**: PostgreSQL.
 
 ## 🏃 Run Locally
 
@@ -74,7 +74,7 @@ Target environment:
 ### Prerequisites
 - Azure subscription
 - Azure App Service (Node.js 20 LTS, Linux)
-- Azure Database for MySQL Flexible Server
+- Azure Database for PostgreSQL Flexible Server
 
 ### One-time Azure setup
 
@@ -83,17 +83,19 @@ Target environment:
    az group create --name unity-within-rg --location eastus
    az appservice plan create --name unity-within-plan --resource-group unity-within-rg --sku B1 --is-linux
    az webapp create --name unity-within --resource-group unity-within-rg --plan unity-within-plan --runtime "NODE:20-lts"
-   az mysql flexible-server create --name unity-within-db --resource-group unity-within-rg --sku-name Standard_B1ms --admin-user adminuser
+   az postgres flexible-server create --name unity-within-db --resource-group unity-within-rg --sku-name Standard_B1ms --admin-user adminuser --version 16
    ```
 
 2. **Add App Settings** in Azure Portal → App Service → Configuration → Application settings:
    | Setting | Value |
    |---------|-------|
    | `GEMINI_API_KEY` | Your Gemini API key |
-   | `DB_HOST` | `<your-server>.mysql.database.azure.com` |
-   | `DB_USER` | `adminuser` |
+   | `DB_HOST` | `<your-server>.postgres.database.azure.com` |
+   | `DB_USER` | `adminuser@<your-server>` |
    | `DB_PASSWORD` | Your DB password |
    | `DB_NAME` | `UNITY_WITHIN` |
+   | `DB_PORT` | `5432` |
+   | `DB_SSL` | `true` |
    | `ALLOWED_ORIGINS` | *(Optional)* `https://<your-app>.azurewebsites.net` (comma-separated if multiple) |
 
 3. **Configure GitHub Actions secrets** in GitHub → Settings → Secrets and variables:

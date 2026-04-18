@@ -5,14 +5,35 @@ const { Pool } = pkg;
 
 dotenv.config();
 
+const readEnv = (...keys) => {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (value && String(value).trim()) return String(value).trim();
+    }
+    return '';
+};
+
 async function inspect() {
+    const connectionString = readEnv('DATABASE_URL', 'POSTGRES_URL', 'DB_CONNECTION_STRING');
+    const host = readEnv('DB_HOST', 'POSTGRES_HOST');
+    const user = readEnv('DB_USER', 'POSTGRES_USER');
+    const database = readEnv('DB_NAME', 'POSTGRES_DB');
+
+    if (!connectionString && (!host || !user || !database)) {
+        console.error('Missing PostgreSQL settings. Set Azure DB env vars or DATABASE_URL before running inspect_db.js.');
+        process.exit(1);
+    }
+
     const pool = new Pool({
-        host: process.env.DB_HOST || process.env.POSTGRES_HOST || '127.0.0.1',
-        user: process.env.DB_USER || process.env.POSTGRES_USER || 'postgres',
-        password: process.env.DB_PASSWORD || process.env.POSTGRES_PASSWORD || '',
-        database: process.env.DB_NAME || process.env.POSTGRES_DB || 'UNITY_WITHIN',
-        port: process.env.DB_PORT || process.env.POSTGRES_PORT || 5432,
-        ssl: (process.env.DB_SSL || 'false').toLowerCase() === 'true'
+        connectionString: connectionString || undefined,
+        host: connectionString ? undefined : host,
+        user: connectionString ? undefined : user,
+        password: connectionString ? undefined : readEnv('DB_PASSWORD', 'POSTGRES_PASSWORD'),
+        database: connectionString ? undefined : database,
+        port: Number(readEnv('DB_PORT', 'POSTGRES_PORT') || 5432),
+        ssl: ['true', '1', 'require', 'verify-ca', 'verify-full'].includes((readEnv('DB_SSL', 'PGSSLMODE') || 'true').toLowerCase())
+            ? { rejectUnauthorized: false }
+            : false,
     });
 
     try {

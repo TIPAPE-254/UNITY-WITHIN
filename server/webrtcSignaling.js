@@ -92,12 +92,12 @@ export function setupWebRTCSignaling(io) {
     socket.on("call-invite", async ({ roomId, fromUserId, toUserId }) => {
       if (!roomId || !fromUserId || !toUserId) return;
 
-      const [rows] = await pool.query(
-        "SELECT id FROM users WHERE id = ? LIMIT 1",
+      const result = await pool.query(
+        "SELECT id FROM users WHERE id = $1 LIMIT 1",
         [toUserId]
       );
 
-      if (rows.length === 0) {
+      if (!result.rows?.length) {
         socket.emit("call-error", { error: "User not found" });
         return;
       }

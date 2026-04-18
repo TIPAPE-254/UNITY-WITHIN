@@ -281,7 +281,7 @@ const DEFAULT_CHAT_ROOMS = [
 
 // Production config validation
 const isProduction = process.env.NODE_ENV === "production";
-const PORT = Number(process.env.UNITY_SERVER_PORT || process.env.PORT || 5001);
+const PORT = Number(process.env.UNITY_SERVER_PORT || process.env.PORT || 5000);
 
 const validateProductionConfig = () => {
   if (isProduction) {
@@ -528,15 +528,17 @@ const requireUnityUser = async (req, res, next) => {
 
     let userRows = [];
     if (resolvedUserId) {
-      [userRows] = await pool.query(
+      const userResult = await pool.query(
         "SELECT id, name, email, display_name, profile_image, trusted, role, emergency_contact, auth_provider, clerk_user_id, email_verified FROM users WHERE id = $1 LIMIT 1",
         [resolvedUserId],
       );
+      userRows = userResult.rows || [];
     } else if (resolvedEmail) {
-      [userRows] = await pool.query(
+      const userResult = await pool.query(
         "SELECT id, name, email, display_name, profile_image, trusted, role, emergency_contact, auth_provider, clerk_user_id, email_verified FROM users WHERE email = $1 LIMIT 1",
         [resolvedEmail],
       );
+      userRows = userResult.rows || [];
     }
 
     const row = userRows?.[0];
@@ -862,15 +864,17 @@ const resolveEventsIdentity = async (req) => {
 
     let userRows = [];
     if (candidateUserId > 0) {
-      [userRows] = await pool.query(
+      const userResult = await pool.query(
         "SELECT id, email, role, clerk_user_id FROM users WHERE id = $1 LIMIT 1",
         [candidateUserId],
       );
+      userRows = userResult.rows || [];
     } else if (candidateEmail.includes("@")) {
-      [userRows] = await pool.query(
+      const userResult = await pool.query(
         "SELECT id, email, role, clerk_user_id FROM users WHERE email = $1 LIMIT 1",
         [candidateEmail],
       );
+      userRows = userResult.rows || [];
     }
 
     if (userRows?.length) {
@@ -1162,7 +1166,7 @@ const resolveTherapistIdFromHeaders = async (headers = {}) => {
       "SELECT id FROM therapists WHERE id = $1 LIMIT 1",
       [therapistIdHeader],
     );
-    if (rows?.length) return Number(rows[0].id);
+    if (dbResult.rows?.length) return Number(dbResult.rows[0].id);
   }
 
   const userIdHeader = Number(headers["x-user-id"] || 0);
@@ -1171,7 +1175,7 @@ const resolveTherapistIdFromHeaders = async (headers = {}) => {
       "SELECT id FROM therapists WHERE user_id = $1 LIMIT 1",
       [userIdHeader],
     );
-    if (rows?.length) return Number(rows[0].id);
+    if (dbResult.rows?.length) return Number(dbResult.rows[0].id);
   }
 
   const emailHeader = (headers["x-user-email"] || "")
@@ -1180,10 +1184,10 @@ const resolveTherapistIdFromHeaders = async (headers = {}) => {
     .trim();
   if (emailHeader) {
     const dbResult = await pool.query(
-      "SELECT id FROM therapists WHERE LOWER(email) = LOWER(?) LIMIT 1",
+      "SELECT id FROM therapists WHERE LOWER(email) = LOWER($1) LIMIT 1",
       [emailHeader],
     );
-    if (rows?.length) return Number(rows[0].id);
+    if (dbResult.rows?.length) return Number(dbResult.rows[0].id);
   }
 
   return 0;
@@ -1605,7 +1609,7 @@ const runSupportSessionAutomation = async () => {
         joinState.phase === "live"
       ) {
         await pool.query(
-          "UPDATE support_sessions SET status = ? WHERE id = $1",
+          "UPDATE support_sessions SET status = $1 WHERE id = $2",
           ["live", session.id],
         );
 
@@ -3207,7 +3211,7 @@ const buildBuddieUserPrompt = ({
 const ensureDefaultRoomsSeeded = async () => {
   try {
     const dbResult = await pool.query("SELECT COUNT(*) as count FROM chat_rooms");
-    const rawCount = rows?.[0]?.count;
+    const rawCount = dbResult.rows?.[0]?.count;
     const count =
       typeof rawCount === "number" ? rawCount : parseInt(rawCount || "0", 10);
 
@@ -3215,7 +3219,7 @@ const ensureDefaultRoomsSeeded = async () => {
 
     for (const room of DEFAULT_CHAT_ROOMS) {
       await pool.query(
-        "INSERT INTO chat_rooms (name, description, type) VALUES (?, ?, ?)",
+        "INSERT INTO chat_rooms (name, description, type) VALUES ($1, $2, $3)",
         room,
       );
     }
@@ -3454,10 +3458,10 @@ app.use(async (req, res, next) => {
 
     try {
       const dbResult = await pool.query(
-        "SELECT id FROM events WHERE slug = ? LIMIT 1",
+        "SELECT id FROM events WHERE slug = $1 LIMIT 1",
         [slug],
       );
-      if (!rows?.length) {
+      if (!dbResult.rows?.length) {
         return next();
       }
 
@@ -3476,14 +3480,6 @@ app.use(async (req, res, next) => {
     console.error("Events canonical redirect middleware error:", error);
     return next();
   }
-});
-
-// Initialize database and default rooms on startup
-testConnection();
-initializeDatabase().then(async () => {
-  const dbReady = await isDatabaseAvailable();
-  if (!dbReady) return;
-  await ensureDefaultRoomsSeeded();
 });
 
 // Signup endpoint
@@ -3976,7 +3972,7 @@ app.put("/api/profile", requireUnityUser, async (req, res) => {
     const values = [];
     allowed.forEach((key) => {
       if (fields[key] !== undefined) {
-        updates.push(`${key} = ?`);
+        updates.push(`${key} = $${values.length + 1}`);
         values.push(fields[key]);
       }
     });
@@ -3984,7 +3980,7 @@ app.put("/api/profile", requireUnityUser, async (req, res) => {
       return res.status(400).json({ error: "No fields to update" });
     values.push(req.user.id);
     await pool.query(
-      `UPDATE users SET ${updates.join(", ")} WHERE id = $1`,
+      `UPDATE users SET ${updates.join(", ")} WHERE id = $${values.length}`,
       values,
     );
     res.json({ success: true });
@@ -4266,7 +4262,7 @@ io.on("connection", (socket) => {
       const unreadRows = await query(
         `SELECT id, user_id, session_id, type, title, message, payload, channel, is_read, created_at
                  FROM support_notifications
-                 WHERE user_id = $1 AND is_read = ?
+                 WHERE user_id = $1 AND is_read = $2
                  ORDER BY created_at DESC
                  LIMIT 50`,
         [userId, false],
@@ -4325,12 +4321,12 @@ io.on("connection", (socket) => {
       const dbResult = await pool.query(
         `SELECT id
                  FROM rsvps
-                 WHERE user_id = $1 AND event_id = ? AND status = 'yes'
+                 WHERE user_id = $1 AND event_id = $2 AND status = 'yes'
                  LIMIT 1`,
         [userId, eventId],
       );
 
-      if (!rows?.length) {
+      if (!dbResult.rows?.length) {
         socket.emit("event_access_denied", {
           reason: "RSVP YES is required before joining event chat.",
         });
@@ -4364,7 +4360,7 @@ io.on("connection", (socket) => {
       const rsvpRows = await query(
         `SELECT id
                  FROM rsvps
-                 WHERE user_id = $1 AND event_id = ? AND status = 'yes'
+                 WHERE user_id = $1 AND event_id = $2 AND status = 'yes'
                  LIMIT 1`,
         [userId, eventId],
       );
@@ -4441,7 +4437,7 @@ io.on("connection", (socket) => {
       // Log to database
       try {
         await pool.query(
-          "INSERT INTO moderation_logs (user_id, content, reason, flag_type, ip_address) VALUES (?, ?, ?, ?, ?)",
+          "INSERT INTO moderation_logs (user_id, content, reason, flag_type, ip_address) VALUES ($1, $2, $3, $4, $5)",
           [
             userId,
             content,
@@ -4490,13 +4486,6 @@ io.on("connection", (socket) => {
       io.to(roomId).emit("receive_message", messageData);
     } catch (err) {
       console.error("Error saving socket message:", err);
-      if (isDbConnectivityError(error)) {
-        return res.status(503).json({
-          error: "Database unavailable",
-          message:
-            "Therapist authentication is temporarily unavailable. Please try again shortly.",
-        });
-      }
       io.to(roomId).emit("receive_message", messageData);
     }
   });
@@ -4525,7 +4514,7 @@ io.on("connection", (socket) => {
         "SELECT id, therapist_id, user_id, call_mode, status FROM support_sessions WHERE id = $1 LIMIT 1",
         [parsedSessionId],
       );
-      const session = rows?.[0];
+      const session = dbResult.rows?.[0];
       if (!session) return;
 
       const normalizedStatus = normalizeSupportStatus(session.status, "new");
@@ -4539,7 +4528,7 @@ io.on("connection", (socket) => {
 
       if (normalizedStatus !== "in_progress") {
         await pool.query(
-          "UPDATE support_sessions SET status = ?, start_time = COALESCE(start_time, NOW()) WHERE id = $1",
+          "UPDATE support_sessions SET status = $1, start_time = COALESCE(start_time, NOW()) WHERE id = $2",
           ["in_progress", parsedSessionId],
         );
       }
@@ -5386,7 +5375,7 @@ app.post("/api/admin/invite-therapist", requireAdmin, async (req, res) => {
 
     await pool.query(
       `INSERT INTO therapist_invites (email, phone, token, status, expires_at)
-             VALUES (?, ?, ?, 'pending', NOW() + INTERVAL 3 DAY)`,
+             VALUES ($1, $2, $3, 'pending', NOW() + INTERVAL '3 DAY')`,
       [email, phoneRaw || null, token],
     );
 
@@ -5478,12 +5467,12 @@ app.get("/api/invite/:token", async (req, res) => {
     const dbResult = await pool.query(
       `SELECT id, email, phone, token, status, expires_at, created_at
              FROM therapist_invites
-             WHERE token = ?
+             WHERE token = $1
              LIMIT 1`,
       [token],
     );
 
-    const invite = rows?.[0];
+    const invite = dbResult.rows?.[0];
     if (!invite) {
       return res.status(400).json({ success: false, error: "Invalid link" });
     }
@@ -5551,7 +5540,7 @@ app.post("/api/invite/complete", async (req, res) => {
     const inviteRows = await query(
       `SELECT id, email, phone, status, expires_at
              FROM therapist_invites
-             WHERE token = ?
+             WHERE token = $1
              LIMIT 1`,
       [token],
     );
@@ -5736,7 +5725,7 @@ app.put("/api/support/therapists/profile/self", async (req, res) => {
     allowedFields.forEach((field) => {
       const val = req.body[field];
       if (val !== undefined && val !== null) {
-        updates.push(`${field} = ?`);
+        updates.push(`${field} = $${values.length + 1}`);
         values.push(val);
       }
     });
@@ -5750,7 +5739,7 @@ app.put("/api/support/therapists/profile/self", async (req, res) => {
 
     values.push(therapistIdFromHeader);
     await pool.query(
-      `UPDATE therapists SET ${updates.join(", ")}, updated_at = NOW() WHERE id = ?`,
+      `UPDATE therapists SET ${updates.join(", ")}, updated_at = NOW() WHERE id = $${values.length}`,
       values,
     );
 
@@ -5771,22 +5760,22 @@ app.get("/api/support/therapists", async (req, res) => {
     const params = [];
 
     if (specialization) {
-      where.push("LOWER(specialization) LIKE LOWER(?)");
+      where.push(`LOWER(specialization) LIKE LOWER($${params.length + 1})`);
       params.push(`%${specialization}%`);
     }
 
     if (language) {
-      where.push("LOWER(languages) LIKE LOWER(?)");
+      where.push(`LOWER(languages) LIKE LOWER($${params.length + 1})`);
       params.push(`%${language}%`);
     }
 
     if (availability) {
-      where.push("LOWER(availability) LIKE LOWER(?)");
+      where.push(`LOWER(availability) LIKE LOWER($${params.length + 1})`);
       params.push(`%${availability}%`);
     }
 
     if (rating && !Number.isNaN(Number(rating))) {
-      where.push("rating >= ?");
+      where.push(`rating >= $${params.length + 1}`);
       params.push(Number(rating));
     }
 
@@ -5800,7 +5789,7 @@ app.get("/api/support/therapists", async (req, res) => {
       params,
     );
 
-    const enriched = (rows || []).map((item) => ({
+    const enriched = (dbResult.rows || []).map((item) => ({
       ...item,
       is_online: isTherapistOnline(item.id),
     }));
@@ -5898,14 +5887,14 @@ app.get("/api/support/users/:userId/sessions/active", async (req, res) => {
                     t.name AS therapist_name
              FROM support_sessions s
              LEFT JOIN therapists t ON t.id = s.therapist_id
-             WHERE s.user_id = ?
+             WHERE s.user_id = $1
                AND s.status IN ('new', 'pending', 'accepted', 'confirmed', 'live', 'in_progress', 'ongoing')
              ORDER BY s.created_at DESC
              LIMIT 1`,
       [userId],
     );
 
-    const session = rows?.[0];
+    const session = dbResult.rows?.[0];
     if (!session) {
       return res.json({ success: true, data: null });
     }
@@ -5995,7 +5984,7 @@ app.post("/api/sessions/book", async (req, res) => {
       `SELECT id, status
              FROM support_sessions
              WHERE user_id = $1
-               AND therapist_id = ?
+               AND therapist_id = $2
                              AND status IN ('new', 'pending', 'in_progress', 'ongoing')
              ORDER BY created_at DESC
              LIMIT 1`,
@@ -6141,19 +6130,19 @@ app.patch("/api/sessions/:id", async (req, res) => {
     const updateValues = [];
 
     if (date) {
-      updateFields.push("scheduled_date = ?");
+      updateFields.push(`scheduled_date = $${updateValues.length + 1}`);
       updateValues.push(date);
     }
     if (time) {
-      updateFields.push("scheduled_time = ?");
+      updateFields.push(`scheduled_time = $${updateValues.length + 1}`);
       updateValues.push(time);
     }
     if (type && ["video", "voice"].includes(type)) {
-      updateFields.push("call_mode = ?");
+      updateFields.push(`call_mode = $${updateValues.length + 1}`);
       updateValues.push(type);
     }
     if (preferredTimeFrame) {
-      updateFields.push("preferred_timeframe = ?");
+      updateFields.push(`preferred_timeframe = $${updateValues.length + 1}`);
       updateValues.push(preferredTimeFrame);
     }
 
@@ -6166,7 +6155,7 @@ app.patch("/api/sessions/:id", async (req, res) => {
     updateValues.push(sessionId);
 
     await pool.query(
-      `UPDATE support_sessions SET ${updateFields.join(", ")} WHERE id = $1`,
+      `UPDATE support_sessions SET ${updateFields.join(", ")} WHERE id = $${updateValues.length}`,
       updateValues,
     );
 
@@ -6218,10 +6207,10 @@ app.delete("/api/sessions/:id", async (req, res) => {
     }
 
     await pool.query(
-      "DELETE FROM support_session_messages WHERE session_id = ?",
+      "DELETE FROM support_session_messages WHERE session_id = $1",
       [sessionId],
     );
-    await pool.query("DELETE FROM support_notifications WHERE session_id = ?", [
+    await pool.query("DELETE FROM support_notifications WHERE session_id = $1", [
       sessionId,
     ]);
     await pool.query("DELETE FROM support_sessions WHERE id = $1", [sessionId]);
@@ -6256,13 +6245,13 @@ app.get("/api/therapist/sessions", async (req, res) => {
                     u.name AS client_name, u.email AS client_email
              FROM support_sessions s
              LEFT JOIN users u ON s.user_id = u.id
-             WHERE s.therapist_id = ?
+             WHERE s.therapist_id = $1
              ORDER BY s.start_time DESC, s.created_at DESC
              LIMIT 300`,
       [therapistId],
     );
 
-    return res.json({ success: true, data: rows });
+    return res.json({ success: true, data: dbResult.rows || [] });
   } catch (error) {
     console.error("Therapist sessions fetch error:", error);
     return res
@@ -6287,12 +6276,12 @@ app.get("/api/support/sessions/:id", async (req, res) => {
              FROM support_sessions s
              LEFT JOIN users u ON u.id = s.user_id
              LEFT JOIN therapists t ON t.id = s.therapist_id
-             WHERE s.id = ?
+             WHERE s.id = $1
              LIMIT 1`,
       [sessionId],
     );
 
-    const session = rows?.[0];
+    const session = dbResult.rows?.[0];
     if (!session) {
       return res
         .status(404)
@@ -6344,7 +6333,7 @@ app.post("/api/sessions/:id/accept", async (req, res) => {
         .status(403)
         .json({ success: false, error: "Not your session" });
 
-    await pool.query("UPDATE support_sessions SET status = ? WHERE id = $1", [
+    await pool.query("UPDATE support_sessions SET status = $1 WHERE id = $2", [
       "confirmed",
       sessionId,
     ]);
@@ -6477,7 +6466,7 @@ app.post("/api/sessions/:id/reject", async (req, res) => {
         .status(403)
         .json({ success: false, error: "Not your session" });
 
-    await pool.query("UPDATE support_sessions SET status = ? WHERE id = $1", [
+    await pool.query("UPDATE support_sessions SET status = $1 WHERE id = $2", [
       "rejected",
       sessionId,
     ]);
@@ -6505,7 +6494,7 @@ app.post("/api/sessions/:id/start", async (req, res) => {
         .json({ success: false, error: "Invalid session id" });
 
     await pool.query(
-      "UPDATE support_sessions SET status = ?, start_time = COALESCE(start_time, NOW()) WHERE id = $1",
+      "UPDATE support_sessions SET status = $1, start_time = COALESCE(start_time, NOW()) WHERE id = $2",
       ["in_progress", sessionId],
     );
     io.emit("support_session_status_changed", { sessionId, status: "ongoing" });
@@ -6527,7 +6516,7 @@ app.post("/api/sessions/:id/complete", async (req, res) => {
         .json({ success: false, error: "Invalid session id" });
 
     await pool.query(
-      "UPDATE support_sessions SET status = ?, end_time = NOW() WHERE id = $1",
+      "UPDATE support_sessions SET status = $1, end_time = NOW() WHERE id = $2",
       ["ended", sessionId],
     );
     io.emit("support_session_status_changed", {
@@ -6603,7 +6592,7 @@ app.get("/api/support/portal/sessions", async (req, res) => {
           .status(400)
           .json({ success: false, error: "Missing therapist id" });
       }
-      whereClause = "WHERE s.therapist_id = ?";
+      whereClause = "WHERE s.therapist_id = $1";
       params.push(therapistIdFromHeader);
     }
 
@@ -6618,7 +6607,7 @@ app.get("/api/support/portal/sessions", async (req, res) => {
              LEFT JOIN therapists t ON s.therapist_id = t.id
              LEFT JOIN users u ON s.user_id = u.id
              ${whereClause}
-             ORDER BY COALESCE(CAST(s.scheduled_date AS DATETIME), s.start_time) DESC
+                  ORDER BY COALESCE(CAST(s.scheduled_date AS TIMESTAMP), s.start_time) DESC
              LIMIT 400`,
       params,
       )
@@ -7004,7 +6993,7 @@ app.post("/api/support/sessions/:id/rate", async (req, res) => {
         .json({ success: false, error: "Invalid rating request" });
     }
 
-    await pool.query("UPDATE support_sessions SET rating = ? WHERE id = $1", [
+    await pool.query("UPDATE support_sessions SET rating = $1 WHERE id = $2", [
       rating,
       sessionId,
     ]);
@@ -7017,12 +7006,12 @@ app.post("/api/support/sessions/:id/rate", async (req, res) => {
     ).rows || [];
     const therapistId = sessionRows?.[0]?.therapist_id;
     if (therapistId) {
-      const [ratingRows] = await pool.query(
-        "SELECT COALESCE(ROUND(AVG(rating), 1), 4.5) AS avg_rating FROM support_sessions WHERE therapist_id = ? AND rating IS NOT NULL",
+      const ratingResult = await pool.query(
+        "SELECT COALESCE(ROUND(AVG(rating), 1), 4.5) AS avg_rating FROM support_sessions WHERE therapist_id = $1 AND rating IS NOT NULL",
         [therapistId],
       );
-      const avgRating = Number(ratingRows?.[0]?.avg_rating || 4.5);
-      await pool.query("UPDATE therapists SET rating = ? WHERE id = $1", [
+      const avgRating = Number(ratingResult.rows?.[0]?.avg_rating || 4.5);
+      await pool.query("UPDATE therapists SET rating = $1 WHERE id = $2", [
         avgRating,
         therapistId,
       ]);
@@ -7049,12 +7038,12 @@ app.get("/api/support/sessions/:id/messages", async (req, res) => {
     const dbResult = await pool.query(
       `SELECT id, session_id, sender_role, sender_name, content, attachment_name, created_at
              FROM support_session_messages
-             WHERE session_id = ?
+             WHERE session_id = $1
              ORDER BY created_at ASC`,
       [sessionId],
     );
 
-    return res.json({ success: true, data: rows });
+    return res.json({ success: true, data: dbResult.rows || [] });
   } catch (error) {
     console.error("Support session history error:", error);
     return res
@@ -7080,16 +7069,16 @@ app.get("/api/notifications", async (req, res) => {
                              FROM support_notifications
                              WHERE user_id = $1 AND is_read = FALSE
                              ORDER BY created_at DESC
-                             LIMIT ?`
+                             LIMIT $2`
       : `SELECT id, user_id, session_id, type, title, message, payload, channel, is_read, read_at, created_at
                              FROM support_notifications
                              WHERE user_id = $1
                              ORDER BY created_at DESC
-                             LIMIT ?`;
+                             LIMIT $2`;
 
     const dbResult = await pool.query(query, [userId, limit]);
 
-    const data = (rows || []).map((row) => ({
+    const data = (dbResult.rows || []).map((row) => ({
       id: row.id,
       userId: Number(row.user_id),
       sessionId: row.session_id ? Number(row.session_id) : null,
@@ -7131,8 +7120,8 @@ app.patch("/api/notifications/:id/read", async (req, res) => {
 
     await pool.query(
       `UPDATE support_notifications
-             SET is_read = ?, read_at = NOW()
-             WHERE id = $1 AND user_id = ?`,
+             SET is_read = $1, read_at = NOW()
+             WHERE id = $2 AND user_id = $3`,
       [true, notificationId, userId],
     );
 
@@ -7156,8 +7145,8 @@ app.post("/api/notifications/read-all", async (req, res) => {
 
     await pool.query(
       `UPDATE support_notifications
-             SET is_read = ?, read_at = NOW()
-             WHERE user_id = $1 AND is_read = ?`,
+             SET is_read = $1, read_at = NOW()
+             WHERE user_id = $2 AND is_read = $3`,
       [true, userId, false],
     );
 
@@ -7372,8 +7361,8 @@ app.get("/api/admin/events", async (req, res) => {
                      e.created_at, e.thumbnail_url, e.video_url, u.id, u.name
             ORDER BY e.date DESC
         `);
-    console.log(`[ADMIN EVENTS] Fetched ${rows.length} events`);
-    res.json({ success: true, events: rows });
+    console.log(`[ADMIN EVENTS] Fetched ${dbResult.rows.length} events`);
+    res.json({ success: true, events: dbResult.rows });
   } catch (error) {
     console.error("[ADMIN EVENTS] Error fetching events:", error);
     res.status(500).json({ success: false, error: "Failed to fetch events" });
@@ -7386,23 +7375,23 @@ app.delete("/api/admin/events/:id", requireAdmin, async (req, res) => {
     const eventId = parseInt(req.params.id);
 
     // Delete all related RSVPs first
-    await pool.query("DELETE FROM rsvps WHERE event_id = ?", [eventId]);
+    await pool.query("DELETE FROM rsvps WHERE event_id = $1", [eventId]);
 
     // Delete all event messages
-    await pool.query("DELETE FROM event_messages WHERE event_id = ?", [
+    await pool.query("DELETE FROM event_messages WHERE event_id = $1", [
       eventId,
     ]);
 
     // Delete event invites
-    await pool.query("DELETE FROM invites WHERE event_id = ?", [eventId]);
+    await pool.query("DELETE FROM invites WHERE event_id = $1", [eventId]);
 
     // Finally delete the event
 const result = await pool.query("DELETE FROM events WHERE id = $1 RETURNING id", [
       eventId,
     ]);
-    res.status(201).json({ success: true, data: { id: result.rows[0]?.id } });
+    res.json({ success: true, data: { id: result.rows[0]?.id } });
   } catch (error) {
-    res.status(500).json({ success: false, error: "Failed to add therapist" });
+    res.status(500).json({ success: false, error: "Failed to delete event" });
   }
 });
 
@@ -7440,9 +7429,9 @@ app.patch("/api/admin/therapists/:id", requireAdmin, async (req, res) => {
     if (hashedTherapistPassword) {
       await pool.query(
         `UPDATE therapists
-                 SET name = ?, photo = ?, email = ?, password_hash = ?, phone = ?, specialization = ?, bio = ?, qualifications = ?, experience = ?,
-                     languages = ?, availability = ?, availability_schedule = ?, session_price = ?, rating = ?, status = ?
-                 WHERE id = $1`,
+                 SET name = $1, photo = $2, email = $3, password_hash = $4, phone = $5, specialization = $6, bio = $7, qualifications = $8, experience = $9,
+                     languages = $10, availability = $11, availability_schedule = $12, session_price = $13, rating = $14, status = $15
+                 WHERE id = $16`,
         [
           name,
           photo || "",
@@ -7465,9 +7454,9 @@ app.patch("/api/admin/therapists/:id", requireAdmin, async (req, res) => {
     } else {
       await pool.query(
         `UPDATE therapists
-                 SET name = ?, photo = ?, email = ?, phone = ?, specialization = ?, bio = ?, qualifications = ?, experience = ?,
-                     languages = ?, availability = ?, availability_schedule = ?, session_price = ?, rating = ?, status = ?
-                 WHERE id = $1`,
+                 SET name = $1, photo = $2, email = $3, phone = $4, specialization = $5, bio = $6, qualifications = $7, experience = $8,
+                     languages = $9, availability = $10, availability_schedule = $11, session_price = $12, rating = $13, status = $14
+                 WHERE id = $15`,
         [
           name,
           photo || "",
@@ -7509,7 +7498,7 @@ app.patch(
           .json({ success: false, error: "Invalid therapist id" });
       }
 
-      await pool.query("UPDATE therapists SET status = ? WHERE id = $1", [
+      await pool.query("UPDATE therapists SET status = $1 WHERE id = $2", [
         status,
         therapistId,
       ]);
@@ -7765,13 +7754,13 @@ app.get("/api/moods", async (req, res) => {
 
     let timeFilter = "";
     if (range === "day") {
-      timeFilter = "AND created_at >= NOW() - INTERVAL 1 DAY";
+      timeFilter = "AND created_at >= NOW() - INTERVAL '1 DAY'";
     } else if (range === "week") {
-      timeFilter = "AND created_at >= NOW() - INTERVAL 1 WEEK";
+      timeFilter = "AND created_at >= NOW() - INTERVAL '1 WEEK'";
     } else if (range === "month") {
-      timeFilter = "AND created_at >= NOW() - INTERVAL 1 MONTH";
+      timeFilter = "AND created_at >= NOW() - INTERVAL '1 MONTH'";
     } else if (range === "annual" || range === "year") {
-      timeFilter = "AND created_at >= NOW() - INTERVAL 1 YEAR";
+      timeFilter = "AND created_at >= NOW() - INTERVAL '1 YEAR'";
     }
 
     const dbResult = await pool.query(
@@ -7865,11 +7854,11 @@ app.get("/api/journals/:userId", async (req, res) => {
       `SELECT j.*, um.mood 
              FROM journal_entries j 
              LEFT JOIN user_moods um ON j.mood_id = um.id
-             WHERE j.user_id = ? 
+             WHERE j.user_id = $1 
              ORDER BY j.created_at DESC`,
       [scopedUserId],
     );
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: dbResult.rows || [] });
   } catch (error) {
     console.error("Fetch journals error:", error);
     res.status(500).json({ error: "Failed to fetch journal entries" });
@@ -7879,10 +7868,10 @@ app.get("/api/journals/:userId", async (req, res) => {
 // Tiny Wins (Micro-Gratitude)
 app.post("/api/tiny-wins", requireUnityUser, async (req, res) => {
   try {
-    const { content } = req.body;
+    const content = String(req.body?.content || "").trim();
     if (!content) return res.status(400).json({ error: "Missing fields" });
 
-    await pool.query("INSERT INTO tiny_wins (user_id, content) VALUES (?, ?)", [
+    await pool.query("INSERT INTO tiny_wins (user_id, content) VALUES ($1, $2)", [
       req.user.id,
       content,
     ]);
@@ -7908,7 +7897,7 @@ app.get("/api/tiny-wins/:userId", requireUnityUser, async (req, res) => {
       "SELECT * FROM tiny_wins WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5",
       [scopedUserId],
     );
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: dbResult.rows || [] });
   } catch (error) {
     res.status(500).json({ error: "Failed" });
   }
@@ -7928,10 +7917,10 @@ app.get("/api/events", async (req, res) => {
       ? ""
       : `AND COALESCE(
                    e.end_date,
-                   DATE_ADD(e.date, INTERVAL COALESCE(NULLIF(e.duration, 0), 60) MINUTE)
+                   e.date + (COALESCE(NULLIF(e.duration, 0), 60) * INTERVAL '1 minute')
                ) >= NOW()`;
 
-    const [events] = await pool.query(
+    const eventsResult = await pool.query(
       `SELECT
                 e.id,
                 e.slug,
@@ -7977,18 +7966,18 @@ app.get("/api/events", async (req, res) => {
             WHERE 1=1 ${privacyFilter} ${activeEventsFilter}
             GROUP BY e.id
             ORDER BY e.date ASC
-            LIMIT ? OFFSET ?`,
+            LIMIT $1 OFFSET $2`,
       [limit, offset],
     );
 
-    const [countRows] = await pool.query(
+    const countResult = await pool.query(
       `SELECT COUNT(*) AS total
              FROM events e
                WHERE 1=1 ${privacyFilter} ${activeEventsFilter}`,
     );
 
-    const total = Number(countRows?.[0]?.total || 0);
-    const mappedEvents = (events || []).map((eventRow) => {
+    const total = Number(countResult.rows?.[0]?.total || 0);
+    const mappedEvents = (eventsResult.rows || []).map((eventRow) => {
       const attendeesCount = Number(eventRow.attendees_count || 0);
       const capacity =
         eventRow.capacity !== null && eventRow.capacity !== undefined
@@ -8050,12 +8039,12 @@ app.get("/api/events/private/:token", async (req, res) => {
                 e.video_url
              FROM invites i
              JOIN events e ON e.id = i.event_id
-             WHERE i.token = ?
+             WHERE i.token = $1
              LIMIT 1`,
       [token],
     );
 
-    const row = rows?.[0];
+    const row = dbResult.rows?.[0];
     if (!row) {
       return res
         .status(404)
@@ -8101,7 +8090,7 @@ app.get("/api/events/:eventId/calendar", async (req, res) => {
       [eventId],
     );
 
-    const eventRow = rows?.[0];
+    const eventRow = dbResult.rows?.[0];
     if (!eventRow) {
       return res.status(404).json({ success: false, error: "Event not found" });
     }
@@ -8116,10 +8105,9 @@ app.get("/api/events/:eventId/calendar", async (req, res) => {
         .replace(/[-:]/g, "")
         .replace(/\.\d{3}Z$/, "Z");
     const description = String(eventRow.description || "").replace(
-      /\n/g,
+      /\r?\n/g,
       "\\n",
     );
-
     res.setHeader("Content-Type", "text/calendar; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
@@ -8158,6 +8146,7 @@ app.get("/api/events/recommendations", async (req, res) => {
     const limit = Math.min(10, Math.max(1, Number(req.query.limit || 5)));
 
     const hasCategoryFilter = Boolean(category);
+    const params = [hasCategoryFilter ? category : "", limit];
     const dbResult = await pool.query(
       `SELECT
                 e.id,
@@ -8175,21 +8164,17 @@ app.get("/api/events/recommendations", async (req, res) => {
              LEFT JOIN rsvps r ON r.event_id = e.id
              WHERE e.date >= NOW()
                AND e.is_private = FALSE
-               AND (? = '' OR LOWER(e.category) = ?)
+               AND ($1 = '' OR LOWER(e.category) = $1)
              GROUP BY e.id
              ORDER BY attendees_count DESC, e.date ASC
-             LIMIT ?`,
-      [
-        hasCategoryFilter ? category : "",
-        hasCategoryFilter ? category : "",
-        limit,
-      ],
+             LIMIT $2`,
+      params,
     );
 
     return res.json({
       success: true,
       strategy: hasCategoryFilter ? "category-match" : "trending-upcoming",
-      recommendations: rows || [],
+      recommendations: dbResult.rows || [],
     });
   } catch (error) {
     console.error("Fetch event recommendations error:", error);
@@ -8208,6 +8193,10 @@ app.get("/api/events/:slug", async (req, res) => {
 
     const isNumericSlug = /^\d+$/.test(slug);
 
+    const detailParams = isNumericSlug ? [slug, parseInt(slug, 10)] : [slug];
+    const slugFilter = isNumericSlug
+      ? "(e.slug = $1 OR e.id = $2)"
+      : "e.slug = $1";
     const dbResult = await pool.query(
       `SELECT
                 e.id,
@@ -8251,13 +8240,13 @@ app.get("/api/events/:slug", async (req, res) => {
                 COALESCE(SUM(CASE WHEN r.status = 'yes' THEN 1 ELSE 0 END), 0) AS attendees_count
              FROM events e
              LEFT JOIN rsvps r ON r.event_id = e.id
-             WHERE e.slug = ? ${isNumericSlug ? "OR e.id = ?" : ""}
+             WHERE ${slugFilter}
              GROUP BY e.id
              LIMIT 1`,
-      isNumericSlug ? [slug, parseInt(slug, 10)] : [slug],
+      detailParams,
     );
 
-    const row = rows?.[0];
+    const row = dbResult.rows?.[0];
     if (!row) {
       return res.status(404).json({ success: false, error: "Event not found" });
     }
@@ -8294,7 +8283,7 @@ app.get("/api/events/:slug", async (req, res) => {
     const identifiedUser = await resolveEventsIdentity(req);
     if (identifiedUser) {
       const rsvpRows = await query(
-        "SELECT id FROM rsvps WHERE user_id = $1 AND event_id = ? AND status = 'yes' LIMIT 1",
+        "SELECT id FROM rsvps WHERE user_id = $1 AND event_id = $2 AND status = 'yes' LIMIT 1",
         [identifiedUser.id, row.id],
       );
       event.has_rsvpd = rsvpRows?.length > 0;
@@ -8384,10 +8373,11 @@ app.post(
       const eventSlug = toEventSlug(slug || title);
 
       // Check for duplicate slug
-      const [existingRows] = await pool.query(
-        "SELECT id FROM events WHERE slug = ? LIMIT 1",
+      const existingResult = await pool.query(
+        "SELECT id FROM events WHERE slug = $1 LIMIT 1",
         [eventSlug],
       );
+      const existingRows = existingResult.rows || [];
       if (existingRows?.length) {
         return res.status(409).json({
           success: false,
@@ -8458,7 +8448,8 @@ const result = await pool.query(
 
       // Return more specific error messages
       if (
-        error.code === "ER_DUP_ENTRY" ||
+        error.code === "23505" ||
+        error.code === "unique_violation" ||
         error.message?.includes("slug already exists")
       ) {
         return res.status(409).json({
@@ -8469,7 +8460,10 @@ const result = await pool.query(
         });
       }
 
-      if (error.code === "ER_DATA_TOO_LONG") {
+      if (
+        error.code === "22001" ||
+        error.code === "string_data_right_truncation"
+      ) {
         return res.status(400).json({
           success: false,
           error: "Content too large",
@@ -8479,7 +8473,8 @@ const result = await pool.query(
       }
 
       if (
-        error.code === "ER_PARSE_ERROR" ||
+        error.code === "42601" ||
+        error.code === "syntax_error" ||
         error.message?.includes("syntax")
       ) {
         return res.status(400).json({
@@ -8525,7 +8520,7 @@ app.post(
         "SELECT id, thumbnail_url, video_url FROM events WHERE id = $1 LIMIT 1",
         [eventId],
       );
-      const eventRow = rows?.[0];
+      const eventRow = dbResult.rows?.[0];
       if (!eventRow) {
         return res
           .status(404)
@@ -8533,7 +8528,7 @@ app.post(
       }
 
       await pool.query(
-        "UPDATE events SET thumbnail_url = COALESCE(?, thumbnail_url), video_url = COALESCE(?, video_url) WHERE id = $1",
+        "UPDATE events SET thumbnail_url = COALESCE($1, thumbnail_url), video_url = COALESCE($2, video_url) WHERE id = $3",
         [thumbnailUrl || null, videoUrl || null, eventId],
       );
 
@@ -8574,10 +8569,11 @@ app.post(
           .json({ success: false, error: "Invalid event id" });
       }
 
-      const [eventRows] = await pool.query(
+      const eventResult = await pool.query(
         "SELECT id, is_private FROM events WHERE id = $1 LIMIT 1",
         [eventId],
       );
+      const eventRows = eventResult.rows || [];
       if (!eventRows?.length) {
         return res
           .status(404)
@@ -8602,7 +8598,7 @@ app.post(
         const token = crypto.randomBytes(24).toString("hex");
 
         await pool.query(
-          "INSERT INTO invites (event_id, email, token, expires_at) VALUES (?, ?, ?, ?)",
+          "INSERT INTO invites (event_id, email, token, expires_at) VALUES ($1, $2, $3, $4)",
           [eventId, normalizedEmail, token, expiresAt.toISOString()],
         );
 
@@ -8646,10 +8642,11 @@ app.post(
           .json({ success: false, error: "Invalid RSVP payload" });
       }
 
-      const [eventRows] = await pool.query(
+      const eventResult = await pool.query(
         "SELECT id, capacity FROM events WHERE id = $1 LIMIT 1",
         [eventId],
       );
+      const eventRows = eventResult.rows || [];
       if (!eventRows?.length) {
         return res
           .status(404)
@@ -8700,7 +8697,7 @@ app.post(
         } catch (userCreateError) {
           // User might exist now, try to fetch
           const userRows = await query(
-            "SELECT id FROM users WHERE clerk_user_id = ? OR email = ? LIMIT 1",
+            "SELECT id FROM users WHERE clerk_user_id = $1 OR email = $2 LIMIT 1",
             [req.user.clerkUserId, req.user.email],
           );
           userId = userRows?.[0]?.id;
@@ -8717,10 +8714,11 @@ app.post(
         }
       }
 
-      const [existingRsvpRows] = await pool.query(
-        "SELECT id, status FROM rsvps WHERE user_id = $1 AND event_id = ? LIMIT 1",
+      const existingRsvpResult = await pool.query(
+        "SELECT id, status FROM rsvps WHERE user_id = $1 AND event_id = $2 LIMIT 1",
         [userId, eventId],
       );
+      const existingRsvpRows = existingRsvpResult.rows || [];
       if (existingRsvpRows?.length) {
         // User has already RSVP'd - enforce one RSVP per user per event
         const existingStatus = existingRsvpRows[0].status;
@@ -8735,7 +8733,7 @@ app.post(
         // If they previously said "no" or "maybe", allow them to update to "yes"
         if (status === "yes") {
           await pool.query(
-            "UPDATE rsvps SET status = ?, paid = ?, redirect_source = ?, redirect_context = ?, clerk_user_id = ?, user_email_snapshot = ?, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+            "UPDATE rsvps SET status = $1, paid = $2, redirect_source = $3, redirect_context = $4, clerk_user_id = $5, user_email_snapshot = $6, updated_at = CURRENT_TIMESTAMP WHERE id = $7",
             [
               status,
               paid,
@@ -8755,7 +8753,7 @@ app.post(
         }
       } else {
         await pool.query(
-          "INSERT INTO rsvps (user_id, event_id, status, paid, redirect_source, redirect_context, clerk_user_id, user_email_snapshot, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+          "INSERT INTO rsvps (user_id, event_id, status, paid, redirect_source, redirect_context, clerk_user_id, user_email_snapshot, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)",
           [
             userId,
             eventId,
@@ -8769,13 +8767,14 @@ app.post(
         );
       }
 
-      const [attendeeRows] = await pool.query(
+      const attendeeResult = await pool.query(
         `SELECT
                 COALESCE(SUM(CASE WHEN status = 'yes' THEN 1 ELSE 0 END), 0) AS attendees_count
              FROM rsvps
-             WHERE event_id = ?`,
+             WHERE event_id = $1`,
         [eventId],
       );
+      const attendeeRows = attendeeResult.rows || [];
 
       const attendeesCount = Number(attendeeRows?.[0]?.attendees_count || 0);
       const capacity =
@@ -8811,7 +8810,7 @@ app.get("/api/events/:eventId/messages", requireUnityUser, async (req, res) => {
     const rsvpRows = await query(
       `SELECT id
              FROM rsvps
-             WHERE user_id = $1 AND event_id = ? AND status = 'yes'
+             WHERE user_id = $1 AND event_id = $2 AND status = 'yes'
              LIMIT 1`,
       [req.user.id, eventId],
     );
@@ -8826,13 +8825,13 @@ app.get("/api/events/:eventId/messages", requireUnityUser, async (req, res) => {
       `SELECT em.id, em.event_id, em.user_id, em.message, em.created_at, u.name AS user_name
              FROM event_messages em
              LEFT JOIN users u ON u.id = em.user_id
-             WHERE em.event_id = ?
+             WHERE em.event_id = $1
              ORDER BY em.created_at ASC
              LIMIT 120`,
       [eventId],
     );
 
-    return res.json({ success: true, messages: rows || [] });
+    return res.json({ success: true, messages: dbResult.rows || [] });
   } catch (error) {
     console.error("Fetch event messages error:", error);
     return res
@@ -9316,18 +9315,22 @@ app.get("/api/ai/insights", async (req, res) => {
   if (!userId) return res.status(400).json({ error: "Missing userId" });
 
   try {
-    const [moods] = await pool.query(
-      "SELECT mood, intensity, note, created_at FROM user_moods WHERE user_id = $1 AND created_at >= NOW() - INTERVAL 14 DAY ORDER BY created_at DESC",
+    const moodsResult = await pool.query(
+      "SELECT mood, intensity, note, created_at FROM user_moods WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
       [userId],
     );
-    const [journals] = await pool.query(
-      "SELECT content, created_at FROM journal_entries WHERE user_id = $1 AND created_at >= NOW() - INTERVAL 14 DAY ORDER BY created_at DESC",
+    const journalsResult = await pool.query(
+      "SELECT content, created_at FROM journal_entries WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
       [userId],
     );
-    const [wins] = await pool.query(
-      "SELECT content, created_at FROM tiny_wins WHERE user_id = $1 AND created_at >= NOW() - INTERVAL 14 DAY ORDER BY created_at DESC",
+    const winsResult = await pool.query(
+      "SELECT content, created_at FROM tiny_wins WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '14 DAY' ORDER BY created_at DESC",
       [userId],
     );
+
+    const moods = moodsResult.rows || [];
+    const journals = journalsResult.rows || [];
+    const wins = winsResult.rows || [];
 
     if (moods.length === 0 && journals.length === 0) {
       return res.json({
@@ -9449,10 +9452,11 @@ app.post("/api/ai/values-affirmation", async (req, res) => {
 // --- Community Auto-Join Route ---
 app.get("/community/:slug", async (req, res) => {
   const { slug } = req.params;
-  const [communities] = await pool.query(
-    "SELECT * FROM communities WHERE slug = ?",
+  const communityResult = await pool.query(
+    "SELECT * FROM communities WHERE slug = $1",
     [slug],
   );
+  const communities = communityResult.rows || [];
   const community = communities[0];
   if (!community) return res.status(404).send("Community not found");
   if (!req.session || !req.session.user) {
@@ -9460,8 +9464,10 @@ app.get("/community/:slug", async (req, res) => {
   }
   await pool.query(
     `INSERT INTO community_members (community_id, user_id)
-         VALUES (?, ?)
-         ON DUPLICATE KEY UPDATE user_id = VALUES(user_id)`,
+         SELECT $1, $2
+         WHERE NOT EXISTS (
+           SELECT 1 FROM community_members WHERE community_id = $1 AND user_id = $2
+         )`,
     [community.id, req.session.user.id],
   );
   res.redirect(`/community/${community.id}`);
@@ -9470,10 +9476,11 @@ app.get("/community/:slug", async (req, res) => {
 // --- Dynamic Open Graph meta tags for community social previews ---
 app.get("/og/community/:slug", async (req, res) => {
   const { slug } = req.params;
-  const [communities] = await pool.query(
-    "SELECT * FROM communities WHERE slug = ?",
+  const communityResult = await pool.query(
+    "SELECT * FROM communities WHERE slug = $1",
     [slug],
   );
+  const communities = communityResult.rows || [];
   const community = communities[0];
   if (!community) return res.status(404).send("Community not found");
   const ogTitle = `Join ${community.name} on UnityWithin!`;
@@ -9509,7 +9516,7 @@ app.get("/og/community/:slug", async (req, res) => {
 app.get("/buddy/:code", async (req, res) => {
   const { code } = req.params;
   const invites = await query(
-    "SELECT * FROM buddy_invites WHERE invite_code = ?",
+    "SELECT * FROM buddy_invites WHERE invite_code = $1",
     [code],
   );
   const invite = invites[0];
@@ -9519,8 +9526,10 @@ app.get("/buddy/:code", async (req, res) => {
   }
   await pool.query(
     `INSERT INTO buddies (user_id, buddy_id)
-         VALUES (?, ?)
-         ON DUPLICATE KEY UPDATE buddy_id = VALUES(buddy_id)`,
+         SELECT $1, $2
+         WHERE NOT EXISTS (
+           SELECT 1 FROM buddies WHERE user_id = $1 AND buddy_id = $2
+         )`,
     [req.session.user.id, invite.inviter_id],
   );
   await pool.query("UPDATE buddy_invites SET uses = uses + 1 WHERE id = $1", [
@@ -9626,7 +9635,20 @@ server.listen(PORT, async () => {
   // Test database connection
   console.log("\n📊 Initializing database...");
   await testConnection();
-  await initializeDatabase();
+  try {
+    await initializeDatabase();
+  } catch (error) {
+    console.error("Database init error at server start (continuing):", error?.message || error);
+  }
+
+  try {
+    const dbReady = await isDatabaseAvailable();
+    if (dbReady) {
+      await ensureDefaultRoomsSeeded();
+    }
+  } catch (error) {
+    console.error("Default room seed skipped (DB unavailable):", error?.message || error);
+  }
 
   console.log(`\n✅ Application ready at http://localhost:${PORT}`);
 });

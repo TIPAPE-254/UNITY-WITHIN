@@ -30,6 +30,7 @@ export const MoodLogger: React.FC<MoodLoggerProps> = ({ userId, onMoodLogged, on
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [isExpanded, setIsExpanded] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [submitError, setSubmitError] = useState<string | null>(null);
 
     const [showPostCheckIn, setShowPostCheckIn] = useState(false);
 
@@ -51,6 +52,7 @@ export const MoodLogger: React.FC<MoodLoggerProps> = ({ userId, onMoodLogged, on
     };
 
     const handleMoodSelect = (moodLabel: string) => {
+        setSubmitError(null);
         if (selectedMood === moodLabel) {
             // keep selection
         } else {
@@ -73,11 +75,13 @@ export const MoodLogger: React.FC<MoodLoggerProps> = ({ userId, onMoodLogged, on
         setSelectedTags([]);
         setIsExpanded(false);
         setShowPostCheckIn(false);
+        setSubmitError(null);
     };
 
     const handleSubmit = async () => {
         if (!selectedMood) return;
         setIsLoading(true);
+        setSubmitError(null);
 
         try {
             const finalNote = selectedTags.length > 0
@@ -87,6 +91,7 @@ export const MoodLogger: React.FC<MoodLoggerProps> = ({ userId, onMoodLogged, on
             const identity = resolveUserIdentity();
             if (!identity.id) {
                 console.error('Failed to resolve user id for mood logging');
+                setSubmitError('Please sign in again so we can save your check-in.');
                 return;
             }
 
@@ -105,14 +110,31 @@ export const MoodLogger: React.FC<MoodLoggerProps> = ({ userId, onMoodLogged, on
                 })
             });
 
-            if (res.ok) {
-                onMoodLogged();
-                // Show post-check-in suggestions instead of immediate reset
-                setShowPostCheckIn(true);
-                setIsExpanded(false); // Collapse form
+            if (!res.ok) {
+                let serverMessage = 'Failed to log mood.';
+                try {
+                    const errorPayload = await res.json();
+                    if (errorPayload?.error) {
+                        serverMessage = String(errorPayload.error);
+                    }
+                } catch {
+                    // Keep default error message if response is not JSON.
+                }
+                setSubmitError(serverMessage);
+                return;
             }
+
+            onMoodLogged();
+            const lowerMood = selectedMood.toLowerCase();
+            if (["sad", "stressed", "angry", "anxious", "tired"].includes(lowerMood)) {
+                onNegativeMood(selectedMood);
+            }
+            // Show post-check-in suggestions instead of immediate reset
+            setShowPostCheckIn(true);
+            setIsExpanded(false); // Collapse form
         } catch (error) {
             console.error("Failed to log mood", error);
+            setSubmitError('Could not reach the server. Please try again in a moment.');
         } finally {
             setIsLoading(false);
         }
@@ -180,6 +202,12 @@ export const MoodLogger: React.FC<MoodLoggerProps> = ({ userId, onMoodLogged, on
             {/* Expanded Details Form */}
             {isExpanded && selectedMood && (
                 <div className="animate-in slide-in-from-top-4 space-y-6 pt-4 border-t border-gray-100">
+
+                    {submitError && (
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            {submitError}
+                        </div>
+                    )}
 
                     {/* Intensity Slider */}
                     <div className="space-y-4 bg-gray-50 p-4 rounded-2xl">

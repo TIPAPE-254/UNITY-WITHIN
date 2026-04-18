@@ -21,9 +21,9 @@
 - [ ] Check logs for: "✅ PostgreSQL Database connected successfully!"
 
 ### 2. Code Verification
-- [ ] No MySQL/mysql2 references in codebase (`grep -r "mysql" src server`)
+- [ ] No legacy SQL-dialect references in codebase
 - [ ] All SQL queries use PostgreSQL syntax (no MySQL-specific functions)
-- [ ] All placeholder queries use `?` format (auto-converted to `$1, $2...`)
+- [ ] All placeholder queries use PostgreSQL `$1, $2...` format
 - [ ] Environment variables properly read via `readRuntimeEnv()`
 - [ ] `.env` files are in `.gitignore` (never commit secrets)
 - [ ] No hardcoded database connections

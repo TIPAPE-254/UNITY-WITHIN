@@ -1,38 +1,101 @@
 import pkg from 'pg';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const { Pool } = pkg;
 
-dotenv.config();
-
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const workspaceRoot = path.resolve(__dirname, '..');
 const isProduction = process.env.NODE_ENV === 'production';
 
-const dbHost = process.env.POSTGRES_HOST || process.env.DB_HOST || '127.0.0.1';
-const dbUser = process.env.POSTGRES_USER || process.env.DB_USER || 'postgres';
-const dbPassword = process.env.POSTGRES_PASSWORD || process.env.DB_PASSWORD || '';
-const dbName = process.env.POSTGRES_DB || process.env.DB_NAME || 'UNITY_WITHIN';
-const dbPort = Number(process.env.POSTGRES_PORT || process.env.DB_PORT || 5432);
+const envCandidates = [
+    path.resolve(workspaceRoot, '.env.local'),
+    path.resolve(workspaceRoot, '.env'),
+    path.resolve(process.cwd(), '.env.local'),
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(__dirname, '.env'),
+];
 
-const dbSsl = (process.env.DB_SSL || 'true').toLowerCase() === 'true';
-
-console.log(`📦 Database: ${isProduction ? 'Production (Azure PostgreSQL)' : 'Development'}`);
-console.log(`   Host: ${dbHost}, DB: ${dbName}`);
-
-if (isProduction && (!dbHost || !dbUser)) {
-    console.warn('⚠️ PostgreSQL connection missing required Azure settings.');
+// In Azure/App Service, credentials are expected from process.env (App Settings).
+// Local .env files are only a development fallback.
+if (!isProduction) {
+    for (const envPath of envCandidates) {
+        if (fs.existsSync(envPath)) {
+            dotenv.config({ path: envPath, override: false });
+        }
+    }
 }
 
-const pool = new Pool({
-    host: dbHost,
-    user: dbUser,
-    password: dbPassword,
-    database: dbName,
-    port: dbPort,
-    ssl: dbSsl ? { rejectUnauthorized: false } : false,
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-});
+const readSetting = (...keys) => {
+    for (const key of keys) {
+        const direct = process.env[key];
+        if (direct && String(direct).trim()) return String(direct).trim();
+
+        const appSetting = process.env[`APPSETTING_${key}`];
+        if (appSetting && String(appSetting).trim()) return String(appSetting).trim();
+    }
+    return '';
+};
+
+const readAzurePostgresConnString = () => {
+    const matchedKey = Object.keys(process.env).find((key) =>
+        key.startsWith('POSTGRESQLCONNSTR_'),
+    );
+    if (!matchedKey) return '';
+
+    const value = process.env[matchedKey];
+    return value && String(value).trim() ? String(value).trim() : '';
+};
+
+const connectionString = readSetting('DATABASE_URL', 'POSTGRES_URL', 'DB_CONNECTION_STRING') || readAzurePostgresConnString();
+const dbHost = readSetting('POSTGRES_HOST', 'DB_HOST', 'PGHOST');
+const dbUser = readSetting('POSTGRES_USER', 'DB_USER', 'PGUSER');
+const dbPassword = readSetting('POSTGRES_PASSWORD', 'DB_PASSWORD', 'PGPASSWORD');
+const dbName = readSetting('POSTGRES_DB', 'DB_NAME', 'PGDATABASE');
+const dbPort = Number(readSetting('POSTGRES_PORT', 'DB_PORT', 'PGPORT') || 5432);
+const localDbHosts = new Set(['127.0.0.1', 'localhost', '::1']);
+const isLocalHostConfigured = dbHost ? localDbHosts.has(dbHost.toLowerCase()) : false;
+
+const sslSetting = readSetting('DB_SSL', 'PGSSLMODE');
+const dbSsl = ['true', '1', 'require', 'verify-ca', 'verify-full'].includes(
+    String(sslSetting || 'true').toLowerCase(),
+);
+
+console.log(`📦 Database: ${isProduction ? 'Production (Azure PostgreSQL)' : 'Development'}`);
+console.log(`   Host: ${dbHost || '(from connection string)'}, DB: ${dbName || '(from connection string)'}`);
+
+if (!connectionString && (!dbHost || !dbUser || !dbName)) {
+    console.warn('⚠️ PostgreSQL connection settings are incomplete. Provide Azure DB env vars or DATABASE_URL.');
+}
+
+if (!connectionString && isLocalHostConfigured) {
+    console.error('❌ Local database host is disabled. Configure Azure PostgreSQL App Settings in process.env.');
+}
+
+const pool = new Pool(
+    connectionString
+        ? {
+            connectionString,
+            ssl: dbSsl ? { rejectUnauthorized: false } : false,
+            max: 10,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+        }
+        : {
+            host: isLocalHostConfigured ? 'azure-db-host-not-configured' : dbHost,
+            user: dbUser,
+            password: dbPassword,
+            database: dbName,
+            port: dbPort,
+            ssl: dbSsl ? { rejectUnauthorized: false } : false,
+            max: 10,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+        },
+);
 
 async function testConnection() {
     try {
@@ -56,8 +119,9 @@ async function isDatabaseAvailable() {
 }
 
 async function initializeDatabase() {
-    const client = await pool.connect();
+    let client;
     try {
+        client = await pool.connect();
         await client.query(`
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -238,7 +302,9 @@ async function initializeDatabase() {
     } catch (error) {
         console.error('❌ Failed to initialize database:', error.message);
     } finally {
-        client.release();
+        if (client) {
+            client.release();
+        }
     }
 }
 
