@@ -67,7 +67,7 @@ export const MoodLogger: React.FC<MoodLoggerProps> = ({ userId, onMoodLogged, on
                 ? `[${selectedTags.join(', ')}] ${note}`.trim()
                 : note;
 
-            const res = await fetch(`${API_BASE_URL}/moods`, {
+            const res = await fetch(`${API_BASE_URL}/api/moods`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

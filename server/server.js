@@ -4646,10 +4646,10 @@ io.on("connection", (socket) => {
 // Chat Endpoints
 app.get("/api/chat/rooms", async (req, res) => {
   try {
-    const rows = (await pool.query("SELECT * FROM chat_rooms ORDER BY name ASC")).rows || [];
+    let rows = (await pool.query("SELECT * FROM chat_rooms ORDER BY name ASC")).rows || [];
     if (!rows || rows.length === 0) {
       await ensureDefaultRoomsSeeded();
-      const rows = (await pool.query("SELECT * FROM chat_rooms ORDER BY name ASC")).rows || [];
+      rows = (await pool.query("SELECT * FROM chat_rooms ORDER BY name ASC")).rows || [];
     }
     res.json({ success: true, data: rows });
   } catch (error) {
@@ -4668,13 +4668,13 @@ app.get("/api/chat/rooms/:roomId/messages", async (req, res) => {
             CASE WHEN m.is_anonymous = TRUE THEN NULL ELSE u.name END as user_name
             FROM chat_messages m
             LEFT JOIN users u ON m.user_id = u.id
-            WHERE m.room_id = ?
+            WHERE m.room_id = $1
             ORDER BY m.created_at ASC
             LIMIT 50
         `,
       [roomId],
     );
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: dbResult.rows });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch messages" });
   }
@@ -4684,7 +4684,7 @@ app.post("/api/reports", async (req, res) => {
   try {
     const { userId, messageId, reason } = req.body;
     await pool.query(
-      "INSERT INTO reports (user_id, message_id, reason) VALUES (?, ?, ?)",
+      "INSERT INTO reports (user_id, message_id, reason) VALUES ($1, $2, $3)",
       [userId, messageId, reason],
     );
     res.json({ success: true, message: "Report submitted" });
@@ -4854,7 +4854,7 @@ const sendBrevoEmail = async ({ toEmail, subject, htmlContent }) => {
 
 // Admin creates a therapist invite and gets both invite URL + WhatsApp deep-link.
 app.post("/api/admin/invite-volunteer", requireAdmin, async (req, res) => {
-  const { email } = req.body;
+  const { email, role, adminName } = req.body;
   if (!email)
     return res.status(400).json({ success: false, error: "Email is required" });
 
@@ -4863,15 +4863,24 @@ app.post("/api/admin/invite-volunteer", requireAdmin, async (req, res) => {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     await pool.query(
-      "INSERT INTO volunteer_invites (email, token, expires_at) VALUES (?, ?, ?)",
-      [email, token, expiresAt],
+      "INSERT INTO volunteer_invites (email, token, expires_at, status) VALUES ($1, $2, $3, $4)",
+      [email, token, expiresAt, "pending"],
     );
 
-    const inviteLink = `${getAppBaseUrl(req)}/join?ref=${token}&e=${encodeURIComponent(email)}`;
+    const inviteLink = `${getAppBaseUrl(req)}/volunteer-invite/${token}`;
 
     const emailSent = await sendVolunteerInvite(email, inviteLink);
 
-    res.json({ success: true, inviteLink, emailSent: emailSent.success });
+    res.json({
+      success: true,
+      inviteLink,
+      emailSent: emailSent.success,
+      invite: {
+        email,
+        role: role || "listener",
+        invitedBy: adminName || "Admin",
+      },
+    });
   } catch (error) {
     console.error("❌ Invite volunteer error:", error);
     res.status(500).json({ success: false, error: "Database error" });
@@ -4924,7 +4933,58 @@ app.get("/api/admin/volunteers", requireAdmin, async (req, res) => {
             LEFT JOIN volunteer_roles r ON v.matched_role_id = r.id 
             ORDER BY v.created_at DESC
         `);
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: dbResult.rows });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/admin/volunteer-invites", requireAdmin, async (req, res) => {
+  try {
+    const dbResult = await pool.query(
+      `SELECT id, email, token, status, created_at, expires_at
+       FROM volunteer_invites
+       ORDER BY created_at DESC`,
+    );
+
+    const invites = dbResult.rows.map((row) => ({
+      id: String(row.id),
+      email: row.email,
+      role: "listener",
+      status: row.status || "pending",
+      inviteToken: row.token,
+      inviteLink: `${getAppBaseUrl(req)}/volunteer-invite/${row.token}`,
+      invitedAt: row.created_at,
+      invitedBy: "Admin",
+    }));
+
+    res.json({ success: true, invites });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post("/api/admin/approve-volunteer/:inviteId", requireAdmin, async (req, res) => {
+  try {
+    const { inviteId } = req.params;
+    await pool.query(
+      "UPDATE volunteer_invites SET status = $1 WHERE id = $2",
+      ["approved", inviteId],
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post("/api/admin/reject-volunteer/:inviteId", requireAdmin, async (req, res) => {
+  try {
+    const { inviteId } = req.params;
+    await pool.query(
+      "UPDATE volunteer_invites SET status = $1 WHERE id = $2",
+      ["rejected", inviteId],
+    );
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -4949,14 +5009,22 @@ app.get("/api/volunteer/invite/:token", async (req, res) => {
   const { token } = req.params;
   try {
     const dbResult = await pool.query(
-      "SELECT email FROM volunteer_invites WHERE token = ? AND expires_at > NOW() AND status = ?",
-      [token, "pending"],
+      "SELECT email, status FROM volunteer_invites WHERE token = $1 AND expires_at > NOW()",
+      [token],
     );
-    if (rows.length === 0)
+    if (dbResult.rows.length === 0)
       return res
         .status(404)
         .json({ success: false, error: "Invalid or expired token" });
-    res.json({ success: true, email: rows[0].email });
+    const inviteRow = dbResult.rows[0];
+    res.json({
+      success: true,
+      invite: {
+        email: inviteRow.email,
+        role: "listener",
+        status: inviteRow.status || "pending",
+      },
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -4965,7 +5033,7 @@ app.get("/api/volunteer/invite/:token", async (req, res) => {
 app.get("/api/volunteer/roles", async (req, res) => {
   try {
     const dbResult = await pool.query("SELECT * FROM volunteer_roles");
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: dbResult.rows });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -4975,19 +5043,32 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
   const {
     token,
     name,
+    firstName,
+    lastName,
     email,
     phone,
     county,
+    location,
+    experience,
     skills,
     matched_role_id,
     commitment_level,
     tier,
   } = req.body;
   try {
+    const resolvedName =
+      name || `${(firstName || "").trim()} ${(lastName || "").trim()}`.trim();
+    const resolvedCounty = county || location || null;
+    const resolvedSkills = Array.isArray(skills)
+      ? skills
+      : experience
+        ? [String(experience)]
+        : [];
+
     // Validate token again
     const invites = await query(
-      "SELECT id FROM volunteer_invites WHERE token = ? AND status = ?",
-      [token, "pending"],
+      "SELECT id FROM volunteer_invites WHERE token = $1 AND status IN ($2, $3)",
+      [token, "pending", "approved"],
     );
     if (invites.length === 0)
       return res.status(400).json({ success: false, error: "Invalid token" });
@@ -4999,44 +5080,44 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
     );
     if (existingVols && existingVols.length > 0) {
       await pool.query(
-        `UPDATE volunteers SET name = ?, phone = ?, county = ?, skills = ?, 
-                 matched_role_id = ?, commitment_level = ?, tier = ?, status = 'pending_review' 
-                 WHERE email = $1`,
+        `UPDATE volunteers SET name = $1, phone = $2, county = $3, skills = $4,
+                 matched_role_id = $5, commitment_level = $6, tier = $7, status = 'pending_review'
+                 WHERE email = $8`,
         [
-          name,
+          resolvedName || email,
           phone,
-          county,
-          JSON.stringify(skills),
-          matched_role_id,
-          commitment_level,
-          tier,
+          resolvedCounty,
+          JSON.stringify(resolvedSkills),
+          matched_role_id || null,
+          commitment_level || null,
+          tier || null,
           email,
         ],
       );
     } else {
       await pool.query(
         `INSERT INTO volunteers (name, email, phone, county, skills, matched_role_id, commitment_level, tier, status) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
-          name,
+          resolvedName || email,
           email,
           phone,
-          county,
-          JSON.stringify(skills),
-          matched_role_id,
-          commitment_level,
-          tier,
+          resolvedCounty,
+          JSON.stringify(resolvedSkills),
+          matched_role_id || null,
+          commitment_level || null,
+          tier || null,
           "pending_review",
         ],
       );
     }
 
     await pool.query(
-      "UPDATE volunteer_invites SET status = ? WHERE token = ?",
+      "UPDATE volunteer_invites SET status = $1 WHERE token = $2",
       ["accepted", token],
     );
 
-    res.json({ success: true });
+    res.json({ success: true, message: "Volunteer onboarding complete" });
   } catch (error) {
     console.error("❌ Onboarding error:", error);
     res.status(500).json({ success: false, error: error.message });
@@ -5060,15 +5141,15 @@ app.get("/api/volunteer/dashboard", async (req, res) => {
 
     const volunteer = volunteers[0];
     const tasks = await query(
-      "SELECT * FROM volunteer_tasks WHERE volunteer_id = ? ORDER BY due_date ASC",
+      "SELECT * FROM volunteer_tasks WHERE volunteer_id = $1 ORDER BY due_date ASC",
       [volunteer.id],
     );
     const training = await query(
-      "SELECT * FROM volunteer_training WHERE volunteer_id = ?",
+      "SELECT * FROM volunteer_training WHERE volunteer_id = $1",
       [volunteer.id],
     );
     const shifts = await query(
-      "SELECT * FROM volunteer_shifts WHERE volunteer_id = ? ORDER BY start_time ASC",
+      "SELECT * FROM volunteer_shifts WHERE volunteer_id = $1 ORDER BY start_time ASC",
       [volunteer.id],
     );
 
@@ -5081,6 +5162,83 @@ app.get("/api/volunteer/dashboard", async (req, res) => {
         shifts,
       },
     });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/volunteer/profile/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const userRows = await query(
+      "SELECT email, name FROM users WHERE id = $1 LIMIT 1",
+      [userId],
+    );
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+
+    const volunteerRows = await query(
+      "SELECT * FROM volunteers WHERE email = $1 LIMIT 1",
+      [userRows[0].email],
+    );
+
+    const profile = volunteerRows[0] || {
+      firstName: userRows[0].name || "",
+      email: userRows[0].email,
+      volunteerRole: "Community Volunteer",
+      volunteerStatus: "pending",
+      hoursContributed: 0,
+      activeCampaigns: [],
+      phone: "",
+      location: "",
+      experience: "",
+    };
+
+    return res.json({ success: true, profile });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put("/api/volunteer/profile/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { firstName, phone, location, experience } = req.body || {};
+
+    const userRows = await query(
+      "SELECT email FROM users WHERE id = $1 LIMIT 1",
+      [userId],
+    );
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+
+    const email = userRows[0].email;
+    const existingRows = await query(
+      "SELECT id FROM volunteers WHERE email = $1 LIMIT 1",
+      [email],
+    );
+
+    if (existingRows.length > 0) {
+      await pool.query(
+        `UPDATE volunteers
+         SET name = COALESCE($1, name),
+             phone = COALESCE($2, phone),
+             county = COALESCE($3, county),
+             skills = COALESCE($4, skills)
+         WHERE email = $5`,
+        [firstName || null, phone || null, location || null, experience ? JSON.stringify([experience]) : null, email],
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO volunteers (name, email, phone, county, skills, status)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [firstName || email, email, phone || null, location || null, experience ? JSON.stringify([experience]) : JSON.stringify([]), "pending_review"],
+      );
+    }
+
+    return res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -6770,15 +6928,13 @@ app.post("/api/notifications/read-all", async (req, res) => {
 // Admin Endpoints
 app.get("/api/admin/stats", requireAdmin, async (req, res) => {
   try {
-    const [[{ userCount }]] = await pool.query(
-      "SELECT COUNT(*) as userCount FROM users",
-    );
-    const [[{ messageCount }]] = await pool.query(
-      "SELECT COUNT(*) as messageCount FROM chat_messages",
-    );
-    const [[{ moodCount }]] = await pool.query(
-      "SELECT COUNT(*) as moodCount FROM user_moods",
-    );
+    const userResult = await pool.query("SELECT COUNT(*)::int as user_count FROM users");
+    const messageResult = await pool.query("SELECT COUNT(*)::int as message_count FROM chat_messages");
+    const moodResult = await pool.query("SELECT COUNT(*)::int as mood_count FROM user_moods");
+
+    const userCount = userResult.rows?.[0]?.user_count || 0;
+    const messageCount = messageResult.rows?.[0]?.message_count || 0;
+    const moodCount = moodResult.rows?.[0]?.mood_count || 0;
 
     res.json({ success: true, stats: { userCount, messageCount, moodCount } });
   } catch (error) {
@@ -6819,7 +6975,7 @@ app.get("/api/admin/moderation-logs", requireAdmin, async (req, res) => {
             LEFT JOIN users u ON m.user_id = u.id 
             ORDER BY m.created_at DESC LIMIT 50
         `);
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: dbResult.rows });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch moderation logs" });
   }
@@ -6834,7 +6990,7 @@ app.get("/api/admin/chat/messages", requireAdmin, async (req, res) => {
             LEFT JOIN users u ON m.user_id = u.id 
             ORDER BY m.created_at DESC LIMIT 100
         `);
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: dbResult.rows });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch messages" });
   }
@@ -6856,13 +7012,99 @@ app.patch("/api/admin/users/:id/role", requireAdmin, async (req, res) => {
     if (!["user", "admin"].includes(role)) {
       return res.status(400).json({ error: "Invalid role" });
     }
-    await pool.query("UPDATE users SET role = ? WHERE id = $1", [
+    await pool.query("UPDATE users SET role = $1 WHERE id = $2", [
       role,
       req.params.id,
     ]);
     res.json({ success: true, message: `User role updated to ${role}` });
   } catch (error) {
     res.status(500).json({ error: "Failed to update user role" });
+  }
+});
+
+app.get("/api/admin/moods", requireAdmin, async (req, res) => {
+  try {
+    const dbResult = await pool.query(`
+      SELECT m.id, m.mood, m.intensity, m.note, m.created_at, u.name as user_name
+      FROM user_moods m
+      LEFT JOIN users u ON m.user_id = u.id
+      ORDER BY m.created_at DESC
+      LIMIT 200
+    `);
+    res.json({ success: true, data: dbResult.rows });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch moods" });
+  }
+});
+
+app.get("/api/admin/journals", requireAdmin, async (req, res) => {
+  try {
+    const dbResult = await pool.query(`
+      SELECT j.id, j.content, j.created_at, j.mood, u.name as user_name
+      FROM journal_entries j
+      LEFT JOIN users u ON j.user_id = u.id
+      ORDER BY j.created_at DESC
+      LIMIT 200
+    `);
+    res.json({ success: true, data: dbResult.rows });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch journals" });
+  }
+});
+
+app.get("/api/admin/tiny-wins", requireAdmin, async (req, res) => {
+  try {
+    const dbResult = await pool.query(`
+      SELECT w.id, w.content, w.created_at, u.name as user_name
+      FROM tiny_wins w
+      LEFT JOIN users u ON w.user_id = u.id
+      ORDER BY w.created_at DESC
+      LIMIT 200
+    `);
+    res.json({ success: true, data: dbResult.rows });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch tiny wins" });
+  }
+});
+
+app.get("/api/admin/reports", requireAdmin, async (req, res) => {
+  try {
+    const dbResult = await pool.query(`
+      SELECT r.id, r.reason, r.created_at, reporter.name as reporter_name, m.content as message_content
+      FROM reports r
+      LEFT JOIN users reporter ON r.user_id = reporter.id
+      LEFT JOIN chat_messages m ON r.message_id = m.id
+      ORDER BY r.created_at DESC
+      LIMIT 200
+    `);
+    res.json({ success: true, data: dbResult.rows });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch reports" });
+  }
+});
+
+app.post("/api/admin/chat/rooms", requireAdmin, async (req, res) => {
+  try {
+    const { name, description, type } = req.body || {};
+    if (!name) {
+      return res.status(400).json({ success: false, error: "name is required" });
+    }
+    const result = await pool.query(
+      "INSERT INTO chat_rooms (name, description, type) VALUES ($1, $2, $3) RETURNING id",
+      [name, description || null, type || "public"],
+    );
+    res.json({ success: true, data: { id: result.rows[0]?.id } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to create room" });
+  }
+});
+
+app.delete("/api/admin/chat/rooms/:id", requireAdmin, async (req, res) => {
+  try {
+    await pool.query("DELETE FROM chat_rooms WHERE id = $1", [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to delete room" });
   }
 });
 
@@ -7097,6 +7339,8 @@ app.post("/api/chat/messages", requireUnityUser, async (req, res) => {
 
 // Mood Logging Endpoints
 // Mood Logging Endpoints
+const moodStreamClients = new Map();
+
 const resolveRouteUserId = (req) => {
   const candidates = [
     req.user?.id,
@@ -7115,6 +7359,99 @@ const resolveRouteUserId = (req) => {
 
   return null;
 };
+
+const ensureDashboardStateTable = async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_dashboard_state (
+      user_id BIGINT PRIMARY KEY,
+      state JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+};
+
+app.get("/api/dashboard/state", async (req, res) => {
+  try {
+    const userId = resolveRouteUserId(req);
+    if (!userId) {
+      return res.status(400).json({ error: "Missing required field: userId" });
+    }
+
+    await ensureDashboardStateTable();
+
+    const result = await pool.query(
+      "SELECT state, updated_at FROM user_dashboard_state WHERE user_id = $1",
+      [userId],
+    );
+
+    const row = result.rows[0];
+    return res.json({
+      success: true,
+      data: row?.state || {},
+      updatedAt: row?.updated_at || null,
+    });
+  } catch (error) {
+    console.error("Fetch dashboard state error:", error);
+    res.status(500).json({ error: "Failed to fetch dashboard state" });
+  }
+});
+
+app.put("/api/dashboard/state", async (req, res) => {
+  try {
+    const userId = resolveRouteUserId(req);
+    if (!userId) {
+      return res.status(400).json({ error: "Missing required field: userId" });
+    }
+
+    const state = req.body?.state;
+    if (!state || typeof state !== "object") {
+      return res.status(400).json({ error: "Missing required field: state" });
+    }
+
+    await ensureDashboardStateTable();
+
+    await pool.query(
+      `INSERT INTO user_dashboard_state (user_id, state, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (user_id)
+       DO UPDATE SET state = EXCLUDED.state, updated_at = NOW()`,
+      [userId, JSON.stringify(state)],
+    );
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Save dashboard state error:", error);
+    res.status(500).json({ error: "Failed to save dashboard state" });
+  }
+});
+
+app.get("/api/moods/stream", async (req, res) => {
+  const userId = resolveRouteUserId(req);
+  if (!userId) {
+    return res.status(400).json({ error: "Missing required field: userId" });
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  const key = String(userId);
+  const clients = moodStreamClients.get(key) || new Set();
+  clients.add(res);
+  moodStreamClients.set(key, clients);
+
+  res.write(`event: connected\ndata: ${JSON.stringify({ success: true })}\n\n`);
+
+  req.on("close", () => {
+    const activeClients = moodStreamClients.get(key);
+    if (!activeClients) return;
+    activeClients.delete(res);
+    if (activeClients.size === 0) {
+      moodStreamClients.delete(key);
+    }
+  });
+});
 
 app.post("/api/moods", async (req, res) => {
   try {
@@ -7141,6 +7478,30 @@ app.post("/api/moods", async (req, res) => {
       message: "Mood logged",
       id: result.rows[0]?.id,
     });
+
+    try {
+      const moodHistory = await pool.query(
+        `SELECT id, mood, intensity, note, created_at
+         FROM user_moods
+         WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '1 week'
+         ORDER BY created_at ASC`,
+        [userId],
+      );
+
+      const subscribers = moodStreamClients.get(String(userId));
+      if (subscribers && subscribers.size > 0) {
+        const payload = JSON.stringify({ success: true, data: moodHistory.rows });
+        subscribers.forEach((clientRes) => {
+          try {
+            clientRes.write(`event: mood_update\ndata: ${payload}\n\n`);
+          } catch (streamError) {
+            console.error("Mood stream write error:", streamError);
+          }
+        });
+      }
+    } catch (streamError) {
+      console.error("Mood stream broadcast error:", streamError);
+    }
   } catch (error) {
     console.error("Log mood error:", error);
     res.status(500).json({ error: "Failed to log mood" });
@@ -7175,7 +7536,7 @@ app.get("/api/moods", async (req, res) => {
       [userId],
     );
 
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: dbResult.rows });
   } catch (error) {
     console.error("Fetch mood error:", error);
     res.status(500).json({ error: "Failed to fetch mood history" });
@@ -7197,7 +7558,7 @@ app.get("/api/mood-logs", async (req, res) => {
       [userId],
     );
 
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: dbResult.rows });
   } catch (error) {
     console.error("Fetch mood logs error:", error);
     res.status(500).json({ error: "Failed to fetch mood logs" });

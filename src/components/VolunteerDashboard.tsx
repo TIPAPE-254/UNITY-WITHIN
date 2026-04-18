@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Heart, TrendingUp, Users, Clock, Award, MessageCircle, AlertCircle, CheckCircle } from 'lucide-react';
 import { User, ViewState } from '../types';
-import { getVolunteerProfile, updateVolunteerProfile } from '../services/volunteerService';
+import { getVolunteerDashboardData, getVolunteerProfile, updateVolunteerProfile } from '../services/volunteerService';
 
 interface VolunteerDashboardProps {
   user?: User;
@@ -10,6 +10,8 @@ interface VolunteerDashboardProps {
 
 export const VolunteerDashboard: React.FC<VolunteerDashboardProps> = ({ user, onNavigate }) => {
   const [profile, setProfile] = useState<any>(null);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'activities' | 'impact'>('overview');
@@ -24,15 +26,56 @@ export const VolunteerDashboard: React.FC<VolunteerDashboardProps> = ({ user, on
 
   const fetchProfile = async () => {
     try {
-      if (!user?.id) return;
+      if (!user?.id && !user?.email) return;
       setLoading(true);
-      const data = await getVolunteerProfile(user.id);
-      setProfile(data.profile || {});
-      setFormData(data.profile || {});
+
+      let dashboardData: any = null;
+      if (user?.email) {
+        const dashboardResponse = await getVolunteerDashboardData(user.email);
+        dashboardData = dashboardResponse?.data || null;
+      }
+
+      if (dashboardData?.profile) {
+        setProfile(dashboardData.profile || {});
+        setFormData(dashboardData.profile || {});
+
+        const taskCampaigns = Array.isArray(dashboardData.tasks)
+          ? dashboardData.tasks.map((task: any) => ({
+              name: task.title || task.name || 'Campaign Task',
+              status: task.status || 'active',
+              progress: typeof task.progress === 'number' ? task.progress : (task.status === 'completed' ? 100 : 0),
+            }))
+          : [];
+
+        const shiftActivities = Array.isArray(dashboardData.shifts)
+          ? dashboardData.shifts.map((shift: any) => {
+              const start = shift.start_time ? new Date(shift.start_time) : null;
+              const end = shift.end_time ? new Date(shift.end_time) : null;
+              const hours = start && end ? Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60)) : 0;
+              return {
+                date: shift.start_time || shift.created_at || new Date().toISOString(),
+                type: shift.title || shift.name || 'Volunteer Shift',
+                hours: Number(hours.toFixed(1)),
+                description: shift.notes || shift.description || 'Volunteer contribution',
+              };
+            })
+          : [];
+
+        setCampaigns(taskCampaigns);
+        setActivities(shiftActivities);
+      } else if (user?.id) {
+        const data = await getVolunteerProfile(user.id);
+        setProfile(data.profile || {});
+        setFormData(data.profile || {});
+        setCampaigns(Array.isArray(data.profile?.activeCampaigns)
+          ? data.profile.activeCampaigns.map((name: string) => ({ name, status: 'active', progress: 0 }))
+          : []);
+        setActivities(Array.isArray(data.profile?.activities) ? data.profile.activities : []);
+      }
+
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load profile');
-      // Set default profile if fetch fails
       setProfile({
         firstName: user?.firstName || '',
         email: user?.email || '',
@@ -45,6 +88,8 @@ export const VolunteerDashboard: React.FC<VolunteerDashboardProps> = ({ user, on
         location: '',
         experience: ''
       });
+      setActivities([]);
+      setCampaigns([]);
     } finally {
       setLoading(false);
     }
@@ -65,18 +110,7 @@ export const VolunteerDashboard: React.FC<VolunteerDashboardProps> = ({ user, on
     }
   };
 
-  const mockActivities = [
-    { date: '2024-04-15', type: 'Community Listening', hours: 3, description: 'Supported 5 community members' },
-    { date: '2024-04-10', type: 'Outreach', hours: 2.5, description: 'Campus presentation at Nairobi University' },
-    { date: '2024-04-05', type: 'Content Creation', hours: 2, description: 'Created social media campaign' },
-    { date: '2024-03-28', type: 'Event Support', hours: 4, description: 'Mental health awareness event' }
-  ];
-
-  const mockCampaigns = [
-    { name: 'Mental Health Awareness Month', status: 'active', progress: 75 },
-    { name: 'Campus Outreach Initiative', status: 'active', progress: 60 },
-    { name: 'Community Healing Circle', status: 'completed', progress: 100 }
-  ];
+  const peopleSupported = Math.floor((profile?.hoursContributed || 0) * 2);
 
   if (loading && !profile) {
     return (
@@ -188,7 +222,12 @@ export const VolunteerDashboard: React.FC<VolunteerDashboardProps> = ({ user, on
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900 mb-6">Active Campaigns</h2>
                   <div className="space-y-4">
-                    {mockCampaigns.map((campaign, idx) => (
+                    {campaigns.length === 0 && (
+                      <div className="bg-gray-50 rounded-xl p-6 text-gray-600 text-sm">
+                        No active campaigns yet. New tasks will appear here once assigned.
+                      </div>
+                    )}
+                    {campaigns.map((campaign, idx) => (
                       <div key={idx} className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-6">
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="text-lg font-bold text-gray-900">{campaign.name}</h3>
@@ -348,7 +387,12 @@ export const VolunteerDashboard: React.FC<VolunteerDashboardProps> = ({ user, on
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Activities</h2>
                 <div className="space-y-4">
-                  {mockActivities.map((activity, idx) => (
+                  {activities.length === 0 && (
+                    <div className="bg-gray-50 rounded-xl p-6 text-gray-600 text-sm">
+                      No volunteer activities logged yet.
+                    </div>
+                  )}
+                  {activities.map((activity, idx) => (
                     <div key={idx} className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-6 border-l-4 border-purple-600">
                       <div className="flex items-start justify-between mb-2">
                         <h3 className="text-lg font-bold text-gray-900">{activity.type}</h3>
@@ -375,11 +419,11 @@ export const VolunteerDashboard: React.FC<VolunteerDashboardProps> = ({ user, on
                         <p className="text-gray-700 font-semibold">Hours Volunteered</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-4xl font-bold text-pink-600 mb-2">{Math.floor((profile?.hoursContributed || 0) * 2)}</p>
+                        <p className="text-4xl font-bold text-pink-600 mb-2">{peopleSupported}</p>
                         <p className="text-gray-700 font-semibold">People Supported</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-4xl font-bold text-blue-600 mb-2">5</p>
+                        <p className="text-4xl font-bold text-blue-600 mb-2">{campaigns.length}</p>
                         <p className="text-gray-700 font-semibold">Campaigns</p>
                       </div>
                     </div>
@@ -388,15 +432,15 @@ export const VolunteerDashboard: React.FC<VolunteerDashboardProps> = ({ user, on
                   <div>
                     <h3 className="text-xl font-bold text-gray-900 mb-4">Achievements</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6 text-center">
+                      <div className={`border-2 rounded-xl p-6 text-center ${activities.length > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200'}`}>
                         <p className="text-3xl mb-2">🌟</p>
                         <p className="font-bold text-gray-900">Getting Started</p>
-                        <p className="text-gray-600 text-sm">Completed first volunteer activity</p>
+                        <p className="text-gray-600 text-sm">{activities.length > 0 ? 'Completed first volunteer activity' : 'Complete your first volunteer activity'}</p>
                       </div>
-                      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 text-center">
+                      <div className={`border-2 rounded-xl p-6 text-center ${peopleSupported >= 20 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
                         <p className="text-3xl mb-2">🏆</p>
                         <p className="font-bold text-gray-900">Community Champion</p>
-                        <p className="text-gray-600 text-sm">Supported 20+ people</p>
+                        <p className="text-gray-600 text-sm">{peopleSupported >= 20 ? 'Supported 20+ people' : `Support ${Math.max(0, 20 - peopleSupported)} more people to unlock`}</p>
                       </div>
                     </div>
                   </div>

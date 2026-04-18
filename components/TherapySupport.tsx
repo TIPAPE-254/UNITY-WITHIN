@@ -215,7 +215,7 @@ export const TherapySupport: React.FC<TherapySupportProps> = ({ userId, userName
   const fetchAdminTherapists = async () => {
     if (!isAdmin) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/therapists`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/therapists`, {
         headers: authHeaders(userRole, userId, userEmail),
       });
       const data = await res.json();

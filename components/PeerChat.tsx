@@ -149,7 +149,7 @@ export const PeerChat: React.FC<PeerChatProps> = ({ userId }) => {
 
     const fetchMessages = async () => {
         try {
-            const response = await fetch(`${API_BASE_URL}/chat/messages`, { cache: 'no-store' });
+            const response = await fetch(`${API_BASE_URL}/api/chat/messages`, { cache: 'no-store' });
             if (response.ok) {
                 const result = await response.json();
                 if (result.success) {
@@ -192,7 +192,7 @@ export const PeerChat: React.FC<PeerChatProps> = ({ userId }) => {
 
         setIsLoading(true);
         try {
-            await fetch(`${API_BASE_URL}/chat/messages`, {
+            await fetch(`${API_BASE_URL}/api/chat/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

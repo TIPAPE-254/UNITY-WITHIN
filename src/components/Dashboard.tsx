@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MOODS } from '../constants';
+import { API_BASE_URL, MOODS } from '../constants';
 import { Button } from './Button';
 import { generateDailyAffirmation } from '../services/geminiService';
 import { Sun, Sparkles, TrendingUp, Flame, Trophy, Star, Sprout, Flower, Trees, Wind, BrainCircuit, Heart, Zap, Phone, ExternalLink, Brain, AlertTriangle } from 'lucide-react';
@@ -20,85 +20,118 @@ const LEVELS = [
   { level: 4, name: "Flourishing", minXp: 600, icon: Sun },
 ];
 
+interface MoodLog {
+  id: number;
+  mood: string;
+  intensity: number;
+  note: string | null;
+  created_at: string;
+}
+
+interface MoodChartDatum {
+  name: string;
+  mood: number;
+}
+
+const moodScoreMap: Record<string, number> = {
+  happy: 6,
+  calm: 5,
+  okay: 4,
+  sad: 3,
+  stressed: 2,
+  angry: 1,
+};
+
+const getActiveUserId = (): string | null => {
+  try {
+    const savedUser = localStorage.getItem('unity_user');
+    if (!savedUser) return null;
+    const parsed = JSON.parse(savedUser);
+    return parsed?.id ? String(parsed.id) : null;
+  } catch {
+    return null;
+  }
+};
+
+const toMoodScore = (mood: string): number => moodScoreMap[mood.toLowerCase()] || 0;
+
+const buildWeeklyMoodData = (logs: MoodLog[]): MoodChartDatum[] => {
+  const today = new Date();
+  const labels: MoodChartDatum[] = [];
+  const dayBuckets = new Map<string, number[]>();
+
+  logs.forEach((entry) => {
+    const dateKey = new Date(entry.created_at).toDateString();
+    if (!dayBuckets.has(dateKey)) {
+      dayBuckets.set(dateKey, []);
+    }
+    dayBuckets.get(dateKey)?.push(toMoodScore(entry.mood));
+  });
+
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - i);
+    const key = date.toDateString();
+    const dayValues = dayBuckets.get(key) || [];
+    const avgMood = dayValues.length > 0
+      ? Number((dayValues.reduce((sum, value) => sum + value, 0) / dayValues.length).toFixed(2))
+      : 0;
+
+    labels.push({
+      name: date.toLocaleDateString('en-US', { weekday: 'short' }),
+      mood: avgMood,
+    });
+  }
+
+  return labels;
+};
+
 export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNavigate, onLogout }) => {
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
+  const [moodChartData, setMoodChartData] = useState<MoodChartDatum[]>(() => buildWeeklyMoodData([]));
   const [affirmation, setAffirmation] = useState<string>("Loading your daily calm...");
   const [loadingAffirmation, setLoadingAffirmation] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [xpGained, setXpGained] = useState<number | null>(null);
+  const [isStateHydrated, setIsStateHydrated] = useState(false);
   const therapistToolsEnabled = false; // Feature flag for therapist tools
 
   // Gamification State
-  const [progress, setProgress] = useState<UserProgress>(() => {
-    const saved = localStorage.getItem('unity_progress');
-    return saved ? JSON.parse(saved) : { points: 0, streak: 0, lastCheckInDate: null, level: 1 };
-  });
+  const [progress, setProgress] = useState<UserProgress>({ points: 0, streak: 0, lastCheckInDate: null, level: 1 });
 
   // Tool Usage and Favorites State
-  const [toolUsage, setToolUsage] = useState<Record<string, number>>(() => {
-    const saved = localStorage.getItem('unity_tool_usage');
-    return saved ? JSON.parse(saved) : {};
-  });
+  const [toolUsage, setToolUsage] = useState<Record<string, number>>({});
 
-  const [favorites, setFavorites] = useState<string[]>(() => {
-    const saved = localStorage.getItem('unity_tool_favorites');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Dummy data for the chart (could be made dynamic in a full backend app)
-  const data = [
-    { name: 'Mon', mood: 3 },
-    { name: 'Tue', mood: 4 },
-    { name: 'Wed', mood: 2 },
-    { name: 'Thu', mood: 5 },
-    { name: 'Fri', mood: 4 },
-    { name: 'Sat', mood: 5 },
-    { name: 'Sun', mood: selectedMood ? MOODS.findIndex(m => m.label === selectedMood) + 1 : 0 },
-  ];
+  const [favorites, setFavorites] = useState<string[]>([]);
 
   // Goal Setting & Habit Tracking State
-  const [goals, setGoals] = useState<Goal[]>(() => {
-    const saved = localStorage.getItem('unity_goals');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [goals, setGoals] = useState<Goal[]>([]);
 
-  const [habits, setHabits] = useState<Habit[]>(() => {
-    const saved = localStorage.getItem('unity_habits');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [habits, setHabits] = useState<Habit[]>([]);
 
   // Emergency & Safety Tools State
-  const [safetyPlan, setSafetyPlan] = useState<SafetyPlan>(() => {
-    const saved = localStorage.getItem('unity_safety_plan');
-    return saved ? JSON.parse(saved) : {
-      id: 'default',
-      triggers: [],
-      copingStrategies: [],
-      supportContacts: [],
-      emergencyActions: []
-    };
+  const [safetyPlan, setSafetyPlan] = useState<SafetyPlan>({
+    id: 'default',
+    triggers: [],
+    copingStrategies: [],
+    supportContacts: [],
+    emergencyActions: []
   });
 
   // Gamification Enhancements State
-  const [badges, setBadges] = useState<Badge[]>(() => {
-    const saved = localStorage.getItem('unity_badges');
-    return saved ? JSON.parse(saved) : [
-      { id: 'first_checkin', name: 'First Steps', description: 'Completed your first mood check-in', icon: '🌱', earnedAt: null, requirement: 'Complete 1 mood check-in' },
-      { id: 'week_streak', name: 'Week Warrior', description: 'Maintained a 7-day streak', icon: '🔥', earnedAt: null, requirement: '7-day streak' },
-      { id: 'tool_explorer', name: 'Tool Explorer', description: 'Used 5 different tools', icon: '🛠️', earnedAt: null, requirement: 'Use 5 different tools' },
-      { id: 'journal_keeper', name: 'Journal Keeper', description: 'Wrote 10 journal entries', icon: '📖', earnedAt: null, requirement: '10 journal entries' },
-    ];
-  });
+  const [badges, setBadges] = useState<Badge[]>([
+    { id: 'first_checkin', name: 'First Steps', description: 'Completed your first mood check-in', icon: '🌱', earnedAt: null, requirement: 'Complete 1 mood check-in' },
+    { id: 'week_streak', name: 'Week Warrior', description: 'Maintained a 7-day streak', icon: '🔥', earnedAt: null, requirement: '7-day streak' },
+    { id: 'tool_explorer', name: 'Tool Explorer', description: 'Used 5 different tools', icon: '🛠️', earnedAt: null, requirement: 'Use 5 different tools' },
+    { id: 'journal_keeper', name: 'Journal Keeper', description: 'Wrote 10 journal entries', icon: '📖', earnedAt: null, requirement: '10 journal entries' },
+  ]);
 
   // Wearable Integration State
-  const [wearableData, setWearableData] = useState<WearableData>(() => {
-    const saved = localStorage.getItem('unity_wearable');
-    return saved ? JSON.parse(saved) : {
-      steps: 0,
-      heartRate: 0,
-      sleepHours: 0,
-      lastSync: null
-    };
+  const [wearableData, setWearableData] = useState<WearableData>({
+    steps: 0,
+    heartRate: 0,
+    sleepHours: 0,
+    lastSync: null
   });
 
   useEffect(() => {
@@ -106,36 +139,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('unity_progress', JSON.stringify(progress));
-  }, [progress]);
+    const loadDashboardState = async () => {
+      const userId = getActiveUserId();
+      if (!userId) {
+        setIsStateHydrated(true);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/dashboard/state?userId=${encodeURIComponent(userId)}`);
+        if (!response.ok) {
+          throw new Error('Failed to load dashboard state');
+        }
+
+        const payload = await response.json();
+        const state = payload?.data || {};
+
+        if (state.progress) setProgress(state.progress);
+        if (state.toolUsage) setToolUsage(state.toolUsage);
+        if (state.favorites) setFavorites(state.favorites);
+        if (state.goals) setGoals(state.goals);
+        if (state.habits) setHabits(state.habits);
+        if (state.safetyPlan) setSafetyPlan(state.safetyPlan);
+        if (state.badges) setBadges(state.badges);
+        if (state.wearableData) setWearableData(state.wearableData);
+      } catch (error) {
+        console.error('Failed to hydrate dashboard state:', error);
+      } finally {
+        setIsStateHydrated(true);
+      }
+    };
+
+    void loadDashboardState();
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem('unity_tool_usage', JSON.stringify(toolUsage));
-  }, [toolUsage]);
+    if (!isStateHydrated) return;
 
-  useEffect(() => {
-    localStorage.setItem('unity_tool_favorites', JSON.stringify(favorites));
-  }, [favorites]);
+    const userId = getActiveUserId();
+    if (!userId) return;
 
-  useEffect(() => {
-    localStorage.setItem('unity_goals', JSON.stringify(goals));
-  }, [goals]);
+    const timeoutId = window.setTimeout(() => {
+      void fetch(`${API_BASE_URL}/api/dashboard/state`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          state: {
+            progress,
+            toolUsage,
+            favorites,
+            goals,
+            habits,
+            safetyPlan,
+            badges,
+            wearableData,
+          },
+        }),
+      }).catch((error) => {
+        console.error('Failed to persist dashboard state:', error);
+      });
+    }, 400);
 
-  useEffect(() => {
-    localStorage.setItem('unity_habits', JSON.stringify(habits));
-  }, [habits]);
-
-  useEffect(() => {
-    localStorage.setItem('unity_safety_plan', JSON.stringify(safetyPlan));
-  }, [safetyPlan]);
-
-  useEffect(() => {
-    localStorage.setItem('unity_badges', JSON.stringify(badges));
-  }, [badges]);
-
-  useEffect(() => {
-    localStorage.setItem('unity_wearable', JSON.stringify(wearableData));
-  }, [wearableData]);
+    return () => window.clearTimeout(timeoutId);
+  }, [isStateHydrated, progress, toolUsage, favorites, goals, habits, safetyPlan, badges, wearableData]);
 
   const fetchAffirmation = async (moodLabel: string) => {
     setLoadingAffirmation(true);
@@ -144,9 +211,89 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
     setLoadingAffirmation(false);
   };
 
-  const handleMoodSelect = (moodLabel: string) => {
+  const fetchMoodHistory = async () => {
+    const userId = getActiveUserId();
+    if (!userId) {
+      setMoodChartData(buildWeeklyMoodData([]));
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/moods?userId=${encodeURIComponent(userId)}&range=week`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch mood history');
+      }
+
+      const payload = await response.json();
+      const logs = Array.isArray(payload?.data) ? payload.data as MoodLog[] : [];
+      setMoodChartData(buildWeeklyMoodData(logs));
+    } catch (error) {
+      console.error('Failed to load mood history:', error);
+    }
+  };
+
+  const logMoodToDatabase = async (moodLabel: string) => {
+    const userId = getActiveUserId();
+    if (!userId) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/moods`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          mood: moodLabel,
+          intensity: toMoodScore(moodLabel),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to log mood');
+      }
+
+      await fetchMoodHistory();
+    } catch (error) {
+      console.error('Mood logging failed:', error);
+    }
+  };
+
+  useEffect(() => {
+    const userId = getActiveUserId();
+    if (!userId) {
+      setMoodChartData(buildWeeklyMoodData([]));
+      return;
+    }
+
+    void fetchMoodHistory();
+
+    const streamUrl = `${API_BASE_URL}/api/moods/stream?userId=${encodeURIComponent(userId)}`;
+    const stream = new EventSource(streamUrl);
+
+    const handleMoodUpdate = (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data) as { data?: MoodLog[] };
+        const logs = Array.isArray(payload?.data) ? payload.data : [];
+        setMoodChartData(buildWeeklyMoodData(logs));
+      } catch (error) {
+        console.error('Failed to parse mood stream event:', error);
+      }
+    };
+
+    stream.addEventListener('mood_update', handleMoodUpdate as EventListener);
+    stream.onerror = (error) => {
+      console.error('Mood stream disconnected:', error);
+    };
+
+    return () => {
+      stream.removeEventListener('mood_update', handleMoodUpdate as EventListener);
+      stream.close();
+    };
+  }, []);
+
+  const handleMoodSelect = async (moodLabel: string) => {
     setSelectedMood(moodLabel);
     fetchAffirmation(moodLabel);
+    await logMoodToDatabase(moodLabel);
     handleCheckIn();
   };
 
@@ -222,6 +369,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
   const progressToNext = nextLevel
     ? ((progress.points - currentLevel.minXp) / (nextLevel.minXp - currentLevel.minXp)) * 100
     : 100;
+  const journalingDays = Math.min(30, habits.find(h => h.name.toLowerCase().includes('journal'))?.currentCount || 0);
+  const journalingProgress = Math.min(100, (journalingDays / 30) * 100);
+  const breathingSessions = Math.min(50, toolUsage.breathing || 0);
+  const breathingProgress = Math.min(100, (breathingSessions / 50) * 100);
 
   const updateHabitProgress = (habitId: string) => {
     setHabits(prev => prev.map(habit => {
@@ -246,95 +397,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
   const getEarnedBadges = () => badges.filter(b => b.earnedAt !== null);
   const getAvailableBadges = () => badges.filter(b => b.earnedAt === null);
 
-  // Initialize some sample data for demonstration
   useEffect(() => {
-    if (goals.length === 0) {
-      setGoals([
-        {
-          id: 'goal-1',
-          title: 'Practice Daily Mindfulness',
-          description: 'Complete 30 days of mindfulness exercises',
-          category: 'health',
-          targetDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          progress: 40,
-          completed: false,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: 'goal-2',
-          title: 'Build Journaling Habit',
-          description: 'Write in journal 5 times per week',
-          category: 'personal',
-          targetDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-          progress: 25,
-          completed: false,
-          createdAt: new Date().toISOString()
-        }
-      ]);
-    }
-
-    if (habits.length === 0) {
-      setHabits([
-        {
-          id: 'habit-1',
-          name: 'Morning Meditation',
-          description: '10 minutes of mindfulness each morning',
-          frequency: 'daily',
-          color: 'bg-blue-100',
-          completedDates: [],
-          streak: 5,
-          lastCompleted: new Date().toDateString(),
-          targetCount: 7,
-          currentCount: 5
-        },
-        {
-          id: 'habit-2',
-          name: 'Gratitude Practice',
-          description: 'Write down 3 things I\'m grateful for',
-          frequency: 'daily',
-          color: 'bg-yellow-100',
-          completedDates: [],
-          streak: 3,
-          lastCompleted: new Date(Date.now() - 24 * 60 * 60 * 1000).toDateString(),
-          targetCount: 7,
-          currentCount: 4
-        }
-      ]);
-    }
-
-    if (safetyPlan.copingStrategies.length === 0) {
-      setSafetyPlan({
-        id: 'default',
-        triggers: ['Feeling overwhelmed', 'Negative thoughts', 'Stress at work'],
-        copingStrategies: [
-          'Take 5 deep breaths',
-          'Go for a short walk',
-          'Call a trusted friend',
-          'Use grounding techniques (5-4-3-2-1)'
-        ],
-        supportContacts: [
-          { name: 'Best Friend', phone: '555-0123' },
-          { name: 'Family Member', phone: '555-0456' }
-        ],
-        emergencyActions: [
-          'Call crisis hotline (988)',
-          'Go to emergency room if needed',
-          'Contact emergency contact'
-        ]
-      });
-    }
-
-    if (wearableData.steps === 0) {
-      setWearableData({
-        steps: 8432,
-        heartRate: 72,
-        sleepHours: 7.5,
-        lastSync: new Date().toISOString()
-      });
-    }
-
-    // Initialize badges with earned status based on progress
+    // Update badge unlocks based on real user activity without injecting sample records.
     setBadges(prev => prev.map(badge => {
+      if (badge.earnedAt) return badge;
       if (badge.id === 'first_checkin' && progress.points > 0) {
         return { ...badge, earnedAt: new Date().toISOString() };
       }
@@ -346,7 +412,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
       }
       return badge;
     }));
-  }, [goals.length, habits.length, safetyPlan.copingStrategies.length, wearableData.steps, progress.points, progress.streak, toolUsage]);
+  }, [progress.points, progress.streak, toolUsage]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 relative">
@@ -428,7 +494,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
           {MOODS.map((mood) => (
             <button
               key={mood.label}
-              onClick={() => handleMoodSelect(mood.label)}
+              onClick={() => {
+                void handleMoodSelect(mood.label);
+              }}
               className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all duration-200 transform hover:scale-105 ${selectedMood === mood.label
                 ? 'bg-unity-50 ring-2 ring-unity-400 scale-105'
                 : 'hover:bg-gray-50'
@@ -495,7 +563,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
           </div>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data}>
+              <BarChart data={moodChartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
                 <Tooltip
@@ -503,8 +571,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
                 <Bar dataKey="mood" radius={[4, 4, 4, 4]}>
-                  {data.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={index === 6 ? '#f43f5e' : '#fbcfe8'} />
+                  {moodChartData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.mood >= 4 ? '#86efac' : entry.mood >= 2 ? '#fcd34d' : entry.mood > 0 ? '#fca5a5' : '#f3f4f6'}
+                    />
                   ))}
                 </Bar>
               </BarChart>
@@ -807,17 +878,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-purple-700">30 Days of Journaling</span>
-                <span className="text-xs text-purple-600">12/30 days</span>
+                <span className="text-xs text-purple-600">{journalingDays}/30 days</span>
               </div>
               <div className="w-full bg-purple-200 rounded-full h-2">
-                <div className="bg-purple-500 h-2 rounded-full" style={{ width: '40%' }}></div>
+                <div className="bg-purple-500 h-2 rounded-full" style={{ width: `${journalingProgress}%` }}></div>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-purple-700">50 Breathing Sessions</span>
-                <span className="text-xs text-purple-600">23/50 sessions</span>
+                <span className="text-xs text-purple-600">{breathingSessions}/50 sessions</span>
               </div>
               <div className="w-full bg-purple-200 rounded-full h-2">
-                <div className="bg-purple-500 h-2 rounded-full" style={{ width: '46%' }}></div>
+                <div className="bg-purple-500 h-2 rounded-full" style={{ width: `${breathingProgress}%` }}></div>
               </div>
             </div>
           </div>

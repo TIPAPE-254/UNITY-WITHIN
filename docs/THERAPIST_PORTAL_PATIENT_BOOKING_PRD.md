@@ -356,7 +356,7 @@ Base path: /api/v1
 - Payments: Stripe + M-Pesa Daraja
 - Auth: JWT + refresh rotation
 - Storage: S3 or R2
-- Hosting: Azure / Railway / Render / AWS
+- Hosting: Azure / Railway / AWS
 
 ---
 

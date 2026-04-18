@@ -64,7 +64,7 @@ export const MoodHistoryGraph: React.FC<MoodHistoryGraphProps> = ({ userId, refr
     const fetchData = async () => {
         try {
             setLoading(true);
-            const res = await fetch(`${API_BASE_URL}/moods?userId=${userId}&range=${range}`);
+            const res = await fetch(`${API_BASE_URL}/api/moods?userId=${userId}&range=${range}`);
             const json = await res.json();
             if (json.success) {
                 setData(json.data);

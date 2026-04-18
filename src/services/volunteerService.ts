@@ -28,18 +28,13 @@ export const sendVolunteerInvite = async (
   adminName: string
 ): Promise<VolunteerInviteResponse> => {
   try {
-    const inviteToken = generateInviteToken();
-    const inviteLink = `${window.location.origin}/volunteer-invite/${inviteToken}`;
-
-    const response = await fetch(`${API_BASE_URL}/admin/send-volunteer-invite`, {
+    const response = await fetch(`${API_BASE_URL}/api/admin/invite-volunteer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email,
         role: volunteerRole,
-        adminName,
-        inviteLink,
-        inviteToken
+        adminName
       })
     });
 
@@ -62,7 +57,7 @@ export const sendVolunteerInvite = async (
  */
 export const getVolunteerInvite = async (token: string) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/volunteer/invite/${token}`);
+    const response = await fetch(`${API_BASE_URL}/api/volunteer/invite/${token}`);
     if (!response.ok) {
       throw new Error('Invalid or expired invite');
     }
@@ -89,12 +84,15 @@ export const acceptVolunteerInvite = async (
   }
 ) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/volunteer/accept-invite`, {
+    const response = await fetch(`${API_BASE_URL}/api/volunteer/onboarding`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         token,
         userId,
+        name: `${profileData.firstName} ${profileData.lastName || ''}`.trim(),
+        county: profileData.location,
+        skills: profileData.experience ? [profileData.experience] : [],
         ...profileData
       })
     });
@@ -115,7 +113,7 @@ export const acceptVolunteerInvite = async (
  */
 export const getVolunteerInvites = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/volunteer-invites`);
+    const response = await fetch(`${API_BASE_URL}/api/admin/volunteer-invites`);
     if (!response.ok) {
       throw new Error('Failed to fetch invites');
     }
@@ -131,7 +129,7 @@ export const getVolunteerInvites = async () => {
  */
 export const approveVolunteer = async (inviteId: string) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/approve-volunteer/${inviteId}`, {
+    const response = await fetch(`${API_BASE_URL}/api/admin/approve-volunteer/${inviteId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     });
@@ -152,7 +150,7 @@ export const approveVolunteer = async (inviteId: string) => {
  */
 export const rejectVolunteer = async (inviteId: string, reason: string) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/reject-volunteer/${inviteId}`, {
+    const response = await fetch(`${API_BASE_URL}/api/admin/reject-volunteer/${inviteId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason })
@@ -174,7 +172,7 @@ export const rejectVolunteer = async (inviteId: string, reason: string) => {
  */
 export const getVolunteerProfile = async (userId: string) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/volunteer/profile/${userId}`);
+    const response = await fetch(`${API_BASE_URL}/api/volunteer/profile/${userId}`);
     if (!response.ok) {
       throw new Error('Failed to fetch profile');
     }
@@ -186,11 +184,33 @@ export const getVolunteerProfile = async (userId: string) => {
 };
 
 /**
+ * Get volunteer dashboard data
+ */
+export const getVolunteerDashboardData = async (email: string) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/volunteer/dashboard`, {
+      headers: {
+        'x-user-email': email,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch volunteer dashboard');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching volunteer dashboard:', error);
+    throw error;
+  }
+};
+
+/**
  * Update volunteer profile
  */
 export const updateVolunteerProfile = async (userId: string, data: any) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/volunteer/profile/${userId}`, {
+    const response = await fetch(`${API_BASE_URL}/api/volunteer/profile/${userId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -231,7 +251,7 @@ export const copyInviteLink = (inviteLink: string): Promise<void> => {
  */
 export const getVolunteerStats = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/volunteer-stats`);
+    const response = await fetch(`${API_BASE_URL}/api/admin/volunteer-stats`);
     if (!response.ok) {
       throw new Error('Failed to fetch statistics');
     }

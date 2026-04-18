@@ -24,7 +24,7 @@ export const AdminDashboard: React.FC = () => {
 
     const fetchStats = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/admin/stats`);
+            const res = await fetch(`${API_BASE_URL}/api/admin/stats`);
             const data = await res.json();
             if (data.success) setStats(data.stats);
         } catch (e) { console.error(e); }
@@ -39,42 +39,42 @@ export const AdminDashboard: React.FC = () => {
 
         const fetchTabMap: Record<string, () => Promise<void>> = {
             users: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/users`);
+                const res = await fetch(`${API_BASE_URL}/api/admin/users`);
                 const data = await res.json();
                 if (data.success) setUsers(data.data);
             },
             rooms: async () => {
-                const res = await fetch(`${API_BASE_URL}/chat/rooms`);
+                const res = await fetch(`${API_BASE_URL}/api/chat/rooms`);
                 const data = await res.json();
                 if (data.success) setRooms(data.data);
             },
             messages: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/chat/messages`);
+                const res = await fetch(`${API_BASE_URL}/api/admin/chat/messages`);
                 const data = await res.json();
                 if (data.success) setMessages(data.data);
             },
             blocked: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/moderation-logs`);
+                const res = await fetch(`${API_BASE_URL}/api/admin/moderation-logs`);
                 const data = await res.json();
                 if (data.success) setBlockedLogs(data.data);
             },
             moods: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/moods`);
+                const res = await fetch(`${API_BASE_URL}/api/admin/moods`);
                 const data = await res.json();
                 if (data.success) setMoods(data.data);
             },
             journals: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/journals`);
+                const res = await fetch(`${API_BASE_URL}/api/admin/journals`);
                 const data = await res.json();
                 if (data.success) setJournals(data.data);
             },
             wins: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/tiny-wins`);
+                const res = await fetch(`${API_BASE_URL}/api/admin/tiny-wins`);
                 const data = await res.json();
                 if (data.success) setWins(data.data);
             },
             reports: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/reports`);
+                const res = await fetch(`${API_BASE_URL}/api/admin/reports`);
                 const data = await res.json();
                 if (data.success) setReports(data.data);
             }
@@ -84,7 +84,7 @@ export const AdminDashboard: React.FC = () => {
             setIsLoading(true);
             try {
                 if (selectedRoom) {
-                    const res = await fetch(`${API_BASE_URL}/chat/rooms/${selectedRoom.id}/messages`);
+                    const res = await fetch(`${API_BASE_URL}/api/chat/rooms/${selectedRoom.id}/messages`);
                     const data = await res.json();
                     if (data.success) setMessages(data.data);
                 } else if (fetchTabMap[activeTab]) {
@@ -98,7 +98,7 @@ export const AdminDashboard: React.FC = () => {
 
     const toggleUserRole = async (userId: number, currentRole: string) => {
         const newRole = currentRole === 'admin' ? 'user' : 'admin';
-        const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/role`, {
+        const res = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/role`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ role: newRole })
@@ -111,7 +111,7 @@ export const AdminDashboard: React.FC = () => {
 
     const deleteUser = async (id: number) => {
         if (window.confirm('Delete user?')) {
-            await fetch(`${API_BASE_URL}/admin/users/${id}`, { method: 'DELETE' });
+            await fetch(`${API_BASE_URL}/api/admin/users/${id}`, { method: 'DELETE' });
             setUsers(users.filter(u => u.id !== id));
             fetchStats();
         }
@@ -119,7 +119,7 @@ export const AdminDashboard: React.FC = () => {
 
     const handleCreateRoom = async (e: React.FormEvent) => {
         e.preventDefault();
-        const res = await fetch(`${API_BASE_URL}/admin/chat/rooms`, {
+        const res = await fetch(`${API_BASE_URL}/api/admin/chat/rooms`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newRoom)
@@ -128,7 +128,7 @@ export const AdminDashboard: React.FC = () => {
             setNewRoom({ name: '', description: '', type: 'public' });
             const data = await res.json();
             if (data.success) {
-                const rRes = await fetch(`${API_BASE_URL}/chat/rooms`);
+                const rRes = await fetch(`${API_BASE_URL}/api/chat/rooms`);
                 const rData = await rRes.json();
                 if (rData.success) setRooms(rData.data);
             }
@@ -137,14 +137,14 @@ export const AdminDashboard: React.FC = () => {
 
     const deleteRoom = async (id: number) => {
         if (window.confirm('Delete room?')) {
-            await fetch(`${API_BASE_URL}/admin/chat/rooms/${id}`, { method: 'DELETE' });
+            await fetch(`${API_BASE_URL}/api/admin/chat/rooms/${id}`, { method: 'DELETE' });
             setRooms(rooms.filter(r => r.id !== id));
         }
     };
 
     const deleteMessage = async (id: number) => {
         if (window.confirm('Delete message?')) {
-            await fetch(`${API_BASE_URL}/admin/chat/messages/${id}`, { method: 'DELETE' });
+            await fetch(`${API_BASE_URL}/api/admin/chat/messages/${id}`, { method: 'DELETE' });
             setMessages(messages.filter(m => m.id !== id));
             fetchStats();
         }
