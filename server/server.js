@@ -4854,7 +4854,7 @@ const sendBrevoEmail = async ({ toEmail, subject, htmlContent }) => {
 
 // Admin creates a therapist invite and gets both invite URL + WhatsApp deep-link.
 app.post("/api/admin/invite-volunteer", requireAdmin, async (req, res) => {
-  const { email, role, adminName } = req.body;
+  const { email, adminName } = req.body;
   if (!email)
     return res.status(400).json({ success: false, error: "Email is required" });
 
@@ -4877,7 +4877,7 @@ app.post("/api/admin/invite-volunteer", requireAdmin, async (req, res) => {
       emailSent: emailSent.success,
       invite: {
         email,
-        role: role || "listener",
+        role: "self-selected",
         invitedBy: adminName || "Admin",
       },
     });
@@ -4898,13 +4898,19 @@ app.post("/api/admin/send-email", requireAdmin, async (req, res) => {
 
   try {
     const html = `
-            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #f0f0f0; border-radius: 12px;">
-                <h2 style="color: #6d28d9;">Message from Unity Within</h2>
-                <div style="white-space: pre-wrap; color: #374151; line-height: 1.6;">
-                    ${message}
-                </div>
-                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-                <p style="font-size: 11px; color: #999;">Unity Within - Empathy. Community. Healing.</p>
+        <div style="background: #ffffff; margin: 0; padding: 24px 12px; font-family: 'Segoe UI', Arial, sans-serif; color: #111111;">
+          <div style="max-width: 640px; margin: 0 auto; border: 1px solid #fbcfe8; border-radius: 16px; overflow: hidden; background: #ffffff;">
+            <div style="background: #111111; padding: 20px 24px;">
+              <p style="margin: 0; font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: #fbcfe8; font-weight: 700;">Unity Within</p>
+              <h2 style="margin: 8px 0 0; color: #ffffff; font-size: 22px; line-height: 1.3;">Message from Unity Within</h2>
+            </div>
+            <div style="padding: 24px; font-size: 14px; line-height: 1.7; color: #111111; white-space: pre-wrap;">
+              ${message}
+            </div>
+            <div style="border-top: 1px solid #fce7f3; background: #fff1f2; padding: 16px 24px;">
+              <p style="margin: 0; font-size: 12px; color: #4b5563;">Unity Within • Empathy. Community. Healing.</p>
+            </div>
+          </div>
             </div>
         `;
     const result = await sendEmail(to, subject, html);
@@ -4950,7 +4956,7 @@ app.get("/api/admin/volunteer-invites", requireAdmin, async (req, res) => {
     const invites = dbResult.rows.map((row) => ({
       id: String(row.id),
       email: row.email,
-      role: "listener",
+      role: "self-selected",
       status: row.status || "pending",
       inviteToken: row.token,
       inviteLink: `${getAppBaseUrl(req)}/volunteer-invite/${row.token}`,
@@ -5021,7 +5027,7 @@ app.get("/api/volunteer/invite/:token", async (req, res) => {
       success: true,
       invite: {
         email: inviteRow.email,
-        role: "listener",
+        role: "self-selected",
         status: inviteRow.status || "pending",
       },
     });
@@ -5056,6 +5062,13 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
     tier,
   } = req.body;
   try {
+    if (!matched_role_id) {
+      return res.status(400).json({
+        success: false,
+        error: "Please choose a volunteer category based on your skills",
+      });
+    }
+
     const resolvedName =
       name || `${(firstName || "").trim()} ${(lastName || "").trim()}`.trim();
     const resolvedCounty = county || location || null;
@@ -5088,7 +5101,7 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
           phone,
           resolvedCounty,
           JSON.stringify(resolvedSkills),
-          matched_role_id || null,
+          Number(matched_role_id),
           commitment_level || null,
           tier || null,
           email,
@@ -5104,7 +5117,7 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
           phone,
           resolvedCounty,
           JSON.stringify(resolvedSkills),
-          matched_role_id || null,
+          Number(matched_role_id),
           commitment_level || null,
           tier || null,
           "pending_review",
@@ -5296,6 +5309,54 @@ app.post("/api/admin/invite-therapist", requireAdmin, async (req, res) => {
     return res
       .status(500)
       .json({ success: false, error: "Failed to create therapist invite" });
+   }
+ });
+
+// GET all therapist invites (admin only)
+app.get("/api/admin/therapist-invitations", requireAdmin, async (req, res) => {
+  try {
+    const { status, limit = 50, offset = 0 } = req.query;
+    const whereClauses = [];
+    const params = [];
+
+    if (status) {
+      whereClauses.push(`status = $${params.length + 1}`);
+      params.push(status);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+    const limitVal = Number.parseInt(String(limit), 10) || 50;
+    const offsetVal = Number.parseInt(String(offset), 10) || 0;
+
+    const rowsResult = await pool.query(
+      `SELECT ti.id, ti.email, ti.phone, ti.token, ti.status, ti.expires_at, ti.created_at,
+              u.name as invited_by_name
+             FROM therapist_invites ti
+             LEFT JOIN users u ON ti.invited_by = u.id
+             ${whereSql}
+             ORDER BY ti.created_at DESC
+             LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limitVal, offsetVal],
+    );
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total FROM therapist_invites ${whereSql}`,
+      params,
+    );
+    const total = Number(countResult.rows?.[0]?.total || 0);
+
+    return res.json({
+      success: true,
+      data: rowsResult.rows || [],
+      total,
+      limit: limitVal,
+      offset: offsetVal,
+    });
+  } catch (error) {
+    console.error("Fetch therapist invites error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch invites" });
   }
 });
 
@@ -5354,11 +5415,22 @@ app.post("/api/invite/complete", async (req, res) => {
     const languages = (req.body?.languages || "English, Swahili")
       .toString()
       .trim();
+    const availability = (req.body?.availability || "online").toString().trim();
+    const availabilitySchedule = (req.body?.availabilitySchedule || "").toString().trim();
+    const sessionPrice = (req.body?.sessionPrice || "").toString().trim();
+    const termsAccepted = req.body?.termsAccepted === true;
 
     if (!token || !password || !name || !specialization || !bio) {
       return res
         .status(400)
         .json({ success: false, error: "Missing required fields" });
+    }
+
+    if (!termsAccepted) {
+      return res.status(400).json({
+        success: false,
+        error: "You must accept the terms and conditions",
+      });
     }
 
     if (password.length < 8) {
@@ -5427,8 +5499,10 @@ app.post("/api/invite/complete", async (req, res) => {
 
     const userId = userInsert.rows[0]?.id;
     await pool.query(
-      `INSERT INTO therapists (user_id, name, email, phone, password_hash, specialization, bio, languages, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')`,
+      `INSERT INTO therapists 
+             (user_id, name, email, phone, password_hash, specialization, bio, languages, 
+              availability, availability_schedule, session_price, terms_accepted_at, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), 'active')`,
       [
         userId,
         name,
@@ -5438,6 +5512,9 @@ app.post("/api/invite/complete", async (req, res) => {
         specialization,
         bio,
         languages || "English, Swahili",
+        availability,
+        availabilitySchedule,
+        sessionPrice,
       ],
     );
 
@@ -5515,6 +5592,66 @@ app.get("/api/support/therapists/profile/self", async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Failed to fetch therapist profile",
+    });
+   }
+ });
+
+// Therapist update own profile endpoint
+app.put("/api/support/therapists/profile/self", async (req, res) => {
+  try {
+    const therapistIdFromHeader = await resolveTherapistIdFromHeaders(
+      req.headers,
+    );
+
+    if (!therapistIdFromHeader) {
+      return res.status(401).json({
+        success: false,
+        error: "Missing therapist context. Please log in as a therapist.",
+      });
+    }
+
+    const allowedFields = [
+      "name",
+      "phone",
+      "specialization",
+      "bio",
+      "qualifications",
+      "experience",
+      "languages",
+      "availability",
+      "availability_schedule",
+      "session_price",
+    ];
+    const updates = [];
+    const values = [];
+
+    allowedFields.forEach((field) => {
+      const val = req.body[field];
+      if (val !== undefined && val !== null) {
+        updates.push(`${field} = ?`);
+        values.push(val);
+      }
+    });
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "No valid fields to update",
+      });
+    }
+
+    values.push(therapistIdFromHeader);
+    await pool.query(
+      `UPDATE therapists SET ${updates.join(", ")}, updated_at = NOW() WHERE id = ?`,
+      values,
+    );
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Update therapist profile error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to update therapist profile",
     });
   }
 });
@@ -7305,7 +7442,7 @@ app.get("/api/chat/messages", requireUnityUser, async (req, res) => {
              ORDER BY m.created_at ASC 
              LIMIT 100`,
     );
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: dbResult.rows });
   } catch (error) {
     console.error("Get messages error:", error);
     res.status(500).json({ error: "Failed to fetch messages" });

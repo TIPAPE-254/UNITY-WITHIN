@@ -64,7 +64,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ roomId, roomName, userId, us
     const fetchHistory = async () => {
         try {
             setIsLoading(true);
-            const res = await fetch(`${API_BASE_URL}/api/chat/rooms/${roomId}/messages`);
+            const res = await fetch(`${API_BASE_URL}/chat/rooms/${roomId}/messages`);
             const data = await res.json();
             if (data.success) {
                 setMessages(data.data);

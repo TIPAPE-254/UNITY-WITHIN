@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, AlertCircle, Loader } from 'lucide-react';
-import { getVolunteerInvite, acceptVolunteerInvite } from '../services/volunteerService';
+import { getVolunteerInvite, acceptVolunteerInvite, getVolunteerRoles } from '../services/volunteerService';
 
 interface VolunteerInviteAcceptProps {
   inviteToken: string;
@@ -13,6 +13,7 @@ export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ in
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [roles, setRoles] = useState<Array<{ id: number; title: string; description?: string }>>([]);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -22,9 +23,11 @@ export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ in
     location: '',
     experience: ''
   });
+  const [matchedRoleId, setMatchedRoleId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchInvite();
+    fetchRoles();
   }, [inviteToken]);
 
   const fetchInvite = async () => {
@@ -44,10 +47,20 @@ export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ in
     }
   };
 
+  const fetchRoles = async () => {
+    try {
+      const data = await getVolunteerRoles();
+      const incoming = Array.isArray(data?.data) ? data.data : [];
+      setRoles(incoming);
+    } catch {
+      setRoles([]);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.firstName || !formData.email) {
+    if (!formData.firstName || !formData.email || !matchedRoleId) {
       setError('Please fill in all required fields');
       return;
     }
@@ -57,7 +70,12 @@ export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ in
       // In a real app, you'd get userId from the currently logged-in user
       const userId = localStorage.getItem('user_id') || 'temp_' + Date.now();
       
-      const result = await acceptVolunteerInvite(inviteToken, userId, formData);
+      const payload = {
+        ...formData,
+        matchedRoleId,
+      };
+
+      const result = await acceptVolunteerInvite(inviteToken, userId, payload);
       
       if (result.success) {
         setSuccess(true);
@@ -149,7 +167,7 @@ export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ in
                 Welcome to Unity Within!
               </h1>
               <p className="text-lg text-gray-600">
-                You've been invited to volunteer as a <span className="font-bold">{invite?.role}</span>
+                You have been invited to volunteer. Choose the category that best matches your skills.
               </p>
             </div>
 
@@ -258,6 +276,27 @@ export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ in
                   className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-600 focus:outline-none transition-colors resize-none"
                   rows={5}
                 />
+              </div>
+
+              {/* Category Selection */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Volunteer Category *
+                </label>
+                <select
+                  value={matchedRoleId ?? ''}
+                  onChange={(e) => setMatchedRoleId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-600 focus:outline-none transition-colors"
+                  required
+                >
+                  <option value="">Select a category based on your skills</option>
+                  {roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.title}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-gray-500 text-xs mt-1">You can choose the category that best matches your strengths.</p>
               </div>
 
               {/* Agreement */}

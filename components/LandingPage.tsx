@@ -11,6 +11,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onNaviga
     const [currentTestimonialSlide, setCurrentTestimonialSlide] = useState(0);
     const [isHeroPaused, setIsHeroPaused] = useState(false);
     const [isTestimonialPaused, setIsTestimonialPaused] = useState(false);
+    const [showInstallPopup, setShowInstallPopup] = useState(false);
+    const [isAndroidDevice, setIsAndroidDevice] = useState(false);
+    const [isDesktopDevice, setIsDesktopDevice] = useState(false);
+    const [apkAbsoluteUrl, setApkAbsoluteUrl] = useState('');
+
+    const APK_DOWNLOAD_URL = '/downloads/unity-within-latest.apk';
+    const APK_VERSION = (import.meta as any).env?.VITE_APP_VERSION || 'latest';
 
     // Hero carousel images - calming, gentle imagery from public folder
     const heroSlides = [
@@ -75,8 +82,117 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onNaviga
         }
     }, [isTestimonialPaused, testimonials.length]);
 
+    useEffect(() => {
+        const userAgent = navigator.userAgent.toLowerCase();
+        const android = userAgent.includes('android');
+        const ios = /iphone|ipad|ipod/.test(userAgent);
+        const mobile = /mobile|android|iphone|ipad|ipod/.test(userAgent);
+
+        setIsAndroidDevice(android);
+        setIsDesktopDevice(!mobile);
+        setApkAbsoluteUrl(`${window.location.origin}${APK_DOWNLOAD_URL}`);
+
+        // APK install prompt is relevant for Android and desktop (scan QR from phone).
+        if (!android && (ios || mobile)) {
+            return;
+        }
+
+        const popupDismissedAt = localStorage.getItem('unity_install_popup_dismissed_at');
+        if (popupDismissedAt) {
+            const dismissedTime = Number(popupDismissedAt);
+            const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+            if (Number.isFinite(dismissedTime) && Date.now() - dismissedTime < sevenDaysMs) {
+                return;
+            }
+        }
+
+        const timer = window.setTimeout(() => {
+            setShowInstallPopup(true);
+        }, 3000);
+
+        return () => window.clearTimeout(timer);
+    }, [APK_DOWNLOAD_URL]);
+
+    const closeInstallPopup = () => {
+        localStorage.setItem('unity_install_popup_dismissed_at', String(Date.now()));
+        setShowInstallPopup(false);
+    };
+
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(apkAbsoluteUrl || APK_DOWNLOAD_URL)}`;
+
     return (
         <div className="min-h-screen bg-gradient-to-b from-[#f8f9fa] to-[#fff5f7]">
+            {showInstallPopup && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+                    <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-unity-100 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+                        <button
+                            onClick={closeInstallPopup}
+                            className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-xl leading-none"
+                            aria-label="Close install popup"
+                        >
+                            ×
+                        </button>
+
+                        <div className="bg-unity-black px-6 py-5 text-white">
+                            <div className="flex items-center gap-3">
+                                <img src="/favicon.svg" alt="Unity Within" className="w-10 h-10 rounded-xl bg-white p-1" />
+                                <div>
+                                    <p className="text-xs uppercase tracking-wide text-unity-200">Unity Within App</p>
+                                    <h3 className="text-lg font-bold">Install The APK</h3>
+                                </div>
+                                <span className="ml-auto text-[11px] font-semibold bg-white/10 border border-white/20 px-2.5 py-1 rounded-full">
+                                    v{APK_VERSION}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-6">
+                            <p className="text-gray-700 leading-relaxed mb-4">
+                                Get faster access to Buddie, private journaling, and calming tools anytime. Install Unity Within on your phone and keep your safe space one tap away.
+                            </p>
+
+                            <ul className="space-y-2 text-sm text-gray-600 mb-6">
+                                <li>• Open support instantly, even on low connectivity.</li>
+                                <li>• Keep your tools in your pocket without browser tabs.</li>
+                                <li>• Feel supported in real moments, not just planned ones.</li>
+                            </ul>
+
+                            {isDesktopDevice ? (
+                                <div className="mb-5 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                                    <p className="text-sm font-semibold text-gray-700 mb-2">Scan to install on Android</p>
+                                    <div className="flex items-center gap-4">
+                                        <img
+                                            src={qrCodeUrl}
+                                            alt="QR code for Unity Within APK"
+                                            className="w-24 h-24 rounded-lg bg-white border border-gray-200 p-1"
+                                        />
+                                        <p className="text-xs text-gray-600 leading-relaxed">
+                                            Open your phone camera, scan the code, and install Unity Within in under a minute.
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <a
+                                    href={APK_DOWNLOAD_URL}
+                                    className="flex-1 text-center px-4 py-3 rounded-xl bg-unity-500 text-white font-bold hover:bg-unity-600 transition-colors"
+                                >
+                                    {isAndroidDevice ? 'Install On Android' : 'Download APK'}
+                                </a>
+                                <button
+                                    onClick={closeInstallPopup}
+                                    className="flex-1 px-4 py-3 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+                                >
+                                    Maybe Later
+                                </button>
+                            </div>
+                            <p className="mt-3 text-[11px] text-gray-400">APK file path: /public/downloads/unity-within-latest.apk</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Hero Section with Carousel */}
             <section className="relative h-screen flex items-center justify-center overflow-hidden">
                 {/* Carousel Background */}

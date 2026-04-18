@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { Users, MessageSquare, Shield, Activity, Flag, Plus, Trash2, Book, Trophy, AlertCircle, Search, ArrowLeft, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Users, MessageSquare, Shield, Activity, Flag, Plus, Trash2, Book, Trophy, AlertCircle, Search, ArrowLeft, ExternalLink, Mail, Phone, Send, Stethoscope } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
 import { Button } from './Button';
+import { inviteTherapist } from '../services/therapistService';
 
-type AdminTab = 'overview' | 'users' | 'rooms' | 'messages' | 'blocked' | 'moods' | 'journals' | 'wins' | 'reports';
+type AdminTab = 'overview' | 'users' | 'volunteers' | 'rooms' | 'messages' | 'blocked' | 'moods' | 'journals' | 'wins' | 'reports' | 'therapists';
 
 export const AdminDashboard: React.FC = () => {
     const [stats, setStats] = useState({ userCount: 0, messageCount: 0, moodCount: 0 });
+    const [volunteerStats, setVolunteerStats] = useState({ total: 0, active: 0, pending: 0 });
     const [users, setUsers] = useState<any[]>([]);
+    const [volunteers, setVolunteers] = useState<any[]>([]);
     const [rooms, setRooms] = useState<any[]>([]);
     const [messages, setMessages] = useState<any[]>([]);
     const [blockedLogs, setBlockedLogs] = useState<any[]>([]);
@@ -21,84 +24,134 @@ export const AdminDashboard: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedRoom, setSelectedRoom] = useState<any>(null);
     const [newRoom, setNewRoom] = useState({ name: '', description: '', type: 'public' });
+     const [inviteForm, setInviteForm] = useState({ email: '' });
+     const [inviteBusy, setInviteBusy] = useState(false);
+     const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+      const [inviteTherapistForm, setInviteTherapistForm] = useState({ email: '', phone: '' });
+      const [inviteTherapistBusy, setInviteTherapistBusy] = useState(false);
+      const [inviteTherapistMessage, setInviteTherapistMessage] = useState<string | null>(null);
+      const [inviteTherapistWhatsappUrl, setInviteTherapistWhatsappUrl] = useState<string | null>(null);
+     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+     const [isLive, setIsLive] = useState(true);
 
-    const fetchStats = async () => {
+    const fetchStats = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/admin/stats`);
-            const data = await res.json();
-            if (data.success) setStats(data.stats);
-        } catch (e) { console.error(e); }
-    };
+            const [statsRes, volunteerStatsRes] = await Promise.all([
+                fetch(`${API_BASE_URL}/admin/stats`),
+                fetch(`${API_BASE_URL}/admin/volunteer-stats`),
+            ]);
 
-    useEffect(() => {
-        fetchStats();
+            const statsData = await statsRes.json();
+            if (statsData.success) setStats(statsData.stats);
+
+            const volunteerStatsData = await volunteerStatsRes.json();
+            if (volunteerStatsData.success) {
+                const incoming = volunteerStatsData.stats || {};
+                setVolunteerStats({
+                    total: Number(incoming.total || 0),
+                    active: Number(incoming.active || 0),
+                    pending: Number(incoming.pending || 0),
+                });
+            }
+        } catch (e) { console.error(e); }
     }, []);
 
-    useEffect(() => {
-        if (activeTab === 'overview' && !selectedRoom) return;
+    const fetchTabData = useCallback(async (tab: AdminTab, room: any) => {
+        if (room) {
+            const res = await fetch(`${API_BASE_URL}/chat/rooms/${room.id}/messages`);
+            const data = await res.json();
+            if (data.success) setMessages(data.data);
+            return;
+        }
+
+        if (tab === 'overview') return;
 
         const fetchTabMap: Record<string, () => Promise<void>> = {
             users: async () => {
-                const res = await fetch(`${API_BASE_URL}/api/admin/users`);
+                const res = await fetch(`${API_BASE_URL}/admin/users`);
                 const data = await res.json();
                 if (data.success) setUsers(data.data);
             },
+            volunteers: async () => {
+                const res = await fetch(`${API_BASE_URL}/admin/volunteer-invites`);
+                const data = await res.json();
+                if (data.success) setVolunteers(data.invites || []);
+            },
             rooms: async () => {
-                const res = await fetch(`${API_BASE_URL}/api/chat/rooms`);
+                const res = await fetch(`${API_BASE_URL}/chat/rooms`);
                 const data = await res.json();
                 if (data.success) setRooms(data.data);
             },
             messages: async () => {
-                const res = await fetch(`${API_BASE_URL}/api/admin/chat/messages`);
+                const res = await fetch(`${API_BASE_URL}/admin/chat/messages`);
                 const data = await res.json();
                 if (data.success) setMessages(data.data);
             },
             blocked: async () => {
-                const res = await fetch(`${API_BASE_URL}/api/admin/moderation-logs`);
+                const res = await fetch(`${API_BASE_URL}/admin/moderation-logs`);
                 const data = await res.json();
                 if (data.success) setBlockedLogs(data.data);
             },
             moods: async () => {
-                const res = await fetch(`${API_BASE_URL}/api/admin/moods`);
+                const res = await fetch(`${API_BASE_URL}/admin/moods`);
                 const data = await res.json();
                 if (data.success) setMoods(data.data);
             },
             journals: async () => {
-                const res = await fetch(`${API_BASE_URL}/api/admin/journals`);
+                const res = await fetch(`${API_BASE_URL}/admin/journals`);
                 const data = await res.json();
                 if (data.success) setJournals(data.data);
             },
             wins: async () => {
-                const res = await fetch(`${API_BASE_URL}/api/admin/tiny-wins`);
+                const res = await fetch(`${API_BASE_URL}/admin/tiny-wins`);
                 const data = await res.json();
                 if (data.success) setWins(data.data);
             },
             reports: async () => {
-                const res = await fetch(`${API_BASE_URL}/api/admin/reports`);
+                const res = await fetch(`${API_BASE_URL}/admin/reports`);
                 const data = await res.json();
                 if (data.success) setReports(data.data);
             }
         };
 
-        const fetchData = async () => {
-            setIsLoading(true);
-            try {
-                if (selectedRoom) {
-                    const res = await fetch(`${API_BASE_URL}/api/chat/rooms/${selectedRoom.id}/messages`);
-                    const data = await res.json();
-                    if (data.success) setMessages(data.data);
-                } else if (fetchTabMap[activeTab]) {
-                    await fetchTabMap[activeTab]();
-                }
-            } catch (e) { console.error(e); }
-            setIsLoading(false);
-        };
-        fetchData();
-    }, [activeTab, selectedRoom]);
+        if (fetchTabMap[tab]) {
+            await fetchTabMap[tab]();
+        }
+    }, []);
+
+    const refreshNow = useCallback(async (showLoader = false) => {
+        if (showLoader) setIsLoading(true);
+        try {
+            await Promise.all([
+                fetchStats(),
+                fetchTabData(activeTab, selectedRoom)
+            ]);
+            setLastUpdated(new Date());
+        } catch (e) {
+            console.error(e);
+        } finally {
+            if (showLoader) setIsLoading(false);
+        }
+    }, [activeTab, selectedRoom, fetchStats, fetchTabData]);
+
+    useEffect(() => {
+        void refreshNow(true);
+    }, [refreshNow]);
+
+    useEffect(() => {
+        if (!isLive) return;
+
+        const intervalMs = selectedRoom ? 3000 : 5000;
+        const timer = window.setInterval(() => {
+            void refreshNow(false);
+        }, intervalMs);
+
+        return () => window.clearInterval(timer);
+    }, [isLive, selectedRoom, refreshNow]);
 
     const toggleUserRole = async (userId: number, currentRole: string) => {
         const newRole = currentRole === 'admin' ? 'user' : 'admin';
-        const res = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/role`, {
+        const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/role`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ role: newRole })
@@ -111,15 +164,15 @@ export const AdminDashboard: React.FC = () => {
 
     const deleteUser = async (id: number) => {
         if (window.confirm('Delete user?')) {
-            await fetch(`${API_BASE_URL}/api/admin/users/${id}`, { method: 'DELETE' });
+            await fetch(`${API_BASE_URL}/admin/users/${id}`, { method: 'DELETE' });
             setUsers(users.filter(u => u.id !== id));
-            fetchStats();
+            void refreshNow();
         }
     };
 
     const handleCreateRoom = async (e: React.FormEvent) => {
         e.preventDefault();
-        const res = await fetch(`${API_BASE_URL}/api/admin/chat/rooms`, {
+        const res = await fetch(`${API_BASE_URL}/admin/chat/rooms`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newRoom)
@@ -128,7 +181,7 @@ export const AdminDashboard: React.FC = () => {
             setNewRoom({ name: '', description: '', type: 'public' });
             const data = await res.json();
             if (data.success) {
-                const rRes = await fetch(`${API_BASE_URL}/api/chat/rooms`);
+                const rRes = await fetch(`${API_BASE_URL}/chat/rooms`);
                 const rData = await rRes.json();
                 if (rData.success) setRooms(rData.data);
             }
@@ -137,20 +190,99 @@ export const AdminDashboard: React.FC = () => {
 
     const deleteRoom = async (id: number) => {
         if (window.confirm('Delete room?')) {
-            await fetch(`${API_BASE_URL}/api/admin/chat/rooms/${id}`, { method: 'DELETE' });
+            await fetch(`${API_BASE_URL}/admin/chat/rooms/${id}`, { method: 'DELETE' });
             setRooms(rooms.filter(r => r.id !== id));
         }
     };
 
     const deleteMessage = async (id: number) => {
         if (window.confirm('Delete message?')) {
-            await fetch(`${API_BASE_URL}/api/admin/chat/messages/${id}`, { method: 'DELETE' });
+            await fetch(`${API_BASE_URL}/admin/chat/messages/${id}`, { method: 'DELETE' });
             setMessages(messages.filter(m => m.id !== id));
-            fetchStats();
+            void refreshNow();
         }
     };
 
-    const renderTabBtn = (id: AdminTab, label: string, Icon: any) => (
+    const approveVolunteerInvite = async (inviteId: string) => {
+        const res = await fetch(`${API_BASE_URL}/admin/approve-volunteer/${inviteId}`, { method: 'POST' });
+        if (res.ok) {
+            setVolunteers(prev => prev.map(v => v.id === inviteId ? { ...v, status: 'approved' } : v));
+            void refreshNow();
+        }
+    };
+
+    const rejectVolunteerInvite = async (inviteId: string) => {
+        const res = await fetch(`${API_BASE_URL}/admin/reject-volunteer/${inviteId}`, { method: 'POST' });
+        if (res.ok) {
+            setVolunteers(prev => prev.map(v => v.id === inviteId ? { ...v, status: 'rejected' } : v));
+            void refreshNow();
+        }
+    };
+
+     const handleSendVolunteerInvite = async (e: React.FormEvent) => {
+         e.preventDefault();
+         if (!inviteForm.email.trim()) return;
+
+         setInviteBusy(true);
+         setInviteMessage(null);
+         try {
+             const res = await fetch(`${API_BASE_URL}/admin/invite-volunteer`, {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     email: inviteForm.email.trim(),
+                     adminName: 'Admin',
+                 }),
+             });
+
+             const data = await res.json();
+             if (res.ok && data?.success) {
+                 setInviteMessage(`Invite sent to ${inviteForm.email.trim()}`);
+                 setInviteForm({ email: '' });
+                 void refreshNow();
+             } else {
+                 setInviteMessage(data?.error || 'Failed to send invite');
+             }
+         } catch {
+             setInviteMessage('Failed to send invite');
+         } finally {
+             setInviteBusy(false);
+         }
+     };
+
+      const handleSendTherapistInvite = async (e: React.FormEvent) => {
+          e.preventDefault();
+          if (!inviteTherapistForm.email.trim()) return;
+
+          setInviteTherapistBusy(true);
+          setInviteTherapistMessage(null);
+          setInviteTherapistWhatsappUrl(null);
+          try {
+            const result = await inviteTherapist({
+              email: inviteTherapistForm.email.trim(),
+              phone: inviteTherapistForm.phone.trim() || undefined,
+            });
+
+            if (result.success) {
+              const msg = result.emailSent
+                ? `✅ Invite sent to ${inviteTherapistForm.email.trim()}`
+                : `⚠️ Invite created but email failed: ${result.emailError || 'Unknown error'}`;
+              setInviteTherapistMessage(msg);
+              if (result.whatsappUrl) {
+                setInviteTherapistWhatsappUrl(result.whatsappUrl);
+              }
+              setInviteTherapistForm({ email: '', phone: '' });
+            } else {
+              setInviteTherapistMessage('❌ Failed to send invite');
+            }
+          } catch (err: any) {
+            setInviteTherapistMessage(err.message || '❌ Error sending invite');
+          } finally {
+            setInviteTherapistBusy(false);
+          }
+      };
+
+     const renderTabBtn = (id: AdminTab, label: string, Icon: any) => (
         <button
             onClick={() => { setActiveTab(id); setSelectedRoom(null); }}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all whitespace-nowrap ${activeTab === id && !selectedRoom ? 'text-unity-600 border-b-2 border-unity-600' : 'text-gray-500 hover:text-gray-700'}`}
@@ -162,6 +294,7 @@ export const AdminDashboard: React.FC = () => {
     const filteredContent = () => {
         const query = searchQuery.toLowerCase();
         if (activeTab === 'users') return users.filter(u => (u.name || '').toLowerCase().includes(query) || (u.email || '').toLowerCase().includes(query));
+        if (activeTab === 'volunteers') return volunteers.filter(v => (v.email || '').toLowerCase().includes(query) || (v.role || '').toLowerCase().includes(query) || (v.status || '').toLowerCase().includes(query));
         if (activeTab === 'messages' || selectedRoom) return messages.filter(m => (m.content || '').toLowerCase().includes(query) || (m.user_name || '').toLowerCase().includes(query));
         if (activeTab === 'rooms') return rooms.filter(r => (r.name || '').toLowerCase().includes(query) || (r.description || '').toLowerCase().includes(query));
         if (activeTab === 'moods') return moods.filter(m => (m.user_name || '').toLowerCase().includes(query) || (m.mood || '').toLowerCase().includes(query) || (m.note || '').toLowerCase().includes(query));
@@ -180,22 +313,39 @@ export const AdminDashboard: React.FC = () => {
                     <div>
                         <h1 className="text-2xl font-bold text-gray-800">System Command</h1>
                         <p className="text-xs text-gray-500">{selectedRoom ? `Auditing #${selectedRoom.name}` : 'Full Database Visibility Active'}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                            {lastUpdated ? `Last sync: ${lastUpdated.toLocaleTimeString()}` : 'Waiting for first sync...'}
+                        </p>
                     </div>
                 </div>
 
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                    <input
-                        type="text"
-                        placeholder="Search records..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-unity-200 w-full md:w-64"
-                    />
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setIsLive(prev => !prev)}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold border ${isLive ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
+                    >
+                        {isLive ? 'LIVE ON' : 'LIVE OFF'}
+                    </button>
+                    <button
+                        onClick={() => { void refreshNow(); }}
+                        className="px-3 py-2 rounded-xl text-xs font-bold border bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                    >
+                        Refresh
+                    </button>
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                        <input
+                            type="text"
+                            placeholder="Search records..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-unity-200 w-full md:w-64"
+                        />
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <span className="text-xs text-gray-400 font-bold uppercase">Citizens</span>
                     <div className="text-3xl font-bold">{stats.userCount}</div>
@@ -208,11 +358,18 @@ export const AdminDashboard: React.FC = () => {
                     <span className="text-xs text-gray-400 font-bold uppercase">Mood Logs</span>
                     <div className="text-3xl font-bold">{stats.moodCount}</div>
                 </div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <span className="text-xs text-gray-400 font-bold uppercase">Pending Volunteers</span>
+                    <div className="text-3xl font-bold">{volunteerStats.pending}</div>
+                    <p className="text-[11px] text-gray-400 mt-1">{volunteerStats.active} active / {volunteerStats.total} total</p>
+                </div>
             </div>
 
             <div className="flex gap-2 border-b border-gray-200 mb-6 overflow-x-auto pb-1 no-scrollbar">
                 {renderTabBtn('overview', 'Dashboard', Shield)}
                 {renderTabBtn('users', 'Users', Users)}
+                {renderTabBtn('volunteers', 'Volunteers', Users)}
+                {renderTabBtn('therapists', 'Therapists', Stethoscope)}
                 {renderTabBtn('rooms', 'Rooms', Users)}
                 {renderTabBtn('messages', 'Messages', MessageSquare)}
                 {renderTabBtn('blocked', 'AI Flags', Flag)}
@@ -280,7 +437,137 @@ export const AdminDashboard: React.FC = () => {
                                     </div>
                                 )}
 
-                                {activeTab === 'rooms' && (
+                                {activeTab === 'volunteers' && (
+                                    <div className="space-y-4">
+                                        <form onSubmit={handleSendVolunteerInvite} className="p-4 bg-gray-50 rounded-xl grid grid-cols-1 md:grid-cols-4 gap-3">
+                                            <input
+                                                type="email"
+                                                value={inviteForm.email}
+                                                onChange={(e) => setInviteForm(prev => ({ ...prev, email: e.target.value }))}
+                                                placeholder="volunteer@email.com"
+                                                className="bg-white p-2 border border-gray-100 rounded-lg text-sm md:col-span-3"
+                                                required
+                                            />
+                                            <Button type="submit" size="sm" disabled={inviteBusy}>
+                                                <Plus size={16} /> {inviteBusy ? 'Sending...' : 'Send Invite'}
+                                            </Button>
+                                        </form>
+
+                                        {inviteMessage && (
+                                            <div className={`text-xs rounded-lg px-3 py-2 ${inviteMessage.startsWith('Invite sent') ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
+                                                {inviteMessage}
+                                            </div>
+                                        )}
+
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-sm">
+                                            <thead className="bg-gray-50 text-xs text-gray-400 uppercase font-bold">
+                                                <tr>
+                                                    <th className="px-4 py-3">Email</th>
+                                                    <th className="px-4 py-3">Role</th>
+                                                    <th className="px-4 py-3">Status</th>
+                                                    <th className="px-4 py-3">Invited</th>
+                                                    <th className="px-4 py-3 text-right">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {filteredContent().map((v: any) => (
+                                                    <tr key={v.id}>
+                                                        <td className="px-4 py-3">
+                                                            <div className="font-bold text-gray-800">{v.email}</div>
+                                                            <div className="text-xs text-gray-400 truncate max-w-[240px]">{v.inviteLink || '-'}</div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-gray-600">{v.role || 'listener'}</td>
+                                                        <td className="px-4 py-3">
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${v.status === 'approved' || v.status === 'active' ? 'bg-green-50 text-green-700' : v.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'}`}>
+                                                                {v.status || 'pending'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-[11px] text-gray-400">{v.invitedAt ? new Date(v.invitedAt).toLocaleString() : '-'}</td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            {v.status === 'pending' ? (
+                                                                <div className="inline-flex gap-2">
+                                                                    <button
+                                                                        onClick={() => approveVolunteerInvite(v.id)}
+                                                                        className="px-2 py-1 rounded-md text-[10px] font-bold bg-green-50 text-green-700 hover:bg-green-100"
+                                                                    >
+                                                                        Approve
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => rejectVolunteerInvite(v.id)}
+                                                                        className="px-2 py-1 rounded-md text-[10px] font-bold bg-red-50 text-red-700 hover:bg-red-100"
+                                                                    >
+                                                                        Reject
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-[10px] text-gray-400">No action</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                 )}
+
+                                 {activeTab === 'therapists' && (
+                                   <div className="space-y-4">
+                                     <form onSubmit={handleSendTherapistInvite} className="p-4 bg-gray-50 rounded-xl grid grid-cols-1 md:grid-cols-4 gap-3">
+                                       <input
+                                         type="email"
+                                         value={inviteTherapistForm.email}
+                                         onChange={(e) => setInviteTherapistForm(prev => ({ ...prev, email: e.target.value }))}
+                                         placeholder="therapist@email.com"
+                                         className="bg-white p-2 border border-gray-100 rounded-lg text-sm md:col-span-2"
+                                         required
+                                       />
+                                       <input
+                                         type="tel"
+                                         value={inviteTherapistForm.phone}
+                                         onChange={(e) => setInviteTherapistForm(prev => ({ ...prev, phone: e.target.value }))}
+                                         placeholder="WhatsApp number (optional)"
+                                         className="bg-white p-2 border border-gray-100 rounded-lg text-sm"
+                                       />
+                                       <Button type="submit" size="sm" disabled={inviteTherapistBusy}>
+                                         <Send size={16} /> {inviteTherapistBusy ? 'Sending...' : 'Send Invite'}
+                                       </Button>
+                                     </form>
+
+                                      {inviteTherapistMessage && (
+                                        <div className={`text-xs rounded-lg px-3 py-2 ${inviteTherapistMessage.startsWith('Invite sent') || inviteTherapistMessage.startsWith('✅') ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
+                                          {inviteTherapistMessage}
+                                        </div>
+                                      )}
+
+                                      {inviteTherapistWhatsappUrl && (
+                                        <div className="text-xs rounded-lg px-3 py-2 bg-green-50 text-green-700 border border-green-100 flex items-center gap-2">
+                                          <Phone size={12} />
+                                          <a
+                                            href={inviteTherapistWhatsappUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="underline hover:text-green-800 font-medium"
+                                          >
+                                            Open WhatsApp invite
+                                          </a>
+                                        </div>
+                                      )}
+
+                                     <div className="bg-white rounded-xl border border-gray-100 p-6">
+                                       <h3 className="font-bold text-gray-800 mb-2">How it works</h3>
+                                       <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
+                                         <li>An invitation link is sent via email and/or WhatsApp.</li>
+                                         <li>The therapist clicks the link to accept the invite and set a password.</li>
+                                         <li>They complete their profile (specialty, availability, pricing, T&amp;C).</li>
+                                         <li>Once accepted, they can access the Therapist Portal.</li>
+                                       </ul>
+                                     </div>
+                                   </div>
+                                 )}
+
+                                 {activeTab === 'rooms' && (
                                     <div className="space-y-6">
                                         <form onSubmit={handleCreateRoom} className="p-4 bg-gray-50 rounded-xl grid grid-cols-1 md:grid-cols-4 gap-4">
                                             <input placeholder="Name" value={newRoom.name} onChange={e => setNewRoom({ ...newRoom, name: e.target.value })} className="bg-white p-2 border border-gray-100 rounded-lg text-sm" required />

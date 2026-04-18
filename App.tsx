@@ -114,16 +114,27 @@ export default function App() {
         />;
       case 'wellness':
         return <WellnessToolkit onNavigate={handleNavigate} />;
-      case 'support':
-        return (
-          <TherapySupport
-            userId={user?.id}
-            userName={user?.name}
-            userEmail={user?.email}
-            userRole={user?.role}
-          />
-        );
-      case 'chat':
+       case 'support':
+         return (
+           <TherapySupport
+             userId={user?.id}
+             userName={user?.name}
+             userEmail={user?.email}
+             userRole={user?.role}
+             initialTab="directory"
+           />
+         );
+       case 'therapist-portal':
+         return (
+           <TherapySupport
+             userId={user?.id}
+             userName={user?.name}
+             userEmail={user?.email}
+             userRole={user?.role}
+             initialTab="therapist-portal"
+           />
+         );
+       case 'chat':
         return <AIChat />;
       case 'community':
         return <Community userId={user?.id} userName={user?.name} />;
@@ -152,9 +163,15 @@ export default function App() {
     }
   };
 
-  // Helper to check if we're on an auth/landing page (no sidebar/nav)
-  const isAuthPage = ['landing', 'signup', 'login', 'forgot-password', 'why-unity'].includes(currentView);
-  const visibleNavItems = NAVIGATION_ITEMS.filter(item => item.id !== 'admin' || user?.role === 'admin' || user?.email === 'lepiromatayo@gmail.com');
+   // Helper to check if we're on an auth/landing page (no sidebar/nav)
+   const isAuthPage = ['landing', 'signup', 'login', 'forgot-password', 'why-unity'].includes(currentView);
+   const isAdmin = user?.role === 'admin' || user?.email === 'lepiromatayo@gmail.com';
+   const isTherapist = user?.role === 'therapist';
+   const visibleNavItems = NAVIGATION_ITEMS.filter(item => {
+     if (item.id === 'admin') return isAdmin;
+     if (item.id === 'therapist-portal') return isAdmin || isTherapist;
+     return true;
+   });
   const stickyBottomNavIds: AppView[] = ['dashboard', 'chat', 'community'];
   const mobileBottomNavItems = visibleNavItems.filter(item => stickyBottomNavIds.includes(item.id as AppView));
   const mobileMenuItems = visibleNavItems.filter(item => !stickyBottomNavIds.includes(item.id as AppView));
@@ -170,8 +187,8 @@ export default function App() {
             <h1 className="text-xl font-extrabold tracking-tight text-unity-black">UNITY <span className="text-unity-500">WITHIN</span></h1>
           </div>
 
-          <nav className="space-y-2 flex-1">
-            {NAVIGATION_ITEMS.filter(item => item.id !== 'admin' || user?.role === 'admin' || user?.email === 'lepiromatayo@gmail.com').map((item) => (
+           <nav className="space-y-2 flex-1">
+             {visibleNavItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => handleNavigate(item.id as AppView)}

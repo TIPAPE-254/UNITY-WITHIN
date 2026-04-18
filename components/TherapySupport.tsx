@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { API_BASE_URL } from '../constants';
-import { CalendarDays, Clock3, Video, Phone, Search, Star, CheckCircle2, XCircle, Shield, Stethoscope, MessageSquareText } from 'lucide-react';
+import { CalendarDays, Clock3, Video, Phone, Search, Star, CheckCircle2, XCircle, Shield, Stethoscope, MessageSquareText, UserPen } from 'lucide-react';
+import { TherapistProfileEditor } from './TherapistProfileEditor';
 
 type SessionType = 'video' | 'voice';
 
@@ -48,6 +49,7 @@ interface TherapySupportProps {
   userName?: string;
   userEmail?: string;
   userRole?: string;
+  initialTab?: 'directory' | 'my-bookings' | 'therapist-portal';
 }
 
 type TherapistPresencePayload = {
@@ -82,7 +84,7 @@ const authHeaders = (userRole?: string, userId?: number, userEmail?: string) => 
   'x-user-email': userEmail || '',
 });
 
-export const TherapySupport: React.FC<TherapySupportProps> = ({ userId, userName = 'Friend', userEmail, userRole = 'user' }) => {
+export const TherapySupport: React.FC<TherapySupportProps> = ({ userId, userName = 'Friend', userEmail, userRole = 'user', initialTab }) => {
   const isAdmin = userRole === 'admin' || userEmail === 'lepiromatayo@gmail.com';
   const isTherapist = userRole === 'therapist';
   const socketRef = useRef<Socket | null>(null);
@@ -110,13 +112,13 @@ export const TherapySupport: React.FC<TherapySupportProps> = ({ userId, userName
   const [bookingError, setBookingError] = useState('');
   const [bookingBusy, setBookingBusy] = useState(false);
 
-  const [activeSession, setActiveSession] = useState<any>(null);
-  const [portalSessions, setPortalSessions] = useState<PortalSession[]>([]);
-  const [portalBusy, setPortalBusy] = useState(false);
-  const [activeTab, setActiveTab] = useState<'directory' | 'my-bookings' | 'therapist-portal' | 'admin-oversight'>(isTherapist ? 'therapist-portal' : 'directory');
+   const [activeSession, setActiveSession] = useState<any>(null);
+   const [portalSessions, setPortalSessions] = useState<PortalSession[]>([]);
+   const [portalBusy, setPortalBusy] = useState(false);
+    const [activeTab, setActiveTab] = useState<'directory' | 'my-bookings' | 'therapist-portal'>(initialTab || (isTherapist ? 'therapist-portal' : 'directory'));
+    const [editingProfile, setEditingProfile] = useState(false);
 
-  const [adminTherapists, setAdminTherapists] = useState<Therapist[]>([]);
-  const socketUrl = import.meta.env.VITE_SOCKET_URL || (import.meta.env.PROD ? window.location.origin : 'http://localhost:5000');
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || (import.meta.env.PROD ? window.location.origin : 'http://localhost:5000');
 
   const filteredTherapists = useMemo(() => {
     const q = therapistQuery.toLowerCase().trim();
@@ -210,22 +212,9 @@ export const TherapySupport: React.FC<TherapySupportProps> = ({ userId, userName
     } finally {
       setPortalBusy(false);
     }
-  };
+   };
 
-  const fetchAdminTherapists = async () => {
-    if (!isAdmin) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/therapists`, {
-        headers: authHeaders(userRole, userId, userEmail),
-      });
-      const data = await res.json();
-      setAdminTherapists(data?.success ? (data.data || []) : []);
-    } catch {
-      setAdminTherapists([]);
-    }
-  };
-
-  useEffect(() => {
+   useEffect(() => {
     fetchTherapists();
   }, [specializationFilter, languageFilter, availabilityFilter, ratingFilter]);
 
@@ -260,17 +249,14 @@ export const TherapySupport: React.FC<TherapySupportProps> = ({ userId, userName
     );
   }, [onlineTherapistIds]);
 
-  useEffect(() => {
-    if (activeTab === 'my-bookings') {
-      fetchActiveSession();
-    }
-    if (activeTab === 'therapist-portal' || activeTab === 'admin-oversight') {
-      fetchPortalSessions();
-    }
-    if (activeTab === 'admin-oversight') {
-      fetchAdminTherapists();
-    }
-  }, [activeTab]);
+   useEffect(() => {
+     if (activeTab === 'my-bookings') {
+       fetchActiveSession();
+     }
+     if (activeTab === 'therapist-portal') {
+       fetchPortalSessions();
+     }
+   }, [activeTab]);
 
   const resetBooking = () => {
     setBookingStep(1);
@@ -574,16 +560,8 @@ export const TherapySupport: React.FC<TherapySupportProps> = ({ userId, userName
           >
             Therapist Portal
           </button>
-        )}
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('admin-oversight')}
-            className={`px-4 py-2 rounded-full text-sm font-semibold ${activeTab === 'admin-oversight' ? 'bg-unity-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}
-          >
-            Admin Oversight
-          </button>
-        )}
-      </div>
+         )}
+       </div>
 
       {activeTab === 'directory' && (
         <section className="space-y-4">
@@ -672,17 +650,34 @@ export const TherapySupport: React.FC<TherapySupportProps> = ({ userId, userName
         </section>
       )}
 
-      {(activeTab === 'therapist-portal' || activeTab === 'admin-oversight') && (
-        <section className="space-y-4">
-          <div className="bg-white rounded-2xl border border-unity-100 p-4 shadow-sm flex items-center justify-between">
-            <div>
-              <h3 className="text-xl font-bold text-unity-black">{activeTab === 'admin-oversight' ? 'Admin Session Oversight' : 'Therapist Session Workflow'}</h3>
-              <p className="text-sm text-gray-500">Approve, reject, start, and complete booked sessions.</p>
-            </div>
-            <button className="px-3 py-2 rounded-xl border border-gray-200 text-sm" onClick={fetchPortalSessions}>Refresh</button>
-          </div>
+          {activeTab === 'therapist-portal' && (
+            <section className="space-y-4">
+              <div className="bg-white rounded-2xl border border-unity-100 p-4 shadow-sm flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-unity-black">Therapist Session Workflow</h3>
+                  <p className="text-sm text-gray-500">Approve, reject, start, and complete booked sessions.</p>
+                </div>
+                <div className="flex gap-2">
+                  {isTherapist && (
+                    <button className="px-3 py-2 rounded-xl border border-gray-200 text-sm flex items-center gap-1" onClick={() => setEditingProfile(!editingProfile)}>
+                      <UserPen size={14} />
+                      {editingProfile ? 'Cancel' : 'Edit Profile'}
+                    </button>
+                  )}
+                  <button className="px-3 py-2 rounded-xl border border-gray-200 text-sm" onClick={fetchPortalSessions}>Refresh</button>
+                </div>
+              </div>
 
-          {portalBusy ? (
+              {editingProfile && isTherapist && (
+                <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+                  <TherapistProfileEditor
+                    onSaved={() => setEditingProfile(false)}
+                    onCancel={() => setEditingProfile(false)}
+                  />
+                </div>
+              )}
+
+              {portalBusy ? (
             <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center text-gray-500">Loading sessions...</div>
           ) : (
             <div className="grid gap-3">
@@ -725,24 +720,9 @@ export const TherapySupport: React.FC<TherapySupportProps> = ({ userId, userName
                 </div>
               )}
             </div>
-          )}
-
-          {isAdmin && activeTab === 'admin-oversight' && (
-            <div className="bg-white rounded-2xl border border-unity-100 p-5 shadow-sm">
-              <h4 className="font-bold text-unity-black mb-3">Therapist Roster</h4>
-              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {adminTherapists.map((t) => (
-                  <div key={t.id} className="rounded-xl border border-gray-200 p-3">
-                    <p className="font-semibold text-unity-black">{t.name}</p>
-                    <p className="text-sm text-gray-500">{t.specialization || 'Therapist'}</p>
-                    <p className="text-xs text-gray-500 mt-1">Status: {t.status || 'pending'}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-      )}
+           )}
+         </section>
+       )}
 
       {selectedTherapist && renderBookingWizard()}
     </div>

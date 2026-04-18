@@ -81,6 +81,7 @@ export const acceptVolunteerInvite = async (
     phone: string;
     location: string;
     experience: string;
+    matchedRoleId: number;
   }
 ) => {
   try {
@@ -92,6 +93,7 @@ export const acceptVolunteerInvite = async (
         userId,
         name: `${profileData.firstName} ${profileData.lastName || ''}`.trim(),
         county: profileData.location,
+        matched_role_id: profileData.matchedRoleId,
         skills: profileData.experience ? [profileData.experience] : [],
         ...profileData
       })
@@ -104,6 +106,22 @@ export const acceptVolunteerInvite = async (
     return await response.json();
   } catch (error) {
     console.error('Error accepting volunteer invite:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get volunteer categories/roles for invitee self-selection
+ */
+export const getVolunteerRoles = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/volunteer/roles`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch volunteer roles');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching volunteer roles:', error);
     throw error;
   }
 };

@@ -26,7 +26,7 @@ export const Community: React.FC<CommunityProps> = ({ userId, userName }) => {
 
     const fetchRooms = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/chat/rooms`);
+            const res = await fetch(`${API_BASE_URL}/chat/rooms`);
             const data = await res.json();
             if (data.success) {
                 setRooms(data.data);

@@ -183,6 +183,57 @@ async function initializeDatabase() {
             console.log('✅ Added reply_to_id column to chat_messages');
         }
 
+        // Ensure therapist_invites table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS therapist_invites (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255),
+                phone VARCHAR(50),
+                token VARCHAR(255) UNIQUE NOT NULL,
+                status VARCHAR(50) DEFAULT 'pending',
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                invited_by INTEGER REFERENCES users(id)
+            )
+        `);
+
+        // Ensure therapists table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS therapists (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                phone VARCHAR(50),
+                password_hash TEXT,
+                specialization VARCHAR(255),
+                bio TEXT,
+                qualifications TEXT,
+                experience VARCHAR(100),
+                languages JSONB DEFAULT '[]',
+                availability VARCHAR(50) DEFAULT 'online',
+                availability_schedule TEXT DEFAULT '',
+                session_price VARCHAR(255) DEFAULT '',
+                rating DECIMAL(3,2) DEFAULT 4.5,
+                status VARCHAR(50) DEFAULT 'pending',
+                terms_accepted_at TIMESTAMP NULL,
+                terms_version VARCHAR(20),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Add terms columns if missing
+        const termsCheck = await client.query(`
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'therapists' AND column_name = 'terms_accepted_at'
+        `);
+        if (termsCheck.rows.length === 0) {
+            await client.query(`ALTER TABLE therapists ADD COLUMN terms_accepted_at TIMESTAMP NULL`);
+            await client.query(`ALTER TABLE therapists ADD COLUMN terms_version VARCHAR(20)`);
+            console.log('✅ Added terms acceptance columns to therapists');
+        }
+
         console.log('✅ PostgreSQL tables initialized');
     } catch (error) {
         console.error('❌ Failed to initialize database:', error.message);
