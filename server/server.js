@@ -312,12 +312,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// ✅ Step 1: Body parser with production safety
-// - limit: 1MB (production standard)
-// - strict: true (no raw JS objects)
+// ✅ Step 1: Body parser with production safety + Azure compatibility
+// - limit: 10MB (reasonable max for uploads, Azure safe)
+// - strict: true (JSON only)
 // - verify: Azure-safe empty body handling
 app.use(express.json({
-  limit: '1mb',
+  limit: '10mb',
   strict: true,
   verify: (req, res, buf) => {
     // Azure sometimes sends empty payloads - handle safely
@@ -326,7 +326,7 @@ app.use(express.json({
     }
   }
 }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ✅ Step 2: Content-Type validation middleware
 app.use((req, res, next) => {
@@ -9779,23 +9779,44 @@ app.use((err, req, res, next) => {
     status: err?.status || err?.statusCode,
     method: req.method,
     url: req.url,
+    type: err?.type,
     userAgent: req.headers['user-agent'],
     contentType: req.headers['content-type'],
-    stack: err?.stack, // Always include stack in server logs
+    contentLength: req.headers['content-length'],
+    stack: err?.stack,
   });
 
-  // Handle stream errors specifically (Azure issue)
-  if (err.message === 'stream is not readable' || err.message?.includes('stream')) {
-    console.error('⚠️ Stream issue detected - likely middleware order problem or double-read');
-    return res.status(400).json({
-      error: 'Request body stream issue (verify Content-Type header and middleware order)',
+  // Handle "payload too large" errors
+  if (err.status === 413 || err.message?.includes('payload too large')) {
+    console.error('⚠️ Request body too large (limit: 10MB)');
+    return res.status(413).json({
+      error: 'Request body too large',
+      hint: 'Maximum payload size is 10MB. Current request exceeded limit.',
     });
   }
 
-  // Return safe message to client (don't expose internals)
+  // Handle stream errors specifically (Azure issue or body already consumed)
+  if (err.message === 'stream is not readable' || err.message?.includes('stream')) {
+    console.error('⚠️ Stream issue - body might have been read twice or middleware ordering problem');
+    return res.status(400).json({
+      error: 'Request body stream consumed before parser',
+      hint: 'Verify: 1) Content-Type: application/json header, 2) middleware order allows parser first',
+    });
+  }
+
+  // Handle JSON parsing errors
+  if (err.status === 400 && (err.type === 'entity.parse.failed' || err.message?.includes('Unexpected'))) {
+    console.error('⚠️ Invalid JSON in request body');
+    return res.status(400).json({
+      error: 'Invalid JSON in request body',
+      hint: 'Ensure request body is valid JSON and Content-Type: application/json header is set',
+    });
+  }
+
+  // Return safe message to client (don't expose internals in production)
   const statusCode = err?.statusCode || err?.status || 500;
   const clientMessage = process.env.NODE_ENV === 'development'
-    ? err?.message
+    ? `${err?.name}: ${err?.message}`
     : 'Internal server error';
 
   res.status(statusCode).json({ error: clientMessage });
