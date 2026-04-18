@@ -3534,7 +3534,12 @@ app.post("/api/signup", async (req, res) => {
       role: "user",
       emergencyContact: emergencyContact || null,
     };
-    setSharedUserCookie(req, res, nextUser);
+    try {
+      setSharedUserCookie(req, res, nextUser);
+    } catch (cookieError) {
+      console.error("Failed to set auth cookie during signup:", cookieError);
+      // Continue without cookie; signup still succeeds
+    }
 
     res.status(201).json({
       success: true,
@@ -3621,7 +3626,12 @@ app.post("/api/login", async (req, res) => {
       role: user.role || "user",
       emergencyContact: user.emergency_contact,
     };
-    setSharedUserCookie(req, res, nextUser);
+    try {
+      setSharedUserCookie(req, res, nextUser);
+    } catch (cookieError) {
+      console.error("Failed to set auth cookie:", cookieError);
+      // Continue without cookie; login still succeeds
+    }
 
     res.json({
       success: true,
@@ -3704,7 +3714,12 @@ app.post("/api/support/therapist-login", async (req, res) => {
       role: "therapist",
       specialization: therapist.specialization,
     };
-    setSharedUserCookie(req, res, nextUser);
+    try {
+      setSharedUserCookie(req, res, nextUser);
+    } catch (cookieError) {
+      console.error("Failed to set auth cookie on therapist login:", cookieError);
+      // Continue without cookie; login still succeeds
+    }
 
     return res.json({
       success: true,
@@ -5581,7 +5596,7 @@ app.post("/api/invite/complete", async (req, res) => {
     }
 
     const existingUsers = await query(
-      "SELECT id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1",
+      "SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1",
       [invite.email],
     );
     if (existingUsers?.length) {
@@ -5592,7 +5607,7 @@ app.post("/api/invite/complete", async (req, res) => {
     }
 
     const existingTherapists = await query(
-      "SELECT id FROM therapists WHERE LOWER(email) = LOWER(?) LIMIT 1",
+      "SELECT id FROM therapists WHERE LOWER(email) = LOWER($1) LIMIT 1",
       [invite.email],
     );
     if (existingTherapists?.length) {
