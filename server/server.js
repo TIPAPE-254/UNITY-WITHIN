@@ -303,12 +303,12 @@ const validateProductionConfig = () => {
 const app = express();
 app.use(cors());
 
-// ✅ GUARD: Detect if stream is already consumed (before parser)
-app.use((req, res, next) => {
-  if (req.readableEnded) {
-    console.error('❌ CRITICAL: Stream already consumed before express.json parser');
-    console.error(`Request: ${req.method} ${req.url}`);
-  }
+app.use((req, _res, next) => {
+  const hostHeader = String(
+    req.headers["x-forwarded-host"] || req.headers.host || "",
+  ).toLowerCase();
+  const host = hostHeader.split(",")[0].trim().split(":")[0];
+  req.appType = host.startsWith("events.") ? "events" : "main";
   next();
 });
 
@@ -316,16 +316,7 @@ app.use((req, res, next) => {
 // - limit: 10MB (reasonable max for uploads, Azure safe)
 // - strict: true (JSON only)
 // - verify: Azure-safe empty body handling
-app.use(express.json({
-  limit: '10mb',
-  strict: true,
-  verify: (req, res, buf) => {
-    // Azure sometimes sends empty payloads - handle safely
-    if (!buf || buf.length === 0) {
-      req.body = {};
-    }
-  }
-}));
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ✅ Step 2: Content-Type validation middleware
@@ -338,12 +329,19 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use((req, _res, next) => {
-  const hostHeader = String(
-    req.headers["x-forwarded-host"] || req.headers.host || "",
-  ).toLowerCase();
-  const host = hostHeader.split(",")[0].trim().split(":")[0];
-  req.appType = host.startsWith("events.") ? "events" : "main";
+
+// ✅ Step 3: Request logger with body debugging
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  const contentType = req.headers['content-type'] || 'none';
+  const contentLength = req.headers['content-length'] || '0';
+  const isBodyRequest = req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH';
+
+  if (isBodyRequest) {
+    console.log(`➡️ [${timestamp}] ${req.method} ${req.url} (Content-Type: ${contentType}, Size: ${contentLength}B)`);
+  } else {
+    console.log(`➡️ [${timestamp}] ${req.method} ${req.url}`);
+  }
   next();
 });
 
@@ -3418,20 +3416,7 @@ const getPublicBaseUrl = (req) => {
   return `${protocol}://${host}`.replace(/\/$/, "");
 };
 
-// ✅ Step 5: Request logger with body debugging
-app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  const contentType = req.headers['content-type'] || 'none';
-  const contentLength = req.headers['content-length'] || '0';
-  const isBodyRequest = req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH';
-  
-  if (isBodyRequest) {
-    console.log(`➡️ [${timestamp}] ${req.method} ${req.url} (Content-Type: ${contentType}, Size: ${contentLength}B)`);
-  } else {
-    console.log(`➡️ [${timestamp}] ${req.method} ${req.url}`);
-  }
-  next();
-});
+
 
 app.get("/api/ai/config-status", (_req, res) => {
   return res.json({

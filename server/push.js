@@ -795,9 +795,8 @@ cron.schedule('30 22 * * *', async () => {
  * Setup push notification routes on an existing Express app
  */
 export function setupPushNotifications(app) {
-  // Apply middleware
-  app.use(cors());
-  app.use(bodyParser.json({ limit: '10mb' }));
+  // Global middlewares like cors and bodyParser should be handled in server.js
+  // Registration of individual push notification routes below...
 
   // Mount all push notification routes
   app.post('/api/subscribe', subscribeHandler);

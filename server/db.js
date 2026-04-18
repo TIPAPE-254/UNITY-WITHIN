@@ -88,7 +88,7 @@ const pool = new Pool(
             connectionTimeoutMillis: 10000,
         }
         : {
-            host: isLocalHostConfigured ? 'azure-db-host-not-configured' : dbHost,
+            host: (isLocalHostConfigured && isProduction) ? 'azure-db-host-not-configured' : dbHost,
             user: dbUser,
             password: dbPassword,
             database: dbName,
