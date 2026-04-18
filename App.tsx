@@ -21,6 +21,7 @@ const ValuesDirection = lazy(() => import('./components/ValuesDirection').then(m
 const BodyScan = lazy(() => import('./components/BodyScan').then(module => ({ default: module.BodyScan })));
 const SafeSpace = lazy(() => import('./components/SafeSpace').then(module => ({ default: module.SafeSpace })));
 const StoryReframer = lazy(() => import('./components/StoryReframer').then(module => ({ default: module.StoryReframer })));
+const VolunteerPage = lazy(() => import('./components/VolunteerPage').then(module => ({ default: module.VolunteerPage })));
 const LandingPage = lazy(() => import('./components/LandingPage').then(module => ({ default: module.LandingPage })));
 const Signup = lazy(() => import('./components/Signup').then(module => ({ default: module.Signup })));
 const Login = lazy(() => import('./components/Login').then(module => ({ default: module.Login })));
@@ -35,7 +36,7 @@ const PageLoader = () => (
   </div>
 );
 
-type AppView = ViewState | 'landing' | 'signup' | 'login' | 'forgot-password' | 'why-unity';
+type AppView = ViewState | 'volunteer' | 'landing' | 'signup' | 'login' | 'forgot-password' | 'why-unity';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<AppView>('landing');
@@ -43,6 +44,33 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<{ id: number; name: string; email: string; role?: string } | null>(null);
+  const [isVolunteerApproved, setIsVolunteerApproved] = useState(false);
+
+  const checkVolunteerApproval = React.useCallback(async (currentUser: { email?: string } | null) => {
+    if (!currentUser?.email) {
+      setIsVolunteerApproved(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/volunteer/dashboard', {
+        headers: {
+          'x-user-email': String(currentUser.email).trim().toLowerCase(),
+        },
+      });
+
+      if (!res.ok) {
+        setIsVolunteerApproved(false);
+        return;
+      }
+
+      const data = await res.json();
+      const status = String(data?.data?.profile?.status || '').toLowerCase();
+      setIsVolunteerApproved(status === 'approved' || status === 'active');
+    } catch {
+      setIsVolunteerApproved(false);
+    }
+  }, []);
 
   const handleNavigate = (view: AppView, data?: any) => {
     setCurrentView(view);
@@ -60,16 +88,18 @@ export default function App() {
       const parsedUser = JSON.parse(storedUser);
       setUser(parsedUser);
       setIsAuthenticated(true);
+      void checkVolunteerApproval(parsedUser);
       if (currentView === 'landing' || currentView === 'login' || currentView === 'signup') {
         setCurrentView('dashboard');
       }
     }
-  }, []);
+  }, [currentView, checkVolunteerApproval]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
     setUser(null);
     setIsAuthenticated(false);
+    setIsVolunteerApproved(false);
     setCurrentView('landing');
   };
 
@@ -94,7 +124,11 @@ export default function App() {
           <Login
             onLoginComplete={() => {
               const stored = localStorage.getItem('user');
-              if (stored) setUser(JSON.parse(stored));
+              if (stored) {
+                const parsedUser = JSON.parse(stored);
+                setUser(parsedUser);
+                void checkVolunteerApproval(parsedUser);
+              }
               setIsAuthenticated(true);
               setCurrentView('dashboard');
             }}
@@ -142,6 +176,10 @@ export default function App() {
         return (user?.role === 'admin' || user?.email === 'lepiromatayo@gmail.com') ? <AdminDashboard /> : <Dashboard onNavigate={handleNavigate} userName={user?.name || 'Friend'} userId={user?.id} />;
       case 'journal':
         return <Journal userId={user?.id} moodId={navData?.moodId} />;
+      case 'volunteer':
+        return isVolunteerApproved
+          ? <VolunteerPage onLogout={handleLogout} />
+          : <Dashboard onNavigate={handleNavigate} userName={user?.name || 'Friend'} userId={user?.id} />;
       case 'breathe':
         return <Breathe />;
       case 'namethefeeling':
@@ -170,6 +208,8 @@ export default function App() {
    const visibleNavItems = NAVIGATION_ITEMS.filter(item => {
      if (item.id === 'admin') return isAdmin;
      if (item.id === 'therapist-portal') return isAdmin || isTherapist;
+     if (item.id === 'volunteer') return isVolunteerApproved;
+     if (item.id === 'journal') return !isVolunteerApproved;
      return true;
    });
   const stickyBottomNavIds: AppView[] = ['dashboard', 'chat', 'community'];

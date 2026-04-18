@@ -1,4 +1,4 @@
-import { Home, MessageCircleHeart, BookHeart, Wind, GraduationCap, Sparkles } from 'lucide-react';
+import { Home, MessageCircleHeart, BookHeart, Wind, GraduationCap, Sparkles, Users } from 'lucide-react';
 import { ViewState } from './types';
 
 export const APP_NAME = "UNITY WITHIN";
@@ -6,6 +6,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localho
 
 export const NAVIGATION_ITEMS: { id: ViewState; label: string; icon: any }[] = [
   { id: 'dashboard', label: 'Home', icon: Home },
+  { id: 'volunteer-portal', label: 'Volunteer Portal', icon: Users },
   { id: 'wellness', label: 'Toolkit', icon: Sparkles },
   { id: 'chat', label: 'BUDDIE', icon: MessageCircleHeart },
   { id: 'journal', label: 'Journal', icon: BookHeart },

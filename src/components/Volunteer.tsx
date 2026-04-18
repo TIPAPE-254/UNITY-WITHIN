@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Heart, MessageCircle, Users, Sparkles, CheckCircle, ArrowRight, Phone, Mail, MapPin, Clock, Trophy, Zap } from 'lucide-react';
+import { ViewState } from '../types';
 
 interface VolunteerProps {
-  onNavigate?: (view: string) => void;
+  onNavigate?: (view: ViewState) => void;
 }
 
 export const Volunteer: React.FC<VolunteerProps> = ({ onNavigate }) => {

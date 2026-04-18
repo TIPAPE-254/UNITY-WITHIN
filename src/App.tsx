@@ -13,6 +13,7 @@ import { Signup } from './components/Signup';
 import { Volunteer } from './components/Volunteer';
 import { AdminVolunteers } from './components/AdminVolunteers';
 import { VolunteerDashboard } from './components/VolunteerDashboard';
+import { VolunteerPortal } from './components/VolunteerPortal';
 import { VolunteerInviteAccept } from './components/VolunteerInviteAccept';
 import { AnalyticsTracker } from './components/AnalyticsTracker';
 import { usePushNotifications } from './hooks/usePushNotifications';
@@ -90,6 +91,10 @@ export default function App() {
         return <Education />;
       case 'volunteer':
         return <Volunteer onNavigate={handleNavigate} />;
+      case 'volunteer-portal':
+        return <VolunteerPortal user={user || undefined} onNavigate={handleNavigate} />;
+      case 'volunteer-dashboard':
+        return <VolunteerDashboard user={user || undefined} onNavigate={handleNavigate} />;
       default:
         return <LandingPage onNavigate={handleNavigate} onGetStarted={() => handleNavigate('signup')} />;
     }

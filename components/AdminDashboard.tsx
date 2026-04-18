@@ -32,9 +32,10 @@ export const AdminDashboard: React.FC = () => {
       const [inviteTherapistMessage, setInviteTherapistMessage] = useState<string | null>(null);
       const [inviteTherapistWhatsappUrl, setInviteTherapistWhatsappUrl] = useState<string | null>(null);
      const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-     const [isLive, setIsLive] = useState(true);
+const [isLive, setIsLive] = useState(true);
+     const [isSyncing, setIsSyncing] = useState(false);
 
-    const getIdentityHeaders = () => {
+     const getIdentityHeaders = () => {
         const raw = localStorage.getItem('user');
         let user: any = null;
         try {
@@ -43,11 +44,23 @@ export const AdminDashboard: React.FC = () => {
             user = null;
         }
 
+        // Debug logging
+        if (!user?.email) {
+            console.warn('[AdminDashboard] Missing email in user object:', { 
+                storedRaw: raw?.substring(0, 100),
+                parsed: user,
+                email: user?.email
+            });
+        }
+
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
         };
 
-        if (user?.email) headers['x-user-email'] = String(user.email);
+        if (user?.email) {
+            headers['x-user-email'] = String(user.email);
+            console.log('[AdminDashboard] Added x-user-email header:', user.email);
+        }
         if (user?.id) headers['x-user-id'] = String(user.id);
         if (user?.role) headers['x-role'] = String(user.role);
         return headers;
@@ -152,6 +165,7 @@ export const AdminDashboard: React.FC = () => {
 
     const refreshNow = useCallback(async (showLoader = false) => {
         if (showLoader) setIsLoading(true);
+        setIsSyncing(true);
         try {
             await Promise.all([
                 fetchStats(),
@@ -162,6 +176,7 @@ export const AdminDashboard: React.FC = () => {
             console.error(e);
         } finally {
             if (showLoader) setIsLoading(false);
+            setIsSyncing(false);
         }
     }, [activeTab, selectedRoom, fetchStats, fetchTabData]);
 
@@ -321,16 +336,41 @@ export const AdminDashboard: React.FC = () => {
 
     const filteredContent = () => {
         const query = searchQuery.toLowerCase();
-        if (activeTab === 'users') return users.filter(u => (u.name || '').toLowerCase().includes(query) || (u.email || '').toLowerCase().includes(query));
-        if (activeTab === 'volunteers') return volunteers.filter(v => (v.email || '').toLowerCase().includes(query) || (v.role || '').toLowerCase().includes(query) || (v.status || '').toLowerCase().includes(query));
-        if (activeTab === 'messages' || selectedRoom) return messages.filter(m => (m.content || '').toLowerCase().includes(query) || (m.user_name || '').toLowerCase().includes(query));
-        if (activeTab === 'rooms') return rooms.filter(r => (r.name || '').toLowerCase().includes(query) || (r.description || '').toLowerCase().includes(query));
-        if (activeTab === 'moods') return moods.filter(m => (m.user_name || '').toLowerCase().includes(query) || (m.mood || '').toLowerCase().includes(query) || (m.note || '').toLowerCase().includes(query));
-        if (activeTab === 'journals') return journals.filter(j => (j.user_name || '').toLowerCase().includes(query) || (j.content || '').toLowerCase().includes(query));
-        if (activeTab === 'wins') return wins.filter(w => (w.user_name || '').toLowerCase().includes(query) || (w.content || '').toLowerCase().includes(query));
-        if (activeTab === 'blocked') return blockedLogs.filter(b => (b.user_name || '').toLowerCase().includes(query) || (b.content || '').toLowerCase().includes(query));
-        if (activeTab === 'reports') return reports.filter(r => (r.reporter_name || '').toLowerCase().includes(query) || (r.message_content || '').toLowerCase().includes(query));
-        return [];
+        let result: any[] = [];
+        
+        if (activeTab === 'users') {
+            result = users.filter(u => (u.name || '').toLowerCase().includes(query) || (u.email || '').toLowerCase().includes(query));
+        } else if (activeTab === 'volunteers') {
+            result = volunteers.filter(v => (v.email || '').toLowerCase().includes(query) || (v.role || '').toLowerCase().includes(query) || (v.status || '').toLowerCase().includes(query));
+        } else if (activeTab === 'messages' || selectedRoom) {
+            result = messages.filter(m => (m.content || '').toLowerCase().includes(query) || (m.user_name || '').toLowerCase().includes(query));
+            // Sort by most recent first
+            result.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        } else if (activeTab === 'rooms') {
+            result = rooms.filter(r => (r.name || '').toLowerCase().includes(query) || (r.description || '').toLowerCase().includes(query));
+        } else if (activeTab === 'moods') {
+            result = moods.filter(m => (m.user_name || '').toLowerCase().includes(query) || (m.mood || '').toLowerCase().includes(query) || (m.note || '').toLowerCase().includes(query));
+            // Sort by most recent first
+            result.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        } else if (activeTab === 'journals') {
+            result = journals.filter(j => (j.user_name || '').toLowerCase().includes(query) || (j.content || '').toLowerCase().includes(query));
+            // Sort by most recent first
+            result.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        } else if (activeTab === 'wins') {
+            result = wins.filter(w => (w.user_name || '').toLowerCase().includes(query) || (w.content || '').toLowerCase().includes(query));
+            // Sort by most recent first
+            result.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        } else if (activeTab === 'blocked') {
+            result = blockedLogs.filter(b => (b.user_name || '').toLowerCase().includes(query) || (b.content || '').toLowerCase().includes(query));
+            // Sort by most recent first
+            result.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        } else if (activeTab === 'reports') {
+            result = reports.filter(r => (r.reporter_name || '').toLowerCase().includes(query) || (r.message_content || '').toLowerCase().includes(query));
+            // Sort by most recent first
+            result.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        }
+        
+        return result;
     };
 
     return (
@@ -342,7 +382,7 @@ export const AdminDashboard: React.FC = () => {
                         <h1 className="text-2xl font-bold text-gray-800">System Command</h1>
                         <p className="text-xs text-gray-500">{selectedRoom ? `Auditing #${selectedRoom.name}` : 'Full Database Visibility Active'}</p>
                         <p className="text-[10px] text-gray-400 mt-0.5">
-                            {lastUpdated ? `Last sync: ${lastUpdated.toLocaleTimeString()}` : 'Waiting for first sync...'}
+                            {isSyncing ? '⟳ Syncing...' : lastUpdated ? `✓ Last sync: ${lastUpdated.toLocaleTimeString()}` : 'Waiting for first sync...'}
                         </p>
                     </div>
                 </div>
@@ -350,15 +390,18 @@ export const AdminDashboard: React.FC = () => {
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => setIsLive(prev => !prev)}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold border ${isLive ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 ${isLive ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
                     >
+                        <span className={`inline-block w-2 h-2 rounded-full ${isLive && isSyncing ? 'bg-green-500 animate-pulse' : isLive ? 'bg-green-500' : 'bg-gray-400'}`}></span>
                         {isLive ? 'LIVE ON' : 'LIVE OFF'}
                     </button>
                     <button
                         onClick={() => { void refreshNow(); }}
-                        className="px-3 py-2 rounded-xl text-xs font-bold border bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                        disabled={isSyncing}
+                        className="px-3 py-2 rounded-xl text-xs font-bold border bg-white text-gray-600 border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                     >
-                        Refresh
+                        {isSyncing && <div className="w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>}
+                        {isSyncing ? 'Syncing...' : 'Refresh'}
                     </button>
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
@@ -625,14 +668,15 @@ export const AdminDashboard: React.FC = () => {
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-gray-50 text-xs text-gray-400 uppercase font-bold">
-                                                <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Content</th><th className="px-4 py-3 text-right">Action</th></tr>
+                                                <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Content</th><th className="px-4 py-3 text-xs">Timestamp</th><th className="px-4 py-3 text-right">Action</th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {filteredContent().map((m: any) => <tr key={m.id}>
+                                                {filteredContent().length > 0 ? filteredContent().map((m: any) => <tr key={m.id}>
                                                     <td className="px-4 py-3 font-bold">{m.user_name || 'Anonymous'}</td>
-                                                    <td className="px-4 py-3 text-gray-600">{m.content}</td>
+                                                    <td className="px-4 py-3 text-gray-600 max-w-xs truncate">{m.content}</td>
+                                                    <td className="px-4 py-3 text-[10px] text-gray-400 whitespace-nowrap">{m.created_at ? new Date(m.created_at).toLocaleTimeString() : '-'}</td>
                                                     <td className="px-4 py-3 text-right"><button onClick={() => deleteMessage(m.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16} /></button></td>
-                                                </tr>)}
+                                                </tr>) : <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-sm">No messages yet</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>
@@ -642,10 +686,10 @@ export const AdminDashboard: React.FC = () => {
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-gray-50 text-xs text-gray-400 uppercase font-bold">
-                                                <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Mood</th><th className="px-4 py-3">Intensity</th><th className="px-4 py-3">Note</th></tr>
+                                                <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Mood</th><th className="px-4 py-3">Intensity</th><th className="px-4 py-3">Note</th><th className="px-4 py-3 text-xs">Time</th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {filteredContent().map((m: any) => <tr key={m.id}>
+                                                {filteredContent().length > 0 ? filteredContent().map((m: any) => <tr key={m.id}>
                                                     <td className="px-4 py-3 font-bold">{m.user_name}</td>
                                                     <td className="px-4 py-3"><span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs font-bold">{m.mood}</span></td>
                                                     <td className="px-4 py-3">
@@ -653,8 +697,9 @@ export const AdminDashboard: React.FC = () => {
                                                             <div className="bg-unity-500 h-full" style={{ width: `${m.intensity * 10}%` }}></div>
                                                         </div>
                                                     </td>
-                                                    <td className="px-4 py-3 text-xs text-gray-400 italic">{m.note || '-'}</td>
-                                                </tr>)}
+                                                    <td className="px-4 py-3 text-xs text-gray-400 italic max-w-xs truncate">{m.note || '-'}</td>
+                                                    <td className="px-4 py-3 text-[10px] text-gray-400 whitespace-nowrap">{m.created_at ? new Date(m.created_at).toLocaleTimeString() : '-'}</td>
+                                                </tr>) : <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-sm">No mood logs yet</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>
@@ -664,14 +709,14 @@ export const AdminDashboard: React.FC = () => {
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-gray-50 text-xs text-gray-400 uppercase font-bold">
-                                                <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Entry</th><th className="px-4 py-3">Date</th></tr>
+                                                <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Entry</th><th className="px-4 py-3 text-xs">Date & Time</th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {filteredContent().map((j: any) => <tr key={j.id}>
+                                                {filteredContent().length > 0 ? filteredContent().map((j: any) => <tr key={j.id}>
                                                     <td className="px-4 py-3 font-bold">{j.user_name}</td>
                                                     <td className="px-4 py-3 text-gray-600 truncate max-w-xs">{j.content}</td>
-                                                    <td className="px-4 py-3 text-[10px] text-gray-400">{new Date(j.created_at).toLocaleDateString()}</td>
-                                                </tr>)}
+                                                    <td className="px-4 py-3 text-[10px] text-gray-400 whitespace-nowrap">{j.created_at ? new Date(j.created_at).toLocaleString() : '-'}</td>
+                                                </tr>) : <tr><td colSpan={3} className="px-4 py-8 text-center text-gray-400 text-sm">No journal entries yet</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>
@@ -681,14 +726,14 @@ export const AdminDashboard: React.FC = () => {
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-gray-50 text-xs text-gray-400 uppercase font-bold">
-                                                <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Tiny Win</th><th className="px-4 py-3">Date</th></tr>
+                                                <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Tiny Win</th><th className="px-4 py-3 text-xs">Date & Time</th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {filteredContent().map((w: any) => <tr key={w.id}>
+                                                {filteredContent().length > 0 ? filteredContent().map((w: any) => <tr key={w.id}>
                                                     <td className="px-4 py-3 font-bold">{w.user_name}</td>
                                                     <td className="px-4 py-3 text-gray-600">{w.content}</td>
-                                                    <td className="px-4 py-3 text-[10px] text-gray-400">{new Date(w.created_at).toLocaleDateString()}</td>
-                                                </tr>)}
+                                                    <td className="px-4 py-3 text-[10px] text-gray-400 whitespace-nowrap">{w.created_at ? new Date(w.created_at).toLocaleString() : '-'}</td>
+                                                </tr>) : <tr><td colSpan={3} className="px-4 py-8 text-center text-gray-400 text-sm">No tiny wins yet</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>
@@ -698,14 +743,15 @@ export const AdminDashboard: React.FC = () => {
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-gray-50 text-xs text-gray-400 uppercase font-bold">
-                                                <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Blocked Chat</th><th className="px-4 py-3 text-right">Flag</th></tr>
+                                                <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Blocked Chat</th><th className="px-4 py-3">Flag</th><th className="px-4 py-3 text-xs">Time</th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {filteredContent().map((log: any) => <tr key={log.id}>
+                                                {filteredContent().length > 0 ? filteredContent().map((log: any) => <tr key={log.id}>
                                                     <td className="px-4 py-3 font-bold">{log.user_name || 'Unknown'}</td>
-                                                    <td className="px-4 py-3 text-xs italic text-gray-500">"{log.content}"</td>
-                                                    <td className="px-4 py-3 text-right"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${log.flag_type === 'CRISIS' ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-orange-100 text-orange-600'}`}>{log.flag_type}</span></td>
-                                                </tr>)}
+                                                    <td className="px-4 py-3 text-xs italic text-gray-500 max-w-xs truncate">"{log.content}"</td>
+                                                    <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${log.flag_type === 'CRISIS' ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-orange-100 text-orange-600'}`}>{log.flag_type}</span></td>
+                                                    <td className="px-4 py-3 text-[10px] text-gray-400 whitespace-nowrap">{log.created_at ? new Date(log.created_at).toLocaleTimeString() : '-'}</td>
+                                                </tr>) : <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-sm">No flagged content</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>
@@ -715,14 +761,15 @@ export const AdminDashboard: React.FC = () => {
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-gray-50 text-xs text-gray-400 uppercase font-bold">
-                                                <tr><th className="px-4 py-3">Reporter</th><th className="px-4 py-3">Reason</th><th className="px-4 py-3">Flagged Content</th></tr>
+                                                <tr><th className="px-4 py-3">Reporter</th><th className="px-4 py-3">Reason</th><th className="px-4 py-3">Flagged Content</th><th className="px-4 py-3 text-xs">Time</th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {filteredContent().map((r: any) => <tr key={r.id}>
+                                                {filteredContent().length > 0 ? filteredContent().map((r: any) => <tr key={r.id}>
                                                     <td className="px-4 py-3 font-bold">{r.reporter_name}</td>
                                                     <td className="px-4 py-3"><span className="px-2 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-bold uppercase">{r.reason}</span></td>
-                                                    <td className="px-4 py-3 text-gray-500 italic">"{r.message_content}"</td>
-                                                </tr>)}
+                                                    <td className="px-4 py-3 text-gray-500 italic max-w-xs truncate">"{r.message_content}"</td>
+                                                    <td className="px-4 py-3 text-[10px] text-gray-400 whitespace-nowrap">{r.created_at ? new Date(r.created_at).toLocaleTimeString() : '-'}</td>
+                                                </tr>) : <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-sm">No reports yet</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>

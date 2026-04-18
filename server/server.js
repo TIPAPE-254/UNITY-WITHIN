@@ -4982,10 +4982,33 @@ app.get("/api/admin/volunteer-invites", requireAdmin, async (req, res) => {
 app.post("/api/admin/approve-volunteer/:inviteId", requireAdmin, async (req, res) => {
   try {
     const { inviteId } = req.params;
+    const inviteResult = await pool.query(
+      "SELECT email FROM volunteer_invites WHERE id = $1 LIMIT 1",
+      [inviteId],
+    );
+
+    if (inviteResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: "Invite not found" });
+    }
+
+    const inviteEmail = String(inviteResult.rows[0].email || "").trim().toLowerCase();
+
     await pool.query(
       "UPDATE volunteer_invites SET status = $1 WHERE id = $2",
       ["approved", inviteId],
     );
+
+    // Enable volunteer access immediately after admin approval.
+    await pool.query(
+      "UPDATE volunteers SET status = $1 WHERE LOWER(email) = $2",
+      ["active", inviteEmail],
+    );
+
+    await pool.query(
+      "UPDATE users SET role = $1 WHERE LOWER(email) = $2",
+      ["volunteer", inviteEmail],
+    );
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -4995,10 +5018,32 @@ app.post("/api/admin/approve-volunteer/:inviteId", requireAdmin, async (req, res
 app.post("/api/admin/reject-volunteer/:inviteId", requireAdmin, async (req, res) => {
   try {
     const { inviteId } = req.params;
+    const inviteResult = await pool.query(
+      "SELECT email FROM volunteer_invites WHERE id = $1 LIMIT 1",
+      [inviteId],
+    );
+
+    if (inviteResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: "Invite not found" });
+    }
+
+    const inviteEmail = String(inviteResult.rows[0].email || "").trim().toLowerCase();
+
     await pool.query(
       "UPDATE volunteer_invites SET status = $1 WHERE id = $2",
       ["rejected", inviteId],
     );
+
+    await pool.query(
+      "UPDATE volunteers SET status = $1 WHERE LOWER(email) = $2",
+      ["rejected", inviteEmail],
+    );
+
+    await pool.query(
+      "UPDATE users SET role = $1 WHERE LOWER(email) = $2 AND role = $3",
+      ["user", inviteEmail, "volunteer"],
+    );
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -5153,7 +5198,10 @@ app.get("/api/volunteer/dashboard", async (req, res) => {
 
   try {
     const volunteers = await query(
-      "SELECT * FROM volunteers WHERE email = $1",
+      `SELECT v.*, r.title as role_title, r.description as role_description 
+       FROM volunteers v 
+       LEFT JOIN volunteer_roles r ON v.matched_role_id = r.id 
+       WHERE v.email = $1`,
       [email],
     );
     if (volunteers.length === 0)
@@ -5186,6 +5234,57 @@ app.get("/api/volunteer/dashboard", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/volunteer/profile", async (req, res) => {
+  const email = req.headers["x-user-email"];
+  if (!email)
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+
+  try {
+    const volunteers = await query(
+      `SELECT v.id, v.name, v.email, v.phone, v.county, v.skills, v.status, v.created_at,
+              r.title as role_name, r.description as role_description
+       FROM volunteers v
+       LEFT JOIN volunteer_roles r ON v.matched_role_id = r.id
+       WHERE v.email = $1
+       LIMIT 1`,
+      [email],
+    );
+
+    if (volunteers.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Volunteer profile not found" });
+    }
+
+    const volunteer = volunteers[0];
+    let parsedSkills = [];
+    try {
+      parsedSkills = volunteer.skills ? JSON.parse(volunteer.skills) : [];
+    } catch {
+      parsedSkills = [];
+    }
+
+    return res.json({
+      success: true,
+      profile: {
+        id: volunteer.id,
+        name: volunteer.name,
+        email: volunteer.email,
+        phone: volunteer.phone,
+        county: volunteer.county,
+        location: volunteer.county,
+        skills: Array.isArray(parsedSkills) ? parsedSkills : [],
+        status: volunteer.status,
+        role_name: volunteer.role_name,
+        role_description: volunteer.role_description,
+        joined_date: volunteer.created_at,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 

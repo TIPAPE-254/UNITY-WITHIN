@@ -135,7 +135,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onNaviga
 
                         <div className="bg-unity-black px-6 py-5 text-white">
                             <div className="flex items-center gap-3">
-                                <img src="/favicon.svg" alt="Unity Within" className="w-10 h-10 rounded-xl bg-white p-1" />
+                                 <img src="/favicon.png" alt="Unity Within" className="w-10 h-10 rounded-xl bg-white p-1" />
                                 <div>
                                     <p className="text-xs uppercase tracking-wide text-unity-200">Unity Within App</p>
                                     <h3 className="text-lg font-bold">Install The APK</h3>

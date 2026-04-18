@@ -12,13 +12,13 @@
   "categories": ["health", "medical", "social"],
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "/favicon.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "/favicon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -39,21 +39,21 @@
       "short_name": "Mood",
       "description": "Quickly log your current mood",
       "url": "/dashboard",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
     },
     {
       "name": "Journal",
       "short_name": "Journal",
       "description": "Write in your journal",
       "url": "/journal",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
     },
     {
       "name": "Breathe",
       "short_name": "Breathe",
       "description": "Guided breathing exercise",
       "url": "/breathe",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
     }
   ],
   "related_applications": [],

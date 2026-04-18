@@ -12,6 +12,7 @@ export const NAVIGATION_ITEMS: { id: ViewState; label: string; icon: any }[] = [
   { id: 'chat', label: 'Buddie', icon: MessageCircleHeart },
   { id: 'community', label: 'Communities', icon: Users },
   { id: 'journal', label: 'Journal', icon: BookHeart },
+  { id: 'volunteer', label: 'Volunteer', icon: Users },
   { id: 'breathe', label: 'Breathe', icon: Wind },
   { id: 'education', label: 'Learn', icon: GraduationCap },
   { id: 'admin', label: 'Admin', icon: Shield },
