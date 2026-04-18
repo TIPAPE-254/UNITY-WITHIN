@@ -3508,8 +3508,20 @@ app.post("/api/signup", async (req, res) => {
   try {
     const { name, email, password, emergencyContact } = req.body || {};
 
+    // 🧪 Debug: Log incoming request body (sanitized)
+    console.log('📨 POST /api/signup', {
+      received: {
+        name: !!name,
+        email: email ? `${email.substring(0, 3)}...` : 'empty',
+        passwordProvided: !!password,
+        emergencyContact: !!emergencyContact,
+        contentType: req.headers['content-type'],
+      },
+    });
+
     // Validate input
     if (!email || !password) {
+      console.warn('⚠️ Missing email or password on /api/signup');
       return res.status(400).json({
         error: "Email and password are required",
         message: "Please provide both email and password",
@@ -3589,8 +3601,18 @@ app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body || {};
 
+    // 🧪 Debug: Log incoming request body (sanitized)
+    console.log('📨 POST /api/login', {
+      received: {
+        email: email ? `${email.substring(0, 3)}...` : 'empty',
+        passwordProvided: !!password,
+        contentType: req.headers['content-type'],
+      },
+    });
+
     // Validate input
     if (!email || !password) {
+      console.warn('⚠️ Missing credentials on /api/login');
       return res.status(400).json({
         error: "Missing credentials",
         message: "Please provide both email and password",
@@ -9704,22 +9726,36 @@ app.use((err, req, res, next) => {
 });
 
 // ✅ Step 4: Global error handler (catch-all)
+// CRITICAL: Log full error for debugging, especially in Azure
 app.use((err, req, res, next) => {
-  console.error('❌ Unhandled error:', {
+  // 🔥 ALWAYS log the FULL error object for debugging
+  console.error('🔥 FULL ERROR:', {
+    name: err?.name,
     message: err?.message,
     code: err?.code,
+    status: err?.status || err?.statusCode,
     method: req.method,
     url: req.url,
-    stack: process.env.NODE_ENV === 'development' ? err?.stack : undefined,
+    userAgent: req.headers['user-agent'],
+    contentType: req.headers['content-type'],
+    stack: err?.stack, // Always include stack in server logs
   });
 
-  // Don't expose internal errors in production
+  // Handle stream errors specifically (Azure issue)
+  if (err.message === 'stream is not readable' || err.message?.includes('stream')) {
+    console.error('⚠️ Stream issue detected - likely middleware order problem or double-read');
+    return res.status(400).json({
+      error: 'Request body stream issue (verify Content-Type header and middleware order)',
+    });
+  }
+
+  // Return safe message to client (don't expose internals)
   const statusCode = err?.statusCode || err?.status || 500;
-  const message = process.env.NODE_ENV === 'development'
+  const clientMessage = process.env.NODE_ENV === 'development'
     ? err?.message
     : 'Internal server error';
 
-  res.status(statusCode).json({ error: message });
+  res.status(statusCode).json({ error: clientMessage });
 });
 
 // Start server
