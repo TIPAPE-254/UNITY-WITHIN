@@ -303,11 +303,30 @@ const validateProductionConfig = () => {
 const app = express();
 app.use(cors());
 
-// ✅ Step 1: Body parser middleware with Azure safety
-// - limit: 50MB for file uploads
-// - strict: false to handle edge cases in Azure
-app.use(express.json({ limit: "50mb", strict: false }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+// ✅ GUARD: Detect if stream is already consumed (before parser)
+app.use((req, res, next) => {
+  if (req.readableEnded) {
+    console.error('❌ CRITICAL: Stream already consumed before express.json parser');
+    console.error(`Request: ${req.method} ${req.url}`);
+  }
+  next();
+});
+
+// ✅ Step 1: Body parser with production safety
+// - limit: 1MB (production standard)
+// - strict: true (no raw JS objects)
+// - verify: Azure-safe empty body handling
+app.use(express.json({
+  limit: '1mb',
+  strict: true,
+  verify: (req, res, buf) => {
+    // Azure sometimes sends empty payloads - handle safely
+    if (!buf || buf.length === 0) {
+      req.body = {};
+    }
+  }
+}));
+app.use(express.urlencoded({ extended: true }));
 
 // ✅ Step 2: Content-Type validation middleware
 app.use((req, res, next) => {
@@ -343,6 +362,30 @@ if (!process.env.ADMIN_EMAIL && process.env.ENCRYPTED_ADMIN_EMAIL) {
     );
   }
 }
+
+// ✅ TEST ROUTE: Minimal login test (remove after debugging if not needed)
+app.post("/api/test/login", (req, res) => {
+  console.log('🧪 TEST ROUTE /api/test/login - Body received:', JSON.stringify(req.body).substring(0, 100));
+  res.json({
+    ok: true,
+    received: {
+      email: req.body?.email ? 'present' : 'missing',
+      password: req.body?.password ? 'present' : 'missing',
+    }
+  });
+});
+
+// 🧪 TEST ROUTE: Minimal login test (remove after debugging if not needed)
+app.post("/api/test/login", (req, res) => {
+  console.log('🧪 TEST ROUTE /api/test/login - Body received:', JSON.stringify(req.body).substring(0, 100));
+  res.json({
+    ok: true,
+    received: {
+      email: req.body?.email ? 'present' : 'missing',
+      password: req.body?.password ? 'present' : 'missing',
+    }
+  });
+});
 
 app.get("/api/health", async (req, res) => {
   try {
