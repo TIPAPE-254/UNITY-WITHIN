@@ -3587,8 +3587,24 @@ app.post("/api/login", async (req, res) => {
 
     const user = users[0];
 
+    if (!user.password) {
+      return res.status(401).json({
+        error: "Invalid credentials",
+        message: "Email or password is incorrect",
+      });
+    }
+
     // Verify password
-    const passwordMatch = await bcrypt.compare(password, user.password);
+    let passwordMatch = false;
+    try {
+      passwordMatch = await bcrypt.compare(password, user.password);
+    } catch (compareError) {
+      console.error("Login password verification error:", compareError);
+      return res.status(401).json({
+        error: "Invalid credentials",
+        message: "Email or password is incorrect",
+      });
+    }
 
     if (!passwordMatch) {
       return res.status(401).json({

@@ -77,7 +77,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignupComplete, onSwitchToLogi
         } catch (error) {
             console.error('Signup error:', error);
             try {
-                const health = await fetch(`${API_BASE_URL}/health`);
+                const health = await fetch(`${API_BASE_URL}/api/health`);
                 if (health.ok) {
                     const healthData = await parseJsonSafely(health);
                     if (healthData?.database === 'disconnected') {
