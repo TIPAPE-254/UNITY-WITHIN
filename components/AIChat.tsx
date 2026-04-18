@@ -49,11 +49,11 @@ export const AIChat: React.FC = () => {
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({} as any));
 
       const botMsgId = (Date.now() + 1).toString();
 
-      if (data.success) {
+      if (response.ok && data.success) {
         setMessages((prev) => [
           ...prev,
           {
@@ -63,7 +63,16 @@ export const AIChat: React.FC = () => {
           },
         ]);
       } else {
-        throw new Error(data.error || 'Failed to get response');
+        const fallbackText = data?.message || data?.error || "I had trouble responding clearly just now, but I'm still with you. Could you share that again in a sentence or two?";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: botMsgId,
+            role: 'model',
+            text: fallbackText,
+            isError: true,
+          },
+        ]);
       }
 
     } catch (error) {

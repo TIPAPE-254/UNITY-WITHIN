@@ -5,10 +5,9 @@
  * API keys are read from environment variables (Azure App Settings when deployed).
  * 
  * Supported providers:
- * - OpenAI (GPT-4, GPT-3.5-turbo)
- * - Groq (Llama, Mixtral)
- * - Google Gemini
- * - Hugging Face (for emotion detection)
+ * - OpenAI (GPT models)
+ * - Groq (Llama/Mixtral-style inference)
+ * - Hugging Face (emotion detection)
  */
 
 // AI Provider Configuration
@@ -27,24 +26,6 @@ export const aiConfig = {
   groq: {
     key: process.env.GROQ_API_KEY || "",
     model: process.env.GROQ_MODEL || "llama-3.1-70b-versatile",
-  },
-
-  // Google Gemini Configuration
-  gemini: {
-    key: process.env.GEMINI_API_KEY || "",
-    model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
-  },
-
-  // Mistral AI Configuration
-  mistral: {
-    key: process.env.MISTRAL_API_KEY || "",
-    model: process.env.MISTRAL_MODEL || "mistral-small",
-  },
-
-  // DeepSeek Configuration
-  deepseek: {
-    key: process.env.DEEPSEEK_API_KEY || "",
-    model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
   },
 
   // Hugging Face Configuration (for emotion detection)
@@ -81,10 +62,7 @@ export const aiConfig = {
 // AI Provider Priority Order (used for fallback)
 export const AI_PROVIDER_PRIORITY = [
   "openai",
-  "groq", 
-  "gemini",
-  "mistral",
-  "deepseek",
+  "groq",
 ];
 
 // Get available AI providers based on configured API keys
@@ -103,27 +81,6 @@ export function getAiProviderStatus() {
     providers.groq = {
       available: true,
       model: aiConfig.groq.model,
-    };
-  }
-  
-  if (aiConfig.gemini.key && !aiConfig.gemini.key.startsWith("your_")) {
-    providers.gemini = {
-      available: true,
-      model: aiConfig.gemini.model,
-    };
-  }
-  
-  if (aiConfig.mistral.key && !aiConfig.mistral.key.startsWith("your_")) {
-    providers.mistral = {
-      available: true,
-      model: aiConfig.mistral.model,
-    };
-  }
-  
-  if (aiConfig.deepseek.key && !aiConfig.deepseek.key.startsWith("your_")) {
-    providers.deepseek = {
-      available: true,
-      model: aiConfig.deepseek.model,
     };
   }
   

@@ -33,6 +33,23 @@ export const MoodLogger: React.FC<MoodLoggerProps> = ({ userId, onMoodLogged, on
 
     const [showPostCheckIn, setShowPostCheckIn] = useState(false);
 
+    const resolveUserIdentity = () => {
+        const raw = localStorage.getItem('user');
+        let localUser: any = null;
+        try {
+            localUser = raw ? JSON.parse(raw) : null;
+        } catch {
+            localUser = null;
+        }
+
+        const resolvedId = Number(userId || localUser?.id || 0);
+        const resolvedEmail = String(localUser?.email || '').trim().toLowerCase();
+        return {
+            id: Number.isFinite(resolvedId) && resolvedId > 0 ? resolvedId : null,
+            email: resolvedEmail || null,
+        };
+    };
+
     const handleMoodSelect = (moodLabel: string) => {
         if (selectedMood === moodLabel) {
             // keep selection
@@ -59,7 +76,7 @@ export const MoodLogger: React.FC<MoodLoggerProps> = ({ userId, onMoodLogged, on
     };
 
     const handleSubmit = async () => {
-        if (!userId || !selectedMood) return;
+        if (!selectedMood) return;
         setIsLoading(true);
 
         try {
@@ -67,11 +84,21 @@ export const MoodLogger: React.FC<MoodLoggerProps> = ({ userId, onMoodLogged, on
                 ? `[${selectedTags.join(', ')}] ${note}`.trim()
                 : note;
 
+            const identity = resolveUserIdentity();
+            if (!identity.id) {
+                console.error('Failed to resolve user id for mood logging');
+                return;
+            }
+
             const res = await fetch(`${API_BASE_URL}/moods`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': String(identity.id),
+                    ...(identity.email ? { 'x-user-email': identity.email } : {}),
+                },
                 body: JSON.stringify({
-                    userId,
+                    userId: identity.id,
                     mood: selectedMood,
                     intensity,
                     note: finalNote

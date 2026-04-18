@@ -7177,9 +7177,10 @@ app.get("/api/admin/moods", requireAdmin, async (req, res) => {
 app.get("/api/admin/journals", requireAdmin, async (req, res) => {
   try {
     const dbResult = await pool.query(`
-      SELECT j.id, j.content, j.created_at, j.mood, u.name as user_name
+      SELECT j.id, j.content, j.created_at, um.mood, u.name as user_name
       FROM journal_entries j
       LEFT JOIN users u ON j.user_id = u.id
+      LEFT JOIN user_moods um ON j.mood_id = um.id
       ORDER BY j.created_at DESC
       LIMIT 200
     `);
@@ -9017,9 +9018,14 @@ app.post("/api/buddie/respond", async (req, res) => {
     });
   } catch (error) {
     console.error("Buddie error:", error);
-    return res.status(503).json({
-      success: false,
-      error: AI_UNREACHABLE_MESSAGE,
+    const emergencyFallback =
+      "I'm still here with you. I hit a temporary glitch, but we can keep going. Tell me one small thing that's feeling heaviest right now.";
+
+    return res.json({
+      success: true,
+      message: emergencyFallback,
+      supportSuggestion: false,
+      degraded: true,
     });
   }
 });

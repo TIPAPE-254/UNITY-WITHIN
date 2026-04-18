@@ -34,11 +34,42 @@ export const AdminDashboard: React.FC = () => {
      const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
      const [isLive, setIsLive] = useState(true);
 
+    const getIdentityHeaders = () => {
+        const raw = localStorage.getItem('user');
+        let user: any = null;
+        try {
+            user = raw ? JSON.parse(raw) : null;
+        } catch {
+            user = null;
+        }
+
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+        };
+
+        if (user?.email) headers['x-user-email'] = String(user.email);
+        if (user?.id) headers['x-user-id'] = String(user.id);
+        if (user?.role) headers['x-role'] = String(user.role);
+        return headers;
+    };
+
+    const apiFetch = (url: string, options: RequestInit = {}) => {
+        const baseHeaders = getIdentityHeaders();
+        const incomingHeaders = (options.headers || {}) as Record<string, string>;
+        return fetch(url, {
+            ...options,
+            headers: {
+                ...baseHeaders,
+                ...incomingHeaders,
+            },
+        });
+    };
+
     const fetchStats = useCallback(async () => {
         try {
             const [statsRes, volunteerStatsRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/admin/stats`),
-                fetch(`${API_BASE_URL}/admin/volunteer-stats`),
+                apiFetch(`${API_BASE_URL}/admin/stats`),
+                apiFetch(`${API_BASE_URL}/admin/volunteer-stats`),
             ]);
 
             const statsData = await statsRes.json();
@@ -58,7 +89,7 @@ export const AdminDashboard: React.FC = () => {
 
     const fetchTabData = useCallback(async (tab: AdminTab, room: any) => {
         if (room) {
-            const res = await fetch(`${API_BASE_URL}/chat/rooms/${room.id}/messages`);
+            const res = await apiFetch(`${API_BASE_URL}/chat/rooms/${room.id}/messages`);
             const data = await res.json();
             if (data.success) setMessages(data.data);
             return;
@@ -68,47 +99,47 @@ export const AdminDashboard: React.FC = () => {
 
         const fetchTabMap: Record<string, () => Promise<void>> = {
             users: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/users`);
+                const res = await apiFetch(`${API_BASE_URL}/admin/users`);
                 const data = await res.json();
                 if (data.success) setUsers(data.data);
             },
             volunteers: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/volunteer-invites`);
+                const res = await apiFetch(`${API_BASE_URL}/admin/volunteer-invites`);
                 const data = await res.json();
                 if (data.success) setVolunteers(data.invites || []);
             },
             rooms: async () => {
-                const res = await fetch(`${API_BASE_URL}/chat/rooms`);
+                const res = await apiFetch(`${API_BASE_URL}/chat/rooms`);
                 const data = await res.json();
                 if (data.success) setRooms(data.data);
             },
             messages: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/chat/messages`);
+                const res = await apiFetch(`${API_BASE_URL}/admin/chat/messages`);
                 const data = await res.json();
                 if (data.success) setMessages(data.data);
             },
             blocked: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/moderation-logs`);
+                const res = await apiFetch(`${API_BASE_URL}/admin/moderation-logs`);
                 const data = await res.json();
                 if (data.success) setBlockedLogs(data.data);
             },
             moods: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/moods`);
+                const res = await apiFetch(`${API_BASE_URL}/admin/moods`);
                 const data = await res.json();
                 if (data.success) setMoods(data.data);
             },
             journals: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/journals`);
+                const res = await apiFetch(`${API_BASE_URL}/admin/journals`);
                 const data = await res.json();
                 if (data.success) setJournals(data.data);
             },
             wins: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/tiny-wins`);
+                const res = await apiFetch(`${API_BASE_URL}/admin/tiny-wins`);
                 const data = await res.json();
                 if (data.success) setWins(data.data);
             },
             reports: async () => {
-                const res = await fetch(`${API_BASE_URL}/admin/reports`);
+                const res = await apiFetch(`${API_BASE_URL}/admin/reports`);
                 const data = await res.json();
                 if (data.success) setReports(data.data);
             }
@@ -151,9 +182,8 @@ export const AdminDashboard: React.FC = () => {
 
     const toggleUserRole = async (userId: number, currentRole: string) => {
         const newRole = currentRole === 'admin' ? 'user' : 'admin';
-        const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/role`, {
+        const res = await apiFetch(`${API_BASE_URL}/admin/users/${userId}/role`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ role: newRole })
         });
         if (res.ok) {
@@ -164,7 +194,7 @@ export const AdminDashboard: React.FC = () => {
 
     const deleteUser = async (id: number) => {
         if (window.confirm('Delete user?')) {
-            await fetch(`${API_BASE_URL}/admin/users/${id}`, { method: 'DELETE' });
+            await apiFetch(`${API_BASE_URL}/admin/users/${id}`, { method: 'DELETE' });
             setUsers(users.filter(u => u.id !== id));
             void refreshNow();
         }
@@ -172,16 +202,15 @@ export const AdminDashboard: React.FC = () => {
 
     const handleCreateRoom = async (e: React.FormEvent) => {
         e.preventDefault();
-        const res = await fetch(`${API_BASE_URL}/admin/chat/rooms`, {
+        const res = await apiFetch(`${API_BASE_URL}/admin/chat/rooms`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newRoom)
         });
         if (res.ok) {
             setNewRoom({ name: '', description: '', type: 'public' });
             const data = await res.json();
             if (data.success) {
-                const rRes = await fetch(`${API_BASE_URL}/chat/rooms`);
+                const rRes = await apiFetch(`${API_BASE_URL}/chat/rooms`);
                 const rData = await rRes.json();
                 if (rData.success) setRooms(rData.data);
             }
@@ -190,21 +219,21 @@ export const AdminDashboard: React.FC = () => {
 
     const deleteRoom = async (id: number) => {
         if (window.confirm('Delete room?')) {
-            await fetch(`${API_BASE_URL}/admin/chat/rooms/${id}`, { method: 'DELETE' });
+            await apiFetch(`${API_BASE_URL}/admin/chat/rooms/${id}`, { method: 'DELETE' });
             setRooms(rooms.filter(r => r.id !== id));
         }
     };
 
     const deleteMessage = async (id: number) => {
         if (window.confirm('Delete message?')) {
-            await fetch(`${API_BASE_URL}/admin/chat/messages/${id}`, { method: 'DELETE' });
+            await apiFetch(`${API_BASE_URL}/admin/chat/messages/${id}`, { method: 'DELETE' });
             setMessages(messages.filter(m => m.id !== id));
             void refreshNow();
         }
     };
 
     const approveVolunteerInvite = async (inviteId: string) => {
-        const res = await fetch(`${API_BASE_URL}/admin/approve-volunteer/${inviteId}`, { method: 'POST' });
+        const res = await apiFetch(`${API_BASE_URL}/admin/approve-volunteer/${inviteId}`, { method: 'POST' });
         if (res.ok) {
             setVolunteers(prev => prev.map(v => v.id === inviteId ? { ...v, status: 'approved' } : v));
             void refreshNow();
@@ -212,7 +241,7 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const rejectVolunteerInvite = async (inviteId: string) => {
-        const res = await fetch(`${API_BASE_URL}/admin/reject-volunteer/${inviteId}`, { method: 'POST' });
+        const res = await apiFetch(`${API_BASE_URL}/admin/reject-volunteer/${inviteId}`, { method: 'POST' });
         if (res.ok) {
             setVolunteers(prev => prev.map(v => v.id === inviteId ? { ...v, status: 'rejected' } : v));
             void refreshNow();
@@ -226,9 +255,8 @@ export const AdminDashboard: React.FC = () => {
          setInviteBusy(true);
          setInviteMessage(null);
          try {
-             const res = await fetch(`${API_BASE_URL}/admin/invite-volunteer`, {
+             const res = await apiFetch(`${API_BASE_URL}/admin/invite-volunteer`, {
                  method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
                  body: JSON.stringify({
                      email: inviteForm.email.trim(),
                      adminName: 'Admin',
