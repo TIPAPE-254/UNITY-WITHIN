@@ -302,9 +302,23 @@ const validateProductionConfig = () => {
 
 const app = express();
 app.use(cors());
-// Increase payload limit to 50MB to allow large image uploads as data URLs
-app.use(express.json({ limit: "50mb" }));
+
+// ✅ Step 1: Body parser middleware with Azure safety
+// - limit: 50MB for file uploads
+// - strict: false to handle edge cases in Azure
+app.use(express.json({ limit: "50mb", strict: false }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// ✅ Step 2: Content-Type validation middleware
+app.use((req, res, next) => {
+  if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+    if (!req.headers['content-type']) {
+      console.warn(`⚠️ Missing Content-Type on ${req.method} ${req.url}`);
+      // Don't block, just warn - some requests may have no body
+    }
+  }
+  next();
+});
 app.use((req, _res, next) => {
   const hostHeader = String(
     req.headers["x-forwarded-host"] || req.headers.host || "",
@@ -3340,10 +3354,8 @@ logAiProviderStatus();
 
 // Middleware
 app.set("trust proxy", true);
-app.use(cors());
-// Increase payload limit to 50MB to allow large image uploads as data URLs
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+// Note: CORS and body parsing already configured above at app creation
+// Duplicates removed to follow Express best practices
 
 const getPublicBaseUrl = (req) => {
   if (process.env.RESET_PASSWORD_BASE_URL) {
@@ -3375,9 +3387,18 @@ const getPublicBaseUrl = (req) => {
   return `${protocol}://${host}`.replace(/\/$/, "");
 };
 
-// Request logger
+// ✅ Step 5: Request logger with body debugging
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  const timestamp = new Date().toISOString();
+  const contentType = req.headers['content-type'] || 'none';
+  const contentLength = req.headers['content-length'] || '0';
+  const isBodyRequest = req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH';
+  
+  if (isBodyRequest) {
+    console.log(`➡️ [${timestamp}] ${req.method} ${req.url} (Content-Type: ${contentType}, Size: ${contentLength}B)`);
+  } else {
+    console.log(`➡️ [${timestamp}] ${req.method} ${req.url}`);
+  }
   next();
 });
 
@@ -9654,6 +9675,51 @@ app.get(/^(?!\/api).*/, (req, res, next) => {
   }
 
   res.sendFile(resolveShellForRequest(req));
+});
+
+// ✅ Step 3: Body parser error handler (CRITICAL)
+// Catches JSON parsing errors, stream issues, and prevents 500 crashes
+app.use((err, req, res, next) => {
+  // Only handle body parsing errors
+  if (err instanceof SyntaxError && 'body' in err) {
+    console.error('🔥 Body parse error:', err.message, 'on', req.method, req.url);
+
+    if (err.status === 400 && err.type === 'entity.parse.failed') {
+      return res.status(400).json({ error: 'Invalid JSON in request body' });
+    }
+
+    if (err.message.includes('stream is not readable')) {
+      return res.status(400).json({ error: 'Request stream was already consumed' });
+    }
+
+    if (err.message.includes('Unexpected token')) {
+      return res.status(400).json({ error: 'Malformed JSON' });
+    }
+
+    return res.status(400).json({ error: 'Request body error: ' + err.message });
+  }
+
+  // Pass non-body-parsing errors to next handler
+  next(err);
+});
+
+// ✅ Step 4: Global error handler (catch-all)
+app.use((err, req, res, next) => {
+  console.error('❌ Unhandled error:', {
+    message: err?.message,
+    code: err?.code,
+    method: req.method,
+    url: req.url,
+    stack: process.env.NODE_ENV === 'development' ? err?.stack : undefined,
+  });
+
+  // Don't expose internal errors in production
+  const statusCode = err?.statusCode || err?.status || 500;
+  const message = process.env.NODE_ENV === 'development'
+    ? err?.message
+    : 'Internal server error';
+
+  res.status(statusCode).json({ error: message });
 });
 
 // Start server
