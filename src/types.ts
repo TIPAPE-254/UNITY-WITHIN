@@ -1,4 +1,4 @@
-export type ViewState = 'landing' | 'login' | 'signup' | 'dashboard' | 'wellness' | 'chat' | 'journal' | 'breathe' | 'education' | 'admin' | 'explore' | 'resources' | 'profile' | 'volunteer' | 'volunteer-dashboard' | 'admin-volunteers';
+export type ViewState = 'landing' | 'login' | 'signup' | 'dashboard' | 'wellness' | 'chat' | 'journal' | 'breathe' | 'education' | 'admin' | 'explore' | 'resources' | 'profile' | 'volunteer' | 'volunteer-dashboard' | 'volunteer-portal' | 'admin-volunteers';
 
 export interface User {
   id: string;

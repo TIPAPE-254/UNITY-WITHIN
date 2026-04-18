@@ -1055,8 +1055,17 @@ function requireAdmin(req, res, next) {
     .toLowerCase()
     .trim();
 
+  // Debug logging
+  console.log('[AdminAuth Debug]', {
+    headerEmail: req.headers["x-user-email"],
+    sessionEmail: req.user?.email,
+    finalEmail: userEmail,
+    adminEmailEnv: adminEmail ? '***set***' : 'NOT SET',
+    superAdminTarget: SUPER_ADMIN_EMAIL
+  });
+
   // Check super admin override first
-  if (userEmail === SUPER_ADMIN_EMAIL) {
+  if (userEmail === SUPER_ADMIN_EMAIL.toLowerCase()) {
     return next();
   }
 
