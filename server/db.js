@@ -10,6 +10,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const workspaceRoot = path.resolve(__dirname, '..');
 const isProduction = process.env.NODE_ENV === 'production';
+const isAzureAppService = Boolean(
+    process.env.WEBSITE_INSTANCE_ID || process.env.WEBSITE_SITE_NAME,
+);
 
 const envCandidates = [
     path.resolve(workspaceRoot, '.env.local'),
@@ -21,7 +24,7 @@ const envCandidates = [
 
 // In Azure/App Service, credentials are expected from process.env (App Settings).
 // Local .env files are only a development fallback.
-if (!isProduction) {
+if (!isProduction && !isAzureAppService) {
     for (const envPath of envCandidates) {
         if (fs.existsSync(envPath)) {
             dotenv.config({ path: envPath, override: false });

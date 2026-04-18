@@ -69,7 +69,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginComplete, onSwitchToSignup,
         } catch (error) {
             console.error('Login error:', error);
             try {
-                const health = await fetch(`${API_BASE_URL}/api/health`);
+                const health = await fetch(`${API_BASE_URL}/health`);
                 if (health.ok) {
                     const healthData = await parseJsonSafely(health);
                     if (healthData?.database === 'disconnected') {
@@ -92,7 +92,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginComplete, onSwitchToSignup,
         setIsLoading(true);
         setError('');
         try {
-            const response = await fetch(`${API_BASE_URL}/api/health`);
+            const response = await fetch(`${API_BASE_URL}/health`);
             if (response.ok) {
                 const data = await response.json();
                 if (data.database === 'connected') {
