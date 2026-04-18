@@ -375,18 +375,6 @@ app.post("/api/test/login", (req, res) => {
   });
 });
 
-// 🧪 TEST ROUTE: Minimal login test (remove after debugging if not needed)
-app.post("/api/test/login", (req, res) => {
-  console.log('🧪 TEST ROUTE /api/test/login - Body received:', JSON.stringify(req.body).substring(0, 100));
-  res.json({
-    ok: true,
-    received: {
-      email: req.body?.email ? 'present' : 'missing',
-      password: req.body?.password ? 'present' : 'missing',
-    }
-  });
-});
-
 app.get("/api/health", async (req, res) => {
   try {
     const dbAvailable = await isDatabaseAvailable();
