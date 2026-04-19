@@ -119,13 +119,13 @@ export const sendEmail = async (toEmail, subject, htmlContent) => {
       }
     }
 
-    // Fallback to SMTP mode
-    if (config.mode === 'smtp' || config.mode === 'api') {
+    // If API key is missing, but SMTP is available, go directly to SMTP
+    if (config.mode === 'smtp') {
       try {
         const transporter = nodemailer.createTransporter({
           host: config.smtpHost,
           port: config.smtpPort,
-          secure: config.smtpPort === 465, // true for 465, false for other ports
+          secure: config.smtpPort === 465,
           auth: {
             user: config.smtpUser,
             pass: config.smtpPass,
@@ -152,6 +152,11 @@ export const sendEmail = async (toEmail, subject, htmlContent) => {
           error: `SMTP failed: ${smtpError.message}`,
         };
       }
+    }
+
+    // Fallback for when API key is present but fails
+    if (config.mode === 'api') {
+      console.log(`⚠️ Brevo API failed, but no SMTP fallback configured.`);
     }
 
     return {
