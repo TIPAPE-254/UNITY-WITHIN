@@ -1,41 +1,34 @@
-import nodemailer from "nodemailer";
+import Brevo from "@getbrevo/brevo";
 
-const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
+const apiInstance = new Brevo.TransactionalEmailsApi();
 
 const getBrevoConfig = () => {
-  // Prioritize Azure App Settings (available as environment variables)
-  // These can be set in Azure Portal > App Service > Configuration > Application Settings
   const apiKey = process.env.BREVO_API_KEY || "";
-  const smtpHost = process.env.BREVO_SMTP_HOST || "smtp-relay.brevo.com";
-  const smtpPort = parseInt(process.env.BREVO_SMTP_PORT || "587");
-  const smtpUser = process.env.BREVO_SMTP_USER || "";
-  const smtpPass = process.env.BREVO_SMTP_PASS || "";
   const fromEmail = process.env.BREVO_FROM_EMAIL || "no-reply@unitywithin.app";
   const fromName = process.env.BREVO_FROM_NAME || "Unity Within";
 
-  // Determine which mode to use
-  const hasApiKey = !!apiKey;
-  const hasSmtp = !!(smtpHost && smtpPort && smtpUser && smtpPass);
-
-  // Log configuration source for debugging
-  if (hasApiKey) {
-    console.log('📧 Brevo configuration: API key mode');
-  } else if (hasSmtp) {
-    console.log('📧 Brevo configuration: SMTP mode');
+  if (apiKey) {
+    console.log("Brevo configuration: API key mode");
   } else {
-    console.log('⚠️  Brevo not configured - emails will not be sent');
+    console.log("Brevo not configured - emails will not be sent");
   }
 
   return {
     apiKey,
-    smtpHost,
-    smtpPort,
-    smtpUser,
-    smtpPass,
     fromEmail,
     fromName,
-    mode: hasApiKey ? 'api' : hasSmtp ? 'smtp' : 'none'
   };
+};
+
+const setBrevoApiKey = (apiKey) => {
+  if (!apiKey) {
+    return false;
+  }
+  apiInstance.setApiKey(
+    Brevo.TransactionalEmailsApiApiKeys.apiKey,
+    apiKey,
+  );
+  return true;
 };
 
 const ctaButton = (href, label) => `
@@ -78,92 +71,31 @@ export const sendEmail = async (toEmail, subject, htmlContent) => {
       return { success: false, error: "Missing recipient email" };
     }
 
-    if (config.mode === 'none') {
+    if (!setBrevoApiKey(config.apiKey)) {
       return {
         success: false,
-        error: "Brevo not configured - no API key or SMTP credentials",
+        error: "Brevo API key not configured",
         mock: true,
       };
     }
 
-    // Try API key mode first if available
-    if (config.mode === 'api') {
-      try {
-        const response = await fetch(BREVO_API_URL, {
-          method: "POST",
-          headers: {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "api-key": config.apiKey,
-          },
-          body: JSON.stringify({
-            sender: { email: config.fromEmail, name: config.fromName },
-            to: [{ email: toEmail }],
-            subject,
-            htmlContent,
-          }),
-        });
+    const sendSmtpEmail = new Brevo.SendSmtpEmail();
+    sendSmtpEmail.sender = {
+      email: config.fromEmail,
+      name: config.fromName,
+    };
+    sendSmtpEmail.to = [{ email: toEmail }];
+    sendSmtpEmail.subject = subject;
+    sendSmtpEmail.htmlContent = htmlContent;
 
-        const data = await response.json().catch(() => ({}));
-        if (response.ok) {
-          return {
-            success: true,
-            messageId: data?.messageId || data?.message_id || null,
-            provider: "brevo-api",
-          };
-        }
-        // If API fails, log and try SMTP if available
-        console.log(`⚠️ Brevo API failed (${response.status}): ${data?.message || 'Unknown error'}`);
-      } catch (apiError) {
-        console.log(`⚠️ Brevo API error: ${apiError.message}`);
-      }
-    }
-
-    // If API key is missing, but SMTP is available, go directly to SMTP
-    if (config.mode === 'smtp') {
-      try {
-        const transporter = nodemailer.createTransporter({
-          host: config.smtpHost,
-          port: config.smtpPort,
-          secure: config.smtpPort === 465,
-          auth: {
-            user: config.smtpUser,
-            pass: config.smtpPass,
-          },
-        });
-
-        const mailOptions = {
-          from: `"${config.fromName}" <${config.fromEmail}>`,
-          to: toEmail,
-          subject,
-          html: htmlContent,
-        };
-
-        const info = await transporter.sendMail(mailOptions);
-        return {
-          success: true,
-          messageId: info.messageId,
-          provider: "brevo-smtp",
-        };
-      } catch (smtpError) {
-        console.error(`❌ Brevo SMTP error: ${smtpError.message}`);
-        return {
-          success: false,
-          error: `SMTP failed: ${smtpError.message}`,
-        };
-      }
-    }
-
-    // Fallback for when API key is present but fails
-    if (config.mode === 'api') {
-      console.log(`⚠️ Brevo API failed, but no SMTP fallback configured.`);
-    }
-
+    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
     return {
-      success: false,
-      error: "No valid Brevo configuration found",
+      success: true,
+      messageId: data?.messageId || null,
+      provider: "brevo-api",
     };
   } catch (error) {
+    console.error("Brevo API error:", error?.message || error);
     return {
       success: false,
       error: error?.message || "Failed to send email",

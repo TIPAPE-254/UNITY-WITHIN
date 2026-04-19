@@ -277,6 +277,162 @@ async function initializeDatabase() {
             )
         `);
 
+        // Ensure volunteer roles table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteer_roles (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                category VARCHAR(80) NOT NULL,
+                work_mode VARCHAR(40) DEFAULT 'Remote',
+                description TEXT
+            )
+        `);
+
+        // Ensure volunteer applications table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteer_applications (
+                id SERIAL PRIMARY KEY,
+                first_name VARCHAR(120) NOT NULL,
+                last_name VARCHAR(120) NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                phone VARCHAR(50),
+                location VARCHAR(160) NOT NULL,
+                availability VARCHAR(40) NOT NULL,
+                category VARCHAR(80) NOT NULL,
+                roles JSONB NOT NULL DEFAULT '[]',
+                skills TEXT,
+                why_volunteer TEXT NOT NULL,
+                mental_health_context VARCHAR(60),
+                work_preference VARCHAR(60) NOT NULL,
+                notes TEXT,
+                status VARCHAR(40) DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Ensure volunteers table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteers (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255),
+                email VARCHAR(255) UNIQUE NOT NULL,
+                phone VARCHAR(50),
+                county VARCHAR(120),
+                skills TEXT,
+                matched_role_id INTEGER REFERENCES volunteer_roles(id) ON DELETE SET NULL,
+                commitment_level VARCHAR(50),
+                tier VARCHAR(50),
+                category VARCHAR(80),
+                availability VARCHAR(40),
+                work_preference VARCHAR(60),
+                mental_health_context VARCHAR(60),
+                motivation TEXT,
+                status VARCHAR(50) DEFAULT 'pending_review',
+                hours_contributed NUMERIC(10,2) DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        const volunteerColumns = [
+            { name: 'category', sql: "ALTER TABLE volunteers ADD COLUMN category VARCHAR(80)" },
+            { name: 'availability', sql: "ALTER TABLE volunteers ADD COLUMN availability VARCHAR(40)" },
+            { name: 'work_preference', sql: "ALTER TABLE volunteers ADD COLUMN work_preference VARCHAR(60)" },
+            { name: 'mental_health_context', sql: "ALTER TABLE volunteers ADD COLUMN mental_health_context VARCHAR(60)" },
+            { name: 'motivation', sql: "ALTER TABLE volunteers ADD COLUMN motivation TEXT" },
+            { name: 'hours_contributed', sql: "ALTER TABLE volunteers ADD COLUMN hours_contributed NUMERIC(10,2) DEFAULT 0" },
+        ];
+
+        for (const column of volunteerColumns) {
+            const check = await client.query(
+                `SELECT column_name FROM information_schema.columns WHERE table_name = 'volunteers' AND column_name = $1`,
+                [column.name],
+            );
+            if (check.rows.length === 0) {
+                await client.query(column.sql);
+                console.log(`✅ Added ${column.name} column to volunteers`);
+            }
+        }
+
+        // Ensure volunteer tasks table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteer_tasks (
+                id SERIAL PRIMARY KEY,
+                volunteer_id INTEGER REFERENCES volunteers(id) ON DELETE CASCADE,
+                title VARCHAR(255) NOT NULL,
+                category VARCHAR(80),
+                due_date TIMESTAMP,
+                completed BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Ensure volunteer hours log table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteer_hours (
+                id SERIAL PRIMARY KEY,
+                volunteer_id INTEGER REFERENCES volunteers(id) ON DELETE CASCADE,
+                description TEXT,
+                hours NUMERIC(6,2) NOT NULL,
+                logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Ensure volunteer training table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteer_training (
+                id SERIAL PRIMARY KEY,
+                volunteer_id INTEGER REFERENCES volunteers(id) ON DELETE CASCADE,
+                title VARCHAR(255) NOT NULL,
+                status VARCHAR(40) DEFAULT 'pending',
+                completed_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Ensure volunteer shifts table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteer_shifts (
+                id SERIAL PRIMARY KEY,
+                volunteer_id INTEGER REFERENCES volunteers(id) ON DELETE CASCADE,
+                start_time TIMESTAMP,
+                end_time TIMESTAMP,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        const volunteerRoleCount = await client.query(
+            "SELECT COUNT(*) AS total FROM volunteer_roles"
+        );
+        const totalRoles = Number(volunteerRoleCount.rows?.[0]?.total || 0);
+        if (totalRoles === 0) {
+            await client.query(`
+                INSERT INTO volunteer_roles (title, category, work_mode, description) VALUES
+                ('Community moderator (comments, chats, forums)', 'Community', 'Remote', 'Moderate comments, chats, and community forums.'),
+                ('Social media content creator (Instagram, TikTok, Facebook, LinkedIn)', 'Creative', 'Remote', 'Create social media content for Unity Within.'),
+                ('Social media scheduler and page manager', 'Creative', 'Remote', 'Schedule and manage social media posts.'),
+                ('Graphic designer (posts, flyers, banners)', 'Creative', 'Remote', 'Design graphics for campaigns and outreach.'),
+                ('Video editor (short-form awareness videos)', 'Creative', 'Remote', 'Edit short-form awareness videos.'),
+                ('Blog writer (mental health, self-acceptance, healing)', 'Creative', 'Remote', 'Write blog content on mental health topics.'),
+                ('Copywriter (website pages, emails, campaigns)', 'Creative', 'Remote', 'Write copy for web and email campaigns.'),
+                ('Newsletter writer and email campaign assistant', 'Creative', 'Remote', 'Support newsletter and email drafts.'),
+                ('Website tester (broken links, bugs, UX issues)', 'Tech', 'Remote', 'Test website usability and bugs.'),
+                ('App tester (mobile and web features pre-launch)', 'Tech', 'Remote', 'Test app features before launch.'),
+                ('Community outreach (schools, churches, clubs, partners)', 'Outreach', 'Remote', 'Coordinate outreach initiatives.'),
+                ('Partnership coordinator', 'Outreach', 'Remote', 'Manage partnerships and collaborations.'),
+                ('Event planner (online workshops, awareness campaigns)', 'Support & Admin', 'Remote', 'Plan online workshops and campaigns.'),
+                ('Event host or virtual session assistant', 'Support & Admin', 'Remote', 'Host or assist in virtual sessions.'),
+                ('Peer support listener (non-crisis, welcoming)', 'Community', 'Remote', 'Provide welcoming peer support.'),
+                ('Resource researcher (mental health tools, articles)', 'Support & Admin', 'Remote', 'Research mental health resources.'),
+                ('Translation volunteer (local languages, accessibility)', 'Support & Admin', 'Remote', 'Translate content for accessibility.'),
+                ('Data entry and admin support', 'Support & Admin', 'Remote', 'Support data entry and admin tasks.'),
+                ('Fundraising assistant (donation drives, sponsorship)', 'Outreach', 'Remote', 'Support fundraising and sponsorships.'),
+                ('Brand ambassador (peer circles, communities)', 'Outreach', 'Remote', 'Represent Unity Within in communities.')
+            `);
+            console.log('✅ Seeded volunteer roles');
+        }
+
         // Ensure therapists table exists
         await client.query(`
             CREATE TABLE IF NOT EXISTS therapists (

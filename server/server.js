@@ -4976,6 +4976,119 @@ const sendBrevoEmail = async ({ toEmail, subject, htmlContent }) => {
   };
 };
 
+// Volunteer application intake
+app.post("/api/volunteer/apply", async (req, res) => {
+  const {
+    firstName,
+    lastName,
+    email,
+    phone,
+    location,
+    availability,
+    category,
+    roles,
+    skills,
+    whyVolunteer,
+    mentalHealthContext,
+    workPreference,
+    notes,
+  } = req.body || {};
+
+  if (!firstName || !lastName || !email || !location || !availability || !category || !whyVolunteer || !workPreference) {
+    return res.status(400).json({
+      success: false,
+      error: "Missing required application fields",
+    });
+  }
+
+  const roleList = Array.isArray(roles)
+    ? roles.filter(Boolean)
+    : typeof roles === "string" && roles.trim()
+      ? [roles.trim()]
+      : [];
+
+  try {
+    const insertResult = await pool.query(
+      `INSERT INTO volunteer_applications (
+        first_name, last_name, email, phone, location, availability,
+        category, roles, skills, why_volunteer, mental_health_context,
+        work_preference, notes, status
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      RETURNING id`,
+      [
+        String(firstName).trim(),
+        String(lastName).trim(),
+        String(email).trim().toLowerCase(),
+        phone ? String(phone).trim() : null,
+        String(location).trim(),
+        String(availability).trim(),
+        String(category).trim(),
+        JSON.stringify(roleList),
+        skills ? String(skills).trim() : null,
+        String(whyVolunteer).trim(),
+        mentalHealthContext ? String(mentalHealthContext).trim() : null,
+        String(workPreference).trim(),
+        notes ? String(notes).trim() : null,
+        "pending",
+      ],
+    );
+
+    return res.status(201).json({
+      success: true,
+      applicationId: insertResult.rows?.[0]?.id || null,
+    });
+  } catch (error) {
+    console.error("Volunteer application error:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin: list volunteer applications
+app.get("/api/admin/volunteer-applications", requireAdmin, async (req, res) => {
+  const { status, category } = req.query || {};
+  const clauses = [];
+  const params = [];
+
+  if (status) {
+    clauses.push(`status = $${params.length + 1}`);
+    params.push(String(status));
+  }
+  if (category) {
+    clauses.push(`category = $${params.length + 1}`);
+    params.push(String(category));
+  }
+
+  const whereSql = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  try {
+    const dbResult = await pool.query(
+      `SELECT * FROM volunteer_applications ${whereSql} ORDER BY created_at DESC`,
+      params,
+    );
+    return res.json({ success: true, data: dbResult.rows || [] });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin: update volunteer application status
+app.patch("/api/admin/volunteer-applications/:id", requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body || {};
+  if (!status) {
+    return res.status(400).json({ success: false, error: "Status is required" });
+  }
+
+  try {
+    await pool.query(
+      "UPDATE volunteer_applications SET status = $1 WHERE id = $2",
+      [String(status), id],
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Admin creates a therapist invite and gets both invite URL + WhatsApp deep-link.
 app.post("/api/admin/invite-volunteer", requireAdmin, async (req, res) => {
   const { email, adminName } = req.body;
@@ -4983,24 +5096,53 @@ app.post("/api/admin/invite-volunteer", requireAdmin, async (req, res) => {
     return res.status(400).json({ success: false, error: "Email is required" });
 
   try {
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const existingInvite = await pool.query(
+      `SELECT token, status, expires_at
+         FROM volunteer_invites
+        WHERE LOWER(email) = LOWER($1)
+          AND status IN ('pending', 'approved', 'accepted')
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [normalizedEmail],
+    );
+    if (existingInvite.rows.length > 0) {
+      const inviteRow = existingInvite.rows[0];
+      const expiresAt = inviteRow.expires_at ? new Date(inviteRow.expires_at) : null;
+      const isExpired = Boolean(expiresAt && expiresAt.getTime() < Date.now());
+      if (!isExpired) {
+        return res.status(409).json({
+          success: false,
+          error: "An active invite already exists for this email",
+          inviteLink: `${getFrontendUrl(req)}/volunteer-invite/${inviteRow.token}`,
+          status: inviteRow.status,
+        });
+      }
+    }
+
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     await pool.query(
       "INSERT INTO volunteer_invites (email, token, expires_at, status) VALUES ($1, $2, $3, $4)",
-      [email, token, expiresAt, "pending"],
+      [normalizedEmail, token, expiresAt, "pending"],
+    );
+
+    await pool.query(
+      "UPDATE volunteer_applications SET status = $1 WHERE LOWER(email) = LOWER($2) AND status = $3",
+      ["invited", email, "pending"],
     );
 
     const inviteLink = `${getFrontendUrl(req)}/volunteer-invite/${token}`;
 
-    const emailSent = await sendVolunteerInvite(email, inviteLink);
+    const emailSent = await sendVolunteerInvite(normalizedEmail, inviteLink);
 
     res.json({
       success: true,
       inviteLink,
       emailSent: emailSent.success,
       invite: {
-        email,
+        email: normalizedEmail,
         role: "self-selected",
         invitedBy: adminName || "Admin",
       },
@@ -5124,6 +5266,11 @@ app.post("/api/admin/approve-volunteer/:inviteId", requireAdmin, async (req, res
       ["volunteer", inviteEmail],
     );
 
+    await pool.query(
+      "UPDATE volunteer_applications SET status = $1 WHERE LOWER(email) = LOWER($2)",
+      ["active", inviteEmail],
+    );
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -5159,9 +5306,48 @@ app.post("/api/admin/reject-volunteer/:inviteId", requireAdmin, async (req, res)
       ["user", inviteEmail, "volunteer"],
     );
 
+    await pool.query(
+      "UPDATE volunteer_applications SET status = $1 WHERE LOWER(email) = LOWER($2)",
+      ["inactive", inviteEmail],
+    );
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete("/api/admin/volunteer/:volunteerId", requireAdmin, async (req, res) => {
+  try {
+    const { volunteerId } = req.params;
+    const volunteerResult = await pool.query(
+      "SELECT email FROM volunteers WHERE id = $1",
+      [volunteerId],
+    );
+
+    if (volunteerResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: "Volunteer not found" });
+    }
+
+    const volunteerEmail = String(volunteerResult.rows[0].email || "").trim().toLowerCase();
+
+    await pool.query("DELETE FROM volunteers WHERE id = $1", [volunteerId]);
+    await pool.query(
+      "UPDATE users SET role = $1 WHERE LOWER(email) = $2",
+      ["user", volunteerEmail],
+    );
+    await pool.query(
+      "UPDATE volunteer_applications SET status = $1 WHERE LOWER(email) = LOWER($2)",
+      ["inactive", volunteerEmail],
+    );
+    await pool.query(
+      "UPDATE volunteer_invites SET status = $1 WHERE LOWER(email) = LOWER($2)",
+      ["rejected", volunteerEmail],
+    );
+
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -5180,24 +5366,130 @@ app.get("/api/admin/volunteer-stats", requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/api/admin/volunteer-hours", requireAdmin, async (req, res) => {
+  const { volunteerId } = req.query;
+  try {
+    if (volunteerId) {
+      const dbResult = await pool.query(
+        `SELECT h.id, h.description, h.hours, h.logged_at, h.volunteer_id,
+                v.name, v.email
+           FROM volunteer_hours h
+           LEFT JOIN volunteers v ON v.id = h.volunteer_id
+          WHERE h.volunteer_id = $1
+          ORDER BY h.logged_at DESC`,
+        [Number(volunteerId)],
+      );
+      return res.json({ success: true, data: dbResult.rows || [] });
+    }
+
+    const dbResult = await pool.query(
+      `SELECT h.id, h.description, h.hours, h.logged_at, h.volunteer_id,
+              v.name, v.email
+         FROM volunteer_hours h
+         LEFT JOIN volunteers v ON v.id = h.volunteer_id
+        ORDER BY h.logged_at DESC`,
+    );
+    return res.json({ success: true, data: dbResult.rows || [] });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/admin/volunteer-tasks", requireAdmin, async (req, res) => {
+  const { volunteerId } = req.query;
+  try {
+    if (volunteerId) {
+      const dbResult = await pool.query(
+        `SELECT t.*, v.name, v.email
+           FROM volunteer_tasks t
+           LEFT JOIN volunteers v ON v.id = t.volunteer_id
+          WHERE t.volunteer_id = $1
+          ORDER BY t.due_date ASC`,
+        [Number(volunteerId)],
+      );
+      return res.json({ success: true, data: dbResult.rows || [] });
+    }
+
+    const dbResult = await pool.query(
+      `SELECT t.*, v.name, v.email
+         FROM volunteer_tasks t
+         LEFT JOIN volunteers v ON v.id = t.volunteer_id
+        ORDER BY t.due_date ASC`,
+    );
+    return res.json({ success: true, data: dbResult.rows || [] });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/admin/volunteer-activity", requireAdmin, async (req, res) => {
+  const { volunteerId } = req.query;
+  try {
+    if (!volunteerId) {
+      return res.status(400).json({ success: false, error: "volunteerId is required" });
+    }
+
+    const summaryResult = await pool.query(
+      `SELECT v.id, v.name, v.email, v.status,
+              COALESCE(SUM(h.hours), 0) AS total_hours
+         FROM volunteers v
+         LEFT JOIN volunteer_hours h ON h.volunteer_id = v.id
+        WHERE v.id = $1
+        GROUP BY v.id, v.name, v.email, v.status`,
+      [Number(volunteerId)],
+    );
+
+    const hoursResult = await pool.query(
+      `SELECT id, description, hours, logged_at
+         FROM volunteer_hours
+        WHERE volunteer_id = $1
+        ORDER BY logged_at DESC`,
+      [Number(volunteerId)],
+    );
+
+    const tasksResult = await pool.query(
+      `SELECT id, title, category, due_date, completed
+         FROM volunteer_tasks
+        WHERE volunteer_id = $1
+        ORDER BY due_date ASC`,
+      [Number(volunteerId)],
+    );
+
+    return res.json({
+      success: true,
+      summary: summaryResult.rows?.[0] || null,
+      hours: hoursResult.rows || [],
+      tasks: tasksResult.rows || [],
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.get("/api/volunteer/invite/:token", async (req, res) => {
-  const { token } = req.params;
+  const token = String(req.params.token || "").trim();
   try {
     const dbResult = await pool.query(
-      "SELECT email, status FROM volunteer_invites WHERE token = $1 AND expires_at > NOW()",
+      "SELECT email, status, expires_at FROM volunteer_invites WHERE LOWER(token) = LOWER($1)",
       [token],
     );
-    if (dbResult.rows.length === 0)
+    if (dbResult.rows.length === 0) {
       return res
         .status(404)
-        .json({ success: false, error: "Invalid or expired token" });
+        .json({ success: false, error: "Invalid invite token" });
+    }
     const inviteRow = dbResult.rows[0];
+    const expiresAt = inviteRow.expires_at ? new Date(inviteRow.expires_at) : null;
+    const isExpired = Boolean(expiresAt && expiresAt.getTime() < Date.now());
+
     res.json({
       success: true,
       invite: {
         email: inviteRow.email,
         role: "self-selected",
         status: inviteRow.status || "pending",
+        expiresAt: expiresAt ? expiresAt.toISOString() : null,
+        isExpired,
       },
     });
   } catch (error) {
@@ -5247,6 +5539,17 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
         ? [String(experience)]
         : [];
 
+    const applicationRows = await query(
+      "SELECT availability, category, work_preference, mental_health_context, why_volunteer FROM volunteer_applications WHERE LOWER(email) = LOWER($1) ORDER BY created_at DESC LIMIT 1",
+      [email],
+    );
+    const application = applicationRows?.[0] || {};
+    const resolvedAvailability = application.availability || null;
+    const resolvedCategory = application.category || null;
+    const resolvedWorkPreference = application.work_preference || null;
+    const resolvedMentalHealth = application.mental_health_context || null;
+    const resolvedMotivation = application.why_volunteer || null;
+
     // Validate token again
     const invites = await query(
       "SELECT id FROM volunteer_invites WHERE token = $1 AND status IN ($2, $3)",
@@ -5263,8 +5566,11 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
     if (existingVols && existingVols.length > 0) {
       await pool.query(
         `UPDATE volunteers SET name = $1, phone = $2, county = $3, skills = $4,
-                 matched_role_id = $5, commitment_level = $6, tier = $7, status = 'pending_review'
-                 WHERE email = $8`,
+                 matched_role_id = $5, commitment_level = $6, tier = $7,
+                 category = $8, availability = $9, work_preference = $10,
+                 mental_health_context = $11, motivation = $12,
+                 status = 'pending_review'
+                 WHERE email = $13`,
         [
           resolvedName || email,
           phone,
@@ -5273,13 +5579,22 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
           Number(matched_role_id),
           commitment_level || null,
           tier || null,
+          resolvedCategory,
+          resolvedAvailability,
+          resolvedWorkPreference,
+          resolvedMentalHealth,
+          resolvedMotivation,
           email,
         ],
       );
     } else {
       await pool.query(
-        `INSERT INTO volunteers (name, email, phone, county, skills, matched_role_id, commitment_level, tier, status) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO volunteers (
+                 name, email, phone, county, skills, matched_role_id,
+                 commitment_level, tier, category, availability,
+                 work_preference, mental_health_context, motivation, status
+               )
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           resolvedName || email,
           email,
@@ -5289,6 +5604,11 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
           Number(matched_role_id),
           commitment_level || null,
           tier || null,
+          resolvedCategory,
+          resolvedAvailability,
+          resolvedWorkPreference,
+          resolvedMentalHealth,
+          resolvedMotivation,
           "pending_review",
         ],
       );
@@ -5297,6 +5617,11 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
     await pool.query(
       "UPDATE volunteer_invites SET status = $1 WHERE token = $2",
       ["accepted", token],
+    );
+
+    await pool.query(
+      "UPDATE volunteer_applications SET status = $1 WHERE LOWER(email) = LOWER($2)",
+      ["active", email],
     );
 
     res.json({ success: true, message: "Volunteer onboarding complete" });
@@ -5313,7 +5638,7 @@ app.get("/api/volunteer/dashboard", async (req, res) => {
 
   try {
     const volunteers = await query(
-      `SELECT v.*, r.title as role_title, r.description as role_description 
+      `SELECT v.*, r.title as role_title, r.description as role_description, r.category as role_category
        FROM volunteers v 
        LEFT JOIN volunteer_roles r ON v.matched_role_id = r.id 
        WHERE v.email = $1`,
@@ -5360,7 +5685,7 @@ app.get("/api/volunteer/profile", async (req, res) => {
   try {
     const volunteers = await query(
       `SELECT v.id, v.name, v.email, v.phone, v.county, v.skills, v.status, v.created_at,
-              r.title as role_name, r.description as role_description
+              r.title as role_name, r.description as role_description, r.category as role_category
        FROM volunteers v
        LEFT JOIN volunteer_roles r ON v.matched_role_id = r.id
        WHERE v.email = $1
