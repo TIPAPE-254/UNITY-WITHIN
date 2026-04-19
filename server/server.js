@@ -1095,21 +1095,41 @@ function getAppBaseUrl(req) {
   return `${protocol}://${host}`;
 }
 
-function getFrontendUrl(req) {
-  // For invitation links, use the frontend URL (for local dev, this comes from VITE_FRONTEND_URL)
-  // For production (Azure), the frontend and backend are on the same domain
-  if (process.env.VITE_FRONTEND_URL) {
-    return process.env.VITE_FRONTEND_URL.replace(/\/$/, '');
+const getFrontendUrl = (req) => {
+  // In Azure App Service, the WEBSITE_HOSTNAME is the reliable source of truth.
+  if (process.env.WEBSITE_HOSTNAME) {
+    return `https://${process.env.WEBSITE_HOSTNAME}`;
   }
 
-  // In Azure/production, use the same domain as the backend
-  if (isAzureAppService || process.env.NODE_ENV === 'production') {
-    return getAppBaseUrl(req || { headers: { host: 'unity-within.azurewebsites.net' }, secure: true });
+  // For other production-like environments, trust the x-forwarded-proto and host headers.
+  if (process.env.NODE_ENV === 'production') {
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    if (host) {
+      return `${protocol}://${host}`;
+    }
   }
 
-  // Local development fallback
+  // For local development, construct the URL from the request.
+  const protocol = req.protocol;
+  const host = req.get('host');
+  if (host?.includes('localhost')) {
+    // In local dev, the frontend is usually on a different port (e.g., 3000 or 5173)
+    // We will default to a common one, but this may need to be configured if different.
+    return `http://localhost:3000`;
+  }
+  
+  if (host) {
+    return `${protocol}://${host}`;
+  }
+
+  // As a last resort, fallback to a localhost default.
   return 'http://localhost:3000';
-}
+};
+
+// ============================================
+// AUTHENTICATION & USER MANAGEMENT
+// ============================================
 
 function requireAdmin(req, res, next) {
   const adminEmail = process.env.ADMIN_EMAIL;
