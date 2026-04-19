@@ -1095,10 +1095,20 @@ function getAppBaseUrl(req) {
   return `${protocol}://${host}`;
 }
 
-function getFrontendUrl() {
+function getFrontendUrl(req) {
   // For invitation links, use the frontend URL (for local dev, this comes from VITE_FRONTEND_URL)
   // For production (Azure), the frontend and backend are on the same domain
-  return process.env.VITE_FRONTEND_URL || getAppBaseUrl({ headers: { host: 'localhost:3000' }, secure: false });
+  if (process.env.VITE_FRONTEND_URL) {
+    return process.env.VITE_FRONTEND_URL.replace(/\/$/, '');
+  }
+
+  // In Azure/production, use the same domain as the backend
+  if (isAzureAppService || process.env.NODE_ENV === 'production') {
+    return getAppBaseUrl(req || { headers: { host: 'unity-within.azurewebsites.net' }, secure: true });
+  }
+
+  // Local development fallback
+  return 'http://localhost:3000';
 }
 
 function requireAdmin(req, res, next) {
@@ -4961,7 +4971,7 @@ app.post("/api/admin/invite-volunteer", requireAdmin, async (req, res) => {
       [email, token, expiresAt, "pending"],
     );
 
-    const inviteLink = `${getFrontendUrl()}/volunteer-invite/${token}`;
+    const inviteLink = `${getFrontendUrl(req)}/volunteer-invite/${token}`;
 
     const emailSent = await sendVolunteerInvite(email, inviteLink);
 
@@ -5053,7 +5063,7 @@ app.get("/api/admin/volunteer-invites", requireAdmin, async (req, res) => {
       role: "self-selected",
       status: row.status || "pending",
       inviteToken: row.token,
-      inviteLink: `${getFrontendUrl()}/volunteer-invite/${row.token}`,
+      inviteLink: `${getFrontendUrl(req)}/volunteer-invite/${row.token}`,
       invitedAt: row.created_at,
       invitedBy: "Admin",
     }));
@@ -5467,7 +5477,7 @@ app.post("/api/admin/invite-therapist", requireAdmin, async (req, res) => {
       process.env.RESET_PASSWORD_BASE_URL ||
       "https://unitywithin.app"
     ).replace(/\/$/, "");
-    const inviteLink = `${getFrontendUrl()}/therapist-invite/${token}`;
+    const inviteLink = `${getFrontendUrl(req)}/therapist-invite/${token}`;
 
     await pool.query(
       `INSERT INTO therapist_invites (email, phone, token, status, expires_at)
