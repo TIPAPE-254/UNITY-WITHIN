@@ -22,6 +22,10 @@ import {
   sendEmail,
 } from "./brevo.js";
 import {
+  sendApplicationNotification,
+  sendInviteNotification,
+} from "./whatsapp.js";
+import {
   detectEmotionWithKenyanLayer,
   getKenyanCrisisBridgeResponse,
 } from "./sheng.js";
@@ -5033,9 +5037,63 @@ app.post("/api/volunteer/apply", async (req, res) => {
       ],
     );
 
+    const applicationId = insertResult.rows?.[0]?.id;
+
+    // Send WhatsApp notification to admin
+    const whatsappResult = await sendApplicationNotification({
+      firstName,
+      lastName,
+      email,
+      phone,
+      location,
+      category,
+      availability,
+      roles: roleList,
+      skills,
+      whyVolunteer,
+      mentalHealthContext,
+      workPreference,
+    });
+
+    // Send confirmation email to applicant
+    const confirmationHtml = `
+      <div style="background: #ffffff; margin: 0; padding: 24px 12px; font-family: 'Segoe UI', Arial, sans-serif; color: #111111;">
+        <div style="max-width: 640px; margin: 0 auto; border: 1px solid #fbcfe8; border-radius: 16px; overflow: hidden; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%); padding: 20px 24px;">
+            <p style="margin: 0; font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: #ffffff; font-weight: 700;">Unity Within</p>
+            <h2 style="margin: 8px 0 0; color: #ffffff; font-size: 22px; line-height: 1.3;">Application Received!</h2>
+          </div>
+          <div style="padding: 24px; font-size: 14px; line-height: 1.7; color: #111111;">
+            <p style="margin: 0 0 12px;">Hi ${firstName},</p>
+            <p style="margin: 0 0 12px;">Thank you for your interest in volunteering with UNITY WITHIN! We've received your application and are excited to learn more about you.</p>
+            <p style="margin: 0 0 12px;">Our team is reviewing applications and will be in touch within 3-5 business days with next steps.</p>
+            <p style="margin: 0 0 12px;"><strong>In the meantime:</strong></p>
+            <ul style="margin: 12px 0; padding-left: 20px;">
+              <li style="margin: 6px 0;">Explore our <a href="https://unitywithin.app/learn" style="color: #a855f7; text-decoration: none; font-weight: 600;">Learning Resources</a></li>
+              <li style="margin: 6px 0;">Join our community on social media for updates</li>
+              <li style="margin: 6px 0;">Feel free to reply to this email with any questions</li>
+            </ul>
+            <p style="margin: 12px 0 0; font-size: 12px; color: #666;">Your feedback matters to us. Thank you for supporting mental health and healing in your community.</p>
+          </div>
+          <div style="border-top: 1px solid #fce7f3; background: #fff1f2; padding: 16px 24px;">
+            <p style="margin: 0; font-size: 12px; color: #4b5563;">UNITY WITHIN • Empathy. Community. Healing.</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const emailResult = await sendEmail(
+      email,
+      'We Received Your UNITY WITHIN Volunteer Application',
+      confirmationHtml
+    );
+
     return res.status(201).json({
       success: true,
-      applicationId: insertResult.rows?.[0]?.id || null,
+      applicationId,
+      whatsappSent: whatsappResult.success,
+      emailSent: emailResult.success,
+      message: 'Application submitted successfully. Check your email for confirmation.'
     });
   } catch (error) {
     console.error("Volunteer application error:", error);
@@ -5801,6 +5859,201 @@ app.put("/api/volunteer/profile/:userId", async (req, res) => {
 
     return res.json({ success: true });
   } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Volunteer Portal Endpoints
+
+/**
+ * GET /api/portal/me
+ * Get current volunteer profile, tasks, hours, and activity summary
+ */
+app.get("/api/portal/me", async (req, res) => {
+  try {
+    const email = req.headers['x-user-email']?.toString().trim().toLowerCase();
+    if (!email) {
+      return res.status(401).json({ success: false, error: 'Volunteer email required' });
+    }
+
+    // Get volunteer profile
+    const volunteerResult = await pool.query(
+      `SELECT id, name, email, phone, county, matched_role_id, category, 
+              availability, work_preference, mental_health_context, 
+              motivation, status, hours_contributed, created_at
+       FROM volunteers WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [email]
+    );
+
+    if (volunteerResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Volunteer not found' });
+    }
+
+    const volunteer = volunteerResult.rows[0];
+    const volunteerId = volunteer.id;
+
+    // Get assigned tasks
+    const tasksResult = await pool.query(
+      `SELECT id, title, category, due_date, completed, created_at
+       FROM volunteer_tasks WHERE volunteer_id = $1 ORDER BY due_date ASC`,
+      [volunteerId]
+    );
+
+    // Get hours log
+    const hoursResult = await pool.query(
+      `SELECT id, description, hours, logged_at
+       FROM volunteer_hours WHERE volunteer_id = $1 ORDER BY logged_at DESC LIMIT 50`,
+      [volunteerId]
+    );
+
+    // Calculate stats
+    const totalHours = hoursResult.rows.reduce((sum, row) => sum + parseFloat(row.hours || 0), 0);
+    const tasksCompleted = tasksResult.rows.filter(t => t.completed).length;
+    const tasksPending = tasksResult.rows.filter(t => !t.completed).length;
+
+    return res.json({
+      success: true,
+      profile: {
+        id: volunteer.id,
+        name: volunteer.name,
+        email: volunteer.email,
+        phone: volunteer.phone,
+        location: volunteer.county,
+        category: volunteer.category,
+        role: volunteer.matched_role_id ? `Role #${volunteer.matched_role_id}` : 'Pending',
+        status: volunteer.status,
+        joinedAt: volunteer.created_at,
+      },
+      hours: {
+        total: totalHours,
+        target: 40, // Monthly target
+        percentage: Math.min(100, Math.round((totalHours / 40) * 100))
+      },
+      tasks: {
+        list: tasksResult.rows,
+        completed: tasksCompleted,
+        pending: tasksPending,
+        total: tasksResult.rows.length
+      },
+      activity: {
+        recent: hoursResult.rows.slice(0, 10)
+      }
+    });
+  } catch (error) {
+    console.error('Portal /me error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/portal/log
+ * Log volunteer hours with description
+ */
+app.post("/api/portal/log", async (req, res) => {
+  try {
+    const email = req.headers['x-user-email']?.toString().trim().toLowerCase();
+    if (!email) {
+      return res.status(401).json({ success: false, error: 'Volunteer email required' });
+    }
+
+    const { description, hours } = req.body;
+    if (!description || !hours || parseFloat(hours) <= 0) {
+      return res.status(400).json({ success: false, error: 'Valid description and hours required' });
+    }
+
+    // Get volunteer ID
+    const volunteerResult = await pool.query(
+      'SELECT id FROM volunteers WHERE LOWER(email) = LOWER($1) LIMIT 1',
+      [email]
+    );
+
+    if (volunteerResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Volunteer not found' });
+    }
+
+    const volunteerId = volunteerResult.rows[0].id;
+
+    // Log the hours
+    const logResult = await pool.query(
+      `INSERT INTO volunteer_hours (volunteer_id, description, hours, logged_at)
+       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+       RETURNING id, logged_at`,
+      [volunteerId, description.trim(), parseFloat(hours)]
+    );
+
+    // Update total hours contributed
+    const sumResult = await pool.query(
+      'SELECT SUM(hours) as total FROM volunteer_hours WHERE volunteer_id = $1',
+      [volunteerId]
+    );
+    const totalHours = parseFloat(sumResult.rows[0].total || 0);
+
+    await pool.query(
+      'UPDATE volunteers SET hours_contributed = $1 WHERE id = $2',
+      [totalHours, volunteerId]
+    );
+
+    // Check for milestone notifications (50, 100, 150 hours, etc.)
+    if (totalHours % 50 < parseFloat(hours)) {
+      // Milestone reached!
+      console.log(`✅ Volunteer ${email} reached ${totalHours} hours!`);
+    }
+
+    return res.status(201).json({
+      success: true,
+      logId: logResult.rows[0].id,
+      totalHours: totalHours,
+      message: 'Hours logged successfully'
+    });
+  } catch (error) {
+    console.error('Portal /log error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/portal/tasks/:taskId
+ * Mark a task complete or incomplete
+ */
+app.patch("/api/portal/tasks/:taskId", async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { completed } = req.body;
+    const email = req.headers['x-user-email']?.toString().trim().toLowerCase();
+
+    if (!email) {
+      return res.status(401).json({ success: false, error: 'Volunteer email required' });
+    }
+
+    if (typeof completed !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'completed status required' });
+    }
+
+    // Verify task belongs to this volunteer
+    const taskResult = await pool.query(
+      `SELECT vt.id FROM volunteer_tasks vt
+       JOIN volunteers v ON vt.volunteer_id = v.id
+       WHERE vt.id = $1 AND LOWER(v.email) = LOWER($2)`,
+      [taskId, email]
+    );
+
+    if (taskResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Task not found' });
+    }
+
+    // Update task status
+    const updateResult = await pool.query(
+      `UPDATE volunteer_tasks SET completed = $1 WHERE id = $2 RETURNING *`,
+      [completed, taskId]
+    );
+
+    return res.json({
+      success: true,
+      task: updateResult.rows[0],
+      message: `Task marked as ${completed ? 'completed' : 'pending'}`
+    });
+  } catch (error) {
+    console.error('Portal /tasks error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
