@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NAVIGATION_ITEMS } from './constants';
 import { ViewState, User } from './types';
 import { Dashboard } from './components/Dashboard';
@@ -33,9 +33,18 @@ export default function App() {
     }
   });
 
-  // Set initial view based on auth status
+  // State for volunteer invite token
+  const [inviteToken, setInviteToken] = useState<string>('');
+
+  // Set initial view based on auth status or URL
   const [currentView, setCurrentView] = useState<ViewState>(() => {
     try {
+      // Check if URL contains volunteer invite token
+      const pathname = window.location.pathname;
+      if (pathname.includes('/volunteer-invite/')) {
+        return 'volunteer-invite';
+      }
+      
       const savedUser = localStorage.getItem('unity_user');
       const hasUser = savedUser ? JSON.parse(savedUser) : null;
       return hasUser ? 'dashboard' : 'landing';
@@ -43,6 +52,21 @@ export default function App() {
       return 'landing';
     }
   });
+
+  // Parse URL for invite token on mount
+  useEffect(() => {
+    try {
+      const pathname = window.location.pathname;
+      const match = pathname.match(/\/volunteer-invite\/([a-f0-9]+)/i);
+      if (match && match[1]) {
+        const token = match[1];
+        setInviteToken(token);
+        setCurrentView('volunteer-invite');
+      }
+    } catch (error) {
+      console.error('Error parsing invite URL:', error);
+    }
+  }, []);
 
   const handleNavigate = (view: ViewState) => {
     setCurrentView(view);
@@ -91,6 +115,8 @@ export default function App() {
         return <Education />;
       case 'volunteer':
         return <Volunteer onNavigate={handleNavigate} />;
+      case 'volunteer-invite':
+        return <VolunteerInviteAccept inviteToken={inviteToken} onNavigate={handleNavigate} />;
       case 'volunteer-portal':
         return <VolunteerPortal user={user || undefined} onNavigate={handleNavigate} />;
       case 'volunteer-dashboard':
@@ -104,8 +130,8 @@ export default function App() {
     <div className="min-h-screen bg-[#FFF5F7] flex flex-col md:flex-row text-gray-900 font-sans selection:bg-pink-200 selection:text-pink-900">
       <AnalyticsTracker currentView={currentView} />
 
-      {/* Sidebar (Desktop) - Hidden on landing, login, and signup pages */}
-      {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && (
+      {/* Sidebar (Desktop) - Hidden on landing, login, signup, and volunteer-invite pages */}
+      {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && (
         <aside className="hidden md:flex flex-col w-64 bg-white border-r border-pink-100 p-6 fixed h-full z-20">
           <div className="flex items-center gap-2 mb-10 text-pink-600">
             <Heart className="fill-current" size={28} />
@@ -143,9 +169,9 @@ export default function App() {
       )}
 
       {/* Main Content Area */}
-      <main className={`${(currentView === 'landing' || currentView === 'login' || currentView === 'signup') ? 'w-full' : 'flex-1 md:ml-64'} p-4 pb-24 md:p-8 md:pb-8 max-w-5xl mx-auto w-full transition-all`}>
-        {/* Mobile Header - Hidden on landing, login, and signup pages */}
-        {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && (
+      <main className={`${(currentView === 'landing' || currentView === 'login' || currentView === 'signup' || currentView === 'volunteer-invite') ? 'w-full' : 'flex-1 md:ml-64'} p-4 pb-24 md:p-8 md:pb-8 max-w-5xl mx-auto w-full transition-all`}>
+        {/* Mobile Header - Hidden on landing, login, signup, and volunteer-invite pages */}
+        {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && (
           <div className="md:hidden flex items-center justify-between mb-6">
             <div className="flex items-center gap-2 text-pink-600">
               <Heart className="fill-current" size={24} />
@@ -160,8 +186,8 @@ export default function App() {
         {renderContent()}
       </main>
 
-      {/* Bottom Navigation (Mobile) - Hidden on landing, login, and signup pages */}
-      {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && (
+      {/* Bottom Navigation (Mobile) - Hidden on landing, login, signup, and volunteer-invite pages */}
+      {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && (
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-pink-100 p-2 z-50 flex justify-around items-center pb-safe">
           {NAVIGATION_ITEMS.map((item) => (
             <button
