@@ -41,6 +41,8 @@ export const sendVolunteerInvite = async (
     });
 
     const payload = await response.json().catch(() => ({}));
+    console.log('Send invite response:', { status: response.status, payload });
+    
     if (!response.ok) {
       return {
         success: false,
@@ -55,8 +57,9 @@ export const sendVolunteerInvite = async (
       message:
         payload?.message ||
         (payload?.emailSent === false
-          ? 'Invite created but email was not sent'
-          : 'Invitation sent'),
+          ? 'Invite created! Email not sent - copy link below to share manually'
+          : 'Invitation sent successfully'),
+      success: true
     };
   } catch (error) {
     console.error('Error sending volunteer invite:', error);
@@ -275,8 +278,38 @@ export const generateInviteToken = (): string => {
 /**
  * Copy invite link to clipboard
  */
-export const copyInviteLink = (inviteLink: string): Promise<void> => {
-  return navigator.clipboard.writeText(inviteLink);
+export const copyInviteLink = async (inviteLink: string): Promise<boolean> => {
+  if (!inviteLink) {
+    throw new Error('No invite link to copy');
+  }
+  
+  try {
+    // Try using the modern Clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(inviteLink);
+      return true;
+    } else {
+      // Fallback for older browsers or insecure contexts
+      const textArea = document.createElement('textarea');
+      textArea.value = inviteLink;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      
+      if (!successful) {
+        throw new Error('Copy command was unsuccessful');
+      }
+      return true;
+    }
+  } catch (error) {
+    console.error('Copy to clipboard error:', error);
+    throw error;
+  }
 };
 
 /**

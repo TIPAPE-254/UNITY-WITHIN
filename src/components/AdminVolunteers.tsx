@@ -103,22 +103,25 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
       setLoading(true);
       setError('');
       const result = await sendVolunteerInvite(inviteEmail, inviteRole, adminName);
+      console.log('Invite result:', result);
       
       if (result.success) {
         const sentMessage = result.emailSent === false
-          ? `Invite created for ${inviteEmail}, but email was not sent.`
-          : `Invitation sent to ${inviteEmail}`;
+          ? `✓ Invite created for ${inviteEmail}. Email not sent (copy link below to share)`
+          : `✓ Invitation sent to ${inviteEmail}`;
         setSuccess(sentMessage);
         setInviteEmail('');
         setInviteRole('listener');
         setExistingInviteLink(result.inviteLink || null);
+        console.log('Setting invite link:', result.inviteLink);
         await fetchVolunteers();
-        setTimeout(() => setSuccess(''), 3000);
+        setTimeout(() => setSuccess(''), 5000);
       } else {
         setError(result.message || 'Failed to send invitation');
         setExistingInviteLink(result.inviteLink || null);
       }
     } catch (err) {
+      console.error('Send invite error:', err);
       setError(err instanceof Error ? err.message : 'Error sending invitation');
     } finally {
       setLoading(false);
@@ -161,12 +164,27 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
   };
 
   const handleCopyLink = async (inviteLink: string, volunteerEmail: string) => {
+    if (!inviteLink) {
+      setError('No invite link available for this volunteer');
+      return;
+    }
+    
     try {
+      console.log('Copying invite link:', inviteLink);
       await copyInviteLink(inviteLink);
       setCopiedId(volunteerEmail);
-      setTimeout(() => setCopiedId(null), 2000);
+      setSuccess('Link copied to clipboard!');
+      setTimeout(() => {
+        setCopiedId(null);
+        setSuccess('');
+      }, 2000);
     } catch (err) {
-      setError('Failed to copy link');
+      console.error('Copy error:', err);
+      // Fallback: show the link so user can manually copy
+      setError(`Failed to auto-copy. Link: ${inviteLink}`);
+      // Still show as copied for visual feedback
+      setCopiedId(volunteerEmail);
+      setTimeout(() => setCopiedId(null), 2000);
     }
   };
 
@@ -271,14 +289,30 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
         )}
 
         {existingInviteLink && (
-          <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 text-blue-700 rounded">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <span>Existing invite found for this email.</span>
+          <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex-1">
+                <h3 className="font-bold text-blue-900 mb-2">📋 Invitation Link Ready</h3>
+                <p className="text-sm text-blue-800 mb-2">Copy this link and send it manually to the volunteer:</p>
+                <code className="block bg-white p-2 rounded text-xs text-blue-900 break-all mb-2 border border-blue-200">
+                  {existingInviteLink}
+                </code>
+              </div>
               <button
                 onClick={() => handleCopyLink(existingInviteLink, 'existing-invite')}
-                className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors"
+                className=\"px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors whitespace-nowrap flex items-center gap-2\"
               >
-                Copy Invite Link
+                {copiedId === 'existing-invite' ? (
+                  <>
+                    <CheckCircle size={16} />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy size={16} />
+                    Copy Link
+                  </>
+                )}
               </button>
             </div>
           </div>
