@@ -300,7 +300,7 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
               </div>
               <button
                 onClick={() => handleCopyLink(existingInviteLink, 'existing-invite')}
-                className=\"px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors whitespace-nowrap flex items-center gap-2\"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors whitespace-nowrap flex items-center gap-2"
               >
                 {copiedId === 'existing-invite' ? (
                   <>

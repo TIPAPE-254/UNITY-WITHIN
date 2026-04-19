@@ -5329,8 +5329,35 @@ app.post("/api/admin/approve-volunteer/:inviteId", requireAdmin, async (req, res
       ["active", inviteEmail],
     );
 
+    // Auto-register Community Listeners as peer support listeners
+    const volunteerResult = await pool.query(
+      `SELECT v.id, v.matched_role_id, vr.title, v.phone 
+       FROM volunteers v
+       LEFT JOIN volunteer_roles vr ON v.matched_role_id = vr.id
+       WHERE LOWER(v.email) = LOWER($1)`,
+      [inviteEmail]
+    );
+
+    if (volunteerResult.rows.length > 0) {
+      const volunteer = volunteerResult.rows[0];
+      // Check if volunteer is a Community Listener (role ID 15)
+      const isCommunityListener = volunteer.title && volunteer.title.includes('Peer support listener');
+      
+      if (isCommunityListener || volunteer.matched_role_id === 15) {
+        // Register as peer support listener
+        await pool.query(
+          `INSERT INTO peer_support_listeners (volunteer_id, user_email, phone, is_available, approved_at)
+           VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP)
+           ON CONFLICT(volunteer_id) DO UPDATE SET is_available = TRUE, approved_at = CURRENT_TIMESTAMP`,
+          [volunteer.id, inviteEmail, volunteer.phone || null]
+        );
+        console.log(`✅ Registered ${inviteEmail} as peer support listener`);
+      }
+    }
+
     res.json({ success: true });
   } catch (error) {
+    console.error('Approve volunteer error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -5685,6 +5712,227 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
     res.json({ success: true, message: "Volunteer onboarding complete" });
   } catch (error) {
     console.error("❌ Onboarding error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ===== PEER SUPPORT CALL ENDPOINTS =====
+
+/**
+ * GET /api/peer-support/listeners
+ * Get available peer support listeners (Community Listeners)
+ */
+app.get("/api/peer-support/listeners", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT 
+        psl.id, psl.volunteer_id, v.name, v.email, psl.is_available,
+        psl.calls_handled, psl.average_rating
+       FROM peer_support_listeners psl
+       JOIN volunteers v ON psl.volunteer_id = v.id
+       WHERE psl.is_available = TRUE AND v.status = 'active'
+       ORDER BY psl.calls_handled ASC, v.name ASC`
+    );
+
+    res.json({
+      success: true,
+      listeners: result.rows,
+      available: result.rows.length
+    });
+  } catch (error) {
+    console.error('Get listeners error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/peer-support/request
+ * Client requests peer support call
+ */
+app.post("/api/peer-support/request", async (req, res) => {
+  try {
+    const { clientEmail, callType } = req.body; // callType: 'voice' or 'video'
+    
+    if (!clientEmail || !callType) {
+      return res.status(400).json({ success: false, error: 'Email and call type required' });
+    }
+
+    if (!['voice', 'video'].includes(callType)) {
+      return res.status(400).json({ success: false, error: 'Invalid call type' });
+    }
+
+    // Find available listener (least busy)
+    const listenerResult = await pool.query(
+      `SELECT psl.id, psl.volunteer_id, v.email FROM peer_support_listeners psl
+       JOIN volunteers v ON psl.volunteer_id = v.id
+       WHERE psl.is_available = TRUE AND psl.current_call_id IS NULL
+       ORDER BY psl.calls_handled ASC
+       LIMIT 1`
+    );
+
+    if (listenerResult.rows.length === 0) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'No peer supporters available right now. Please try again later.' 
+      });
+    }
+
+    const listener = listenerResult.rows[0];
+    const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Create call record
+    await pool.query(
+      `INSERT INTO peer_support_calls (id, listener_volunteer_id, client_email, status, call_type, created_at)
+       VALUES ($1, $2, $3, 'pending', $4, CURRENT_TIMESTAMP)`,
+      [callId, listener.volunteer_id, clientEmail, callType]
+    );
+
+    // Mark listener as in-call
+    await pool.query(
+      `UPDATE peer_support_listeners SET current_call_id = $1 WHERE volunteer_id = $2`,
+      [callId, listener.volunteer_id]
+    );
+
+    res.json({
+      success: true,
+      callId,
+      listenerEmail: listener.email,
+      message: 'Connected with a peer supporter. Initializing call...'
+    });
+  } catch (error) {
+    console.error('Peer support request error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/peer-support/call/:callId
+ * Get call status
+ */
+app.get("/api/peer-support/call/:callId", async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const result = await pool.query(
+      `SELECT id, status, call_type, started_at FROM peer_support_calls WHERE id = $1`,
+      [callId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Call not found' });
+    }
+
+    res.json({ success: true, call: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/peer-support/call/:callId/status
+ * Update call status (active, ended, etc.)
+ */
+app.patch("/api/peer-support/call/:callId/status", async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const { status, duration } = req.body;
+
+    const updateFields = ['status = $1'];
+    const params = [status, callId];
+    let paramIndex = 3;
+
+    if (duration) {
+      updateFields.push(`duration_seconds = $${paramIndex}`);
+      params.splice(2, 0, duration);
+    }
+
+    if (status === 'ended') {
+      updateFields.push(`ended_at = CURRENT_TIMESTAMP`);
+
+      // Free up the listener
+      await pool.query(
+        `UPDATE peer_support_listeners SET current_call_id = NULL, calls_handled = calls_handled + 1
+         WHERE volunteer_id = (SELECT listener_volunteer_id FROM peer_support_calls WHERE id = $1)`,
+        [callId]
+      );
+    }
+
+    await pool.query(
+      `UPDATE peer_support_calls SET ${updateFields.join(', ')} WHERE id = $${params.length}`,
+      [...params, callId]
+    );
+
+    res.json({ success: true, message: `Call ${status}` });
+  } catch (error) {
+    console.error('Update call status error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/peer-support/listener-queue
+ * Get pending calls for a listener
+ */
+app.get("/api/peer-support/listener-queue", async (req, res) => {
+  try {
+    const email = req.headers['x-user-email']?.toString().trim().toLowerCase();
+    if (!email) {
+      return res.status(401).json({ success: false, error: 'Email required' });
+    }
+
+    const listenerResult = await pool.query(
+      `SELECT psl.id, psl.volunteer_id FROM peer_support_listeners psl
+       JOIN volunteers v ON psl.volunteer_id = v.id
+       WHERE LOWER(v.email) = LOWER($1)`,
+      [email]
+    );
+
+    if (listenerResult.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not a peer support listener' });
+    }
+
+    const listenerId = listenerResult.rows[0].volunteer_id;
+
+    const callsResult = await pool.query(
+      `SELECT id, client_email, call_type, status, created_at FROM peer_support_calls
+       WHERE listener_volunteer_id = $1 AND status IN ('pending', 'active')
+       ORDER BY created_at DESC`,
+      [listenerId]
+    );
+
+    res.json({
+      success: true,
+      queue: callsResult.rows,
+      pendingCount: callsResult.rows.filter(c => c.status === 'pending').length
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/peer-support/listener-availability
+ * Toggle listener availability
+ */
+app.patch("/api/peer-support/listener-availability", async (req, res) => {
+  try {
+    const { isAvailable } = req.body;
+    const email = req.headers['x-user-email']?.toString().trim().toLowerCase();
+
+    if (!email) {
+      return res.status(401).json({ success: false, error: 'Email required' });
+    }
+
+    await pool.query(
+      `UPDATE peer_support_listeners SET is_available = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE volunteer_id = (SELECT id FROM volunteers WHERE LOWER(email) = LOWER($2))`,
+      [isAvailable, email]
+    );
+
+    res.json({ 
+      success: true, 
+      message: `Availability set to ${isAvailable ? 'online' : 'offline'}` 
+    });
+  } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });

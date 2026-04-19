@@ -379,3 +379,145 @@ export const deleteVolunteer = async (volunteerId: string | number) => {
     throw error;
   }
 };
+
+// ========== PEER SUPPORT LISTENER ENDPOINTS ==========
+
+/**
+ * Get available peer support listeners (for clients)
+ */
+export const getAvailableListeners = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/peer-support/listeners`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch available listeners');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching listeners:', error);
+    throw error;
+  }
+};
+
+/**
+ * Request peer support call from client
+ */
+export const requestPeerSupportCall = async (
+  clientEmail: string,
+  callType: 'voice' | 'video'
+) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/peer-support/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientEmail,
+        callType
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to request peer support call');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error requesting peer support call:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get peer support call status
+ */
+export const getPeerSupportCallStatus = async (callId: string) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/peer-support/call/${callId}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch call status');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching call status:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update peer support call status (for volunteers)
+ */
+export const updatePeerSupportCallStatus = async (
+  callId: string,
+  status: 'pending' | 'active' | 'ended',
+  email: string
+) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/peer-support/call/${callId}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-email': email
+      },
+      body: JSON.stringify({ status })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update call status');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error updating call status:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get listener queue (for community listener volunteers)
+ */
+export const getListenerQueue = async (email: string) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/peer-support/listener-queue`, {
+      headers: {
+        'x-user-email': email
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch listener queue');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching listener queue:', error);
+    throw error;
+  }
+};
+
+/**
+ * Toggle listener availability status
+ */
+export const toggleListenerAvailability = async (
+  email: string,
+  isAvailable: boolean
+) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/peer-support/listener-availability`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-email': email
+      },
+      body: JSON.stringify({ isAvailable })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update availability status');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error updating availability status:', error);
+    throw error;
+  }
+};

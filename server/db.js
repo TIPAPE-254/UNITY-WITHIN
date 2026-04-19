@@ -433,6 +433,42 @@ async function initializeDatabase() {
             console.log('✅ Seeded volunteer roles');
         }
 
+        // Ensure peer support listeners table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS peer_support_listeners (
+                id SERIAL PRIMARY KEY,
+                volunteer_id INTEGER UNIQUE REFERENCES volunteers(id) ON DELETE CASCADE,
+                user_email VARCHAR(255) NOT NULL,
+                phone VARCHAR(50),
+                is_available BOOLEAN DEFAULT TRUE,
+                current_call_id VARCHAR(255),
+                max_concurrent_calls INTEGER DEFAULT 1,
+                calls_handled INTEGER DEFAULT 0,
+                average_rating DECIMAL(3,2) DEFAULT 0,
+                approved_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Ensure peer support calls table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS peer_support_calls (
+                id VARCHAR(255) PRIMARY KEY,
+                listener_volunteer_id INTEGER REFERENCES volunteers(id) ON DELETE SET NULL,
+                client_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                client_email VARCHAR(255),
+                status VARCHAR(50) DEFAULT 'pending',
+                call_type VARCHAR(20),
+                started_at TIMESTAMP,
+                ended_at TIMESTAMP,
+                duration_seconds INTEGER,
+                notes TEXT,
+                client_rating INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         // Ensure therapists table exists
         await client.query(`
             CREATE TABLE IF NOT EXISTS therapists (
