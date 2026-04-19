@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Heart, MessageCircle, Users, Sparkles, Zap, Target, Calendar, 
   Award, TrendingUp, Clock, FileText, Video, Globe, Palette, Shield,
-  CheckCircle, Bell, Settings, LogOut, BookOpen, Phone, Mail, MapPin,
-  ChevronRight, Play, Star, Activity, Send, HeadphonesMic
+  CheckCircle, Bell, Settings, BookOpen, Phone, ChevronRight, Play,
+  Star, Activity, Send, HeadphonesMic, Copy
 } from 'lucide-react';
 import { User, ViewState } from '../types';
 import { getVolunteerDashboardData, getVolunteerProfile } from '../services/volunteerService';
@@ -21,6 +21,13 @@ interface RoleConfig {
   bgGradient: string;
   features: string[];
   quickActions: { label: string; icon: React.ReactNode; action: string }[];
+}
+
+interface CategoryConfig {
+  id: string;
+  title: string;
+  description: string;
+  modules: { title: string; description: string; icon: React.ReactNode }[];
 }
 
 const ROLE_CONFIGS: Record<string, RoleConfig> = {
@@ -140,10 +147,65 @@ const ROLE_CONFIGS: Record<string, RoleConfig> = {
   }
 };
 
+const CATEGORY_CONFIGS: Record<string, CategoryConfig> = {
+  community: {
+    id: 'community',
+    title: 'Community Support',
+    description: 'Peer support, listening sessions, and community engagement tools.',
+    modules: [
+      { title: 'Peer Support', description: 'Provide non-crisis listening sessions.', icon: <HeadphonesMic size={20} /> },
+      { title: 'Community Rooms', description: 'Moderate chats and support rooms.', icon: <MessageCircle size={20} /> },
+      { title: 'Care Playbook', description: 'Protocols for supporting community members.', icon: <BookOpen size={20} /> },
+    ],
+  },
+  creative: {
+    id: 'creative',
+    title: 'Creative Studio',
+    description: 'Campaign content, design assets, and storytelling workflows.',
+    modules: [
+      { title: 'Content Queue', description: 'Draft and manage content requests.', icon: <Sparkles size={20} /> },
+      { title: 'Brand Assets', description: 'Access design kits and templates.', icon: <Palette size={20} /> },
+      { title: 'Approval Flow', description: 'Submit work for review.', icon: <CheckCircle size={20} /> },
+    ],
+  },
+  tech: {
+    id: 'tech',
+    title: 'Tech Support',
+    description: 'Bug triage, user support, and release testing.',
+    modules: [
+      { title: 'Support Tickets', description: 'Track incoming user issues.', icon: <Shield size={20} /> },
+      { title: 'Testing Lab', description: 'Run pre-release checks.', icon: <Activity size={20} /> },
+      { title: 'Knowledge Base', description: 'Answer common questions.', icon: <BookOpen size={20} /> },
+    ],
+  },
+  outreach: {
+    id: 'outreach',
+    title: 'Outreach Hub',
+    description: 'Partnerships, events, and community engagement metrics.',
+    modules: [
+      { title: 'Partnerships', description: 'Track partner relationships.', icon: <Users size={20} /> },
+      { title: 'Event Planner', description: 'Coordinate outreach events.', icon: <Calendar size={20} /> },
+      { title: 'Impact Reports', description: 'Log outreach outcomes.', icon: <TrendingUp size={20} /> },
+    ],
+  },
+  supportadmin: {
+    id: 'supportadmin',
+    title: 'Support & Admin',
+    description: 'Operations, resources, and administrative workflows.',
+    modules: [
+      { title: 'Operations', description: 'Handle admin support tasks.', icon: <Settings size={20} /> },
+      { title: 'Resource Library', description: 'Maintain support resources.', icon: <FileText size={20} /> },
+      { title: 'Volunteer Ops', description: 'Assist with volunteer coordination.', icon: <Users size={20} /> },
+    ],
+  },
+};
+
 export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNavigate }) => {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [supportLink, setSupportLink] = useState<string | null>(null);
+  const [supportMode, setSupportMode] = useState<'voice' | 'video'>('voice');
   const [stats, setStats] = useState({
     hoursContributed: 0,
     peopleSupported: 0,
@@ -193,8 +255,37 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
     return ROLE_CONFIGS[normalizedRole] || ROLE_CONFIGS.listener;
   };
 
+  const getCategoryConfig = (category: string): CategoryConfig => {
+    const normalized = category?.toLowerCase().replace(/[^a-z]/g, '') || 'community';
+    return CATEGORY_CONFIGS[normalized] || CATEGORY_CONFIGS.community;
+  };
+
   const roleTitle = profile?.role_title || profile?.volunteerRole || 'Community Listener';
   const roleConfig = getRoleConfig(roleTitle);
+  const roleCategory = profile?.role_category || profile?.category || 'Community';
+  const categoryConfig = getCategoryConfig(roleCategory);
+  const isCommunityListener = roleTitle.toLowerCase().includes('listener') || categoryConfig.id === 'community';
+
+  const createSupportCallLink = (mode: 'voice' | 'video') => {
+    const roomId = `support-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    return `${window.location.origin}/support-call/${roomId}?mode=${mode}`;
+  };
+
+  const handleStartSupportCall = (mode: 'voice' | 'video') => {
+    const link = createSupportCallLink(mode);
+    setSupportMode(mode);
+    setSupportLink(link);
+    window.open(link, '_blank');
+  };
+
+  const handleCopySupportLink = async () => {
+    if (!supportLink) return;
+    try {
+      await navigator.clipboard.writeText(supportLink);
+    } catch {
+      // ignore clipboard errors
+    }
+  };
 
   if (loading && !profile) {
     return (
@@ -245,6 +336,70 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto p-6 md:p-8">
+        {/* Category Modules */}
+        <div className="bg-white rounded-2xl shadow-md p-6 mb-8">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">{categoryConfig.title}</h2>
+              <p className="text-gray-600">{categoryConfig.description}</p>
+            </div>
+            <span className="px-3 py-2 bg-purple-50 text-purple-700 rounded-lg text-sm font-semibold">
+              Category: {roleCategory}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {categoryConfig.modules.map((module, idx) => (
+              <div key={idx} className="bg-gray-50 rounded-xl p-4">
+                <div className={`${roleConfig.color} mb-2`}>{module.icon}</div>
+                <h3 className="font-bold text-gray-900 mb-1">{module.title}</h3>
+                <p className="text-sm text-gray-600">{module.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {isCommunityListener && (
+          <div className="bg-white rounded-2xl shadow-md p-6 mb-8">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Peer Support Center</h2>
+                <p className="text-gray-600">You are approved to support clients via voice or video calls.</p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleStartSupportCall('voice')}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold flex items-center gap-2"
+                >
+                  <Phone size={18} />
+                  Start Voice Call
+                </button>
+                <button
+                  onClick={() => handleStartSupportCall('video')}
+                  className="px-4 py-2 bg-pink-600 text-white rounded-lg font-semibold flex items-center gap-2"
+                >
+                  <Video size={18} />
+                  Start Video Call
+                </button>
+              </div>
+            </div>
+            {supportLink && (
+              <div className="mt-4 bg-purple-50 rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-purple-800">Share this link with the client</p>
+                  <p className="text-xs text-purple-600 break-all">{supportLink}</p>
+                </div>
+                <button
+                  onClick={handleCopySupportLink}
+                  className="px-3 py-2 bg-purple-200 text-purple-800 rounded-lg text-sm font-semibold flex items-center gap-2"
+                >
+                  <Copy size={14} />
+                  Copy Link
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Quick Actions - Role Based */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {roleConfig.quickActions.map((action, idx) => (

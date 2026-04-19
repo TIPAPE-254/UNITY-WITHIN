@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { API_BASE_URL, MOODS } from '../constants';
 import { Button } from './Button';
 import { generateDailyAffirmation } from '../services/geminiService';
-import { Sun, Sparkles, TrendingUp, Flame, Trophy, Star, Sprout, Flower, Trees, Wind, BrainCircuit, Heart, Zap, Phone, ExternalLink, Brain, AlertTriangle } from 'lucide-react';
+import { Sun, Sparkles, TrendingUp, Flame, Trophy, Star, Sprout, Flower, Trees, Wind, BrainCircuit, Heart, Zap, Phone, ExternalLink, Brain, AlertTriangle, Video, Copy } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts';
 import { UserProgress, Goal, Habit, SafetyPlan, Badge, WearableData } from '../types';
 
@@ -95,6 +95,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
   const [xpGained, setXpGained] = useState<number | null>(null);
   const [isStateHydrated, setIsStateHydrated] = useState(false);
   const therapistToolsEnabled = false; // Feature flag for therapist tools
+  const [supportLink, setSupportLink] = useState<string | null>(null);
 
   // Gamification State
   const [progress, setProgress] = useState<UserProgress>({ points: 0, streak: 0, lastCheckInDate: null, level: 1 });
@@ -137,6 +138,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
   useEffect(() => {
     fetchAffirmation("calm");
   }, []);
+
+  const createSupportCallLink = (mode: 'voice' | 'video') => {
+    const roomId = `support-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    return `${window.location.origin}/support-call/${roomId}?mode=${mode}`;
+  };
+
+  const startSupportCall = (mode: 'voice' | 'video') => {
+    const link = createSupportCallLink(mode);
+    setSupportLink(link);
+    window.open(link, '_blank');
+  };
+
+  const copySupportLink = async () => {
+    if (!supportLink) return;
+    try {
+      await navigator.clipboard.writeText(supportLink);
+    } catch {
+      // ignore clipboard errors
+    }
+  };
 
   useEffect(() => {
     const loadDashboardState = async () => {
@@ -548,6 +569,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
             New affirmation
           </Button>
         </div>
+      </section>
+
+      {/* Peer Support */}
+      <section className="bg-white p-6 rounded-3xl shadow-sm border border-unity-50">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h3 className="font-bold text-unity-black">Peer Support</h3>
+            <p className="text-gray-500 text-sm">Connect with a community listener via voice or video.</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={() => startSupportCall('voice')}>
+              <Phone size={16} className="mr-2" />
+              Start Voice Call
+            </Button>
+            <Button onClick={() => startSupportCall('video')}>
+              <Video size={16} className="mr-2" />
+              Start Video Call
+            </Button>
+          </div>
+        </div>
+        {supportLink && (
+          <div className="mt-4 bg-unity-50 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-unity-600">Share this link with your listener if needed</p>
+              <p className="text-xs text-unity-500 break-all">{supportLink}</p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={copySupportLink}>
+              <Copy size={14} className="mr-2" />
+              Copy Link
+            </Button>
+          </div>
+        )}
       </section>
 
       {/* Stats / Quick Actions Grid */}

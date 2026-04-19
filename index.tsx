@@ -5,6 +5,7 @@ import App from './App';
 import { ClerkSsoCallback } from './components/ClerkSsoCallback';
 import { TherapistInviteAccept } from './components/TherapistInviteAccept';
 import { VolunteerInviteAccept } from './src/components/VolunteerInviteAccept';
+import { SupportCall } from './src/components/SupportCall';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -19,6 +20,9 @@ const isTherapistInviteRoute = pathname.startsWith('/therapist-invite/');
 const therapistInviteToken = isTherapistInviteRoute ? pathname.replace('/therapist-invite/', '') : null;
 const isVolunteerInviteRoute = pathname.startsWith('/volunteer-invite/');
 const volunteerInviteToken = isVolunteerInviteRoute ? pathname.replace('/volunteer-invite/', '') : null;
+const isSupportCallRoute = pathname.startsWith('/support-call/');
+const supportCallRoomId = isSupportCallRoute ? pathname.replace('/support-call/', '') : null;
+const supportCallMode = new URLSearchParams(window.location.search).get('mode') === 'video' ? 'video' : 'voice';
 
 root.render(
   <React.StrictMode>
@@ -29,6 +33,8 @@ root.render(
         <TherapistInviteAccept token={therapistInviteToken} onSuccess={() => { window.location.href = '/login?invite=success'; }} />
       ) : isVolunteerInviteRoute && volunteerInviteToken ? (
         <VolunteerInviteAccept inviteToken={volunteerInviteToken} onNavigate={(view) => { window.location.href = '/'; }} />
+      ) : isSupportCallRoute && supportCallRoomId ? (
+        <SupportCall roomId={supportCallRoomId} mode={supportCallMode} />
       ) : (
         <App />
       )}

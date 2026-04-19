@@ -17,6 +17,8 @@ export interface VolunteerInviteResponse {
   message: string;
   inviteId?: string;
   inviteLink?: string;
+  emailSent?: boolean;
+  emailError?: string;
 }
 
 /**
@@ -38,11 +40,24 @@ export const sendVolunteerInvite = async (
       })
     });
 
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error('Failed to send invitation');
+      return {
+        success: false,
+        message: payload?.error || 'Failed to send invitation',
+        inviteId: payload?.inviteId,
+        inviteLink: payload?.inviteLink,
+      };
     }
 
-    return await response.json();
+    return {
+      ...payload,
+      message:
+        payload?.message ||
+        (payload?.emailSent === false
+          ? 'Invite created but email was not sent'
+          : 'Invitation sent'),
+    };
   } catch (error) {
     console.error('Error sending volunteer invite:', error);
     return {
@@ -276,6 +291,58 @@ export const getVolunteerStats = async () => {
     return await response.json();
   } catch (error) {
     console.error('Error fetching volunteer stats:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get volunteers for admin tracking
+ */
+export const getAdminVolunteers = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/admin/volunteers`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch volunteers');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching admin volunteers:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get volunteer activity summary (hours + tasks)
+ */
+export const getVolunteerActivity = async (volunteerId: string | number) => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/volunteer-activity?volunteerId=${encodeURIComponent(String(volunteerId))}`,
+    );
+    if (!response.ok) {
+      throw new Error('Failed to fetch volunteer activity');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching volunteer activity:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete volunteer (admin)
+ */
+export const deleteVolunteer = async (volunteerId: string | number) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/admin/volunteer/${volunteerId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete volunteer');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error deleting volunteer:', error);
     throw error;
   }
 };
