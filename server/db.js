@@ -264,6 +264,19 @@ async function initializeDatabase() {
             )
         `);
 
+        // Ensure volunteer_invites table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteer_invites (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255) NOT NULL,
+                token VARCHAR(255) UNIQUE NOT NULL,
+                status VARCHAR(50) DEFAULT 'pending',
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                invited_by VARCHAR(255)
+            )
+        `);
+
         // Ensure therapists table exists
         await client.query(`
             CREATE TABLE IF NOT EXISTS therapists (

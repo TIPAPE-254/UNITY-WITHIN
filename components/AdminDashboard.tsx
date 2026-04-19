@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, MessageSquare, Shield, Activity, Flag, Plus, Trash2, Book, Trophy, AlertCircle, Search, ArrowLeft, ExternalLink, Mail, Phone, Send, Stethoscope } from 'lucide-react';
+import { Users, MessageSquare, Shield, Activity, Flag, Plus, Trash2, Book, Trophy, AlertCircle, Search, ArrowLeft, ExternalLink, Mail, Phone, Send, Stethoscope, Copy } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
 import { Button } from './Button';
 import { inviteTherapist } from '../services/therapistService';
@@ -27,6 +27,7 @@ export const AdminDashboard: React.FC = () => {
      const [inviteForm, setInviteForm] = useState({ email: '' });
      const [inviteBusy, setInviteBusy] = useState(false);
      const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+     const [inviteLink, setInviteLink] = useState<string | null>(null);
       const [inviteTherapistForm, setInviteTherapistForm] = useState({ email: '', phone: '' });
       const [inviteTherapistBusy, setInviteTherapistBusy] = useState(false);
       const [inviteTherapistMessage, setInviteTherapistMessage] = useState<string | null>(null);
@@ -291,6 +292,7 @@ const [isLive, setIsLive] = useState(true);
 
          setInviteBusy(true);
          setInviteMessage(null);
+         setInviteLink(null);
          try {
              const res = await apiFetch(`${API_BASE_URL}/admin/invite-volunteer`, {
                  method: 'POST',
@@ -302,14 +304,16 @@ const [isLive, setIsLive] = useState(true);
 
              const data = await res.json();
              if (res.ok && data?.success) {
-                 setInviteMessage(`Invite sent to ${inviteForm.email.trim()}`);
+                 const emailStatus = data.emailSent ? 'Email sent successfully' : 'Email not sent (API key not configured)';
+                 setInviteMessage(`${emailStatus}. Invitation link created.`);
+                 setInviteLink(data.inviteLink);
                  setInviteForm({ email: '' });
                  void refreshNow();
              } else {
-                 setInviteMessage(data?.error || 'Failed to send invite');
+                 setInviteMessage(data?.error || 'Failed to create invite');
              }
          } catch {
-             setInviteMessage('Failed to send invite');
+             setInviteMessage('Failed to create invite');
          } finally {
              setInviteBusy(false);
          }
@@ -547,8 +551,29 @@ const [isLive, setIsLive] = useState(true);
                                         </form>
 
                                         {inviteMessage && (
-                                            <div className={`text-xs rounded-lg px-3 py-2 ${inviteMessage.startsWith('Invite sent') ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
-                                                {inviteMessage}
+                                            <div className={`text-xs rounded-lg px-3 py-2 ${inviteMessage.includes('Email sent successfully') ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-yellow-50 text-yellow-700 border border-yellow-100'}`}>
+                                                <div>{inviteMessage}</div>
+                                                {inviteLink && (
+                                                    <div className="mt-2 flex items-center gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={inviteLink}
+                                                            readOnly
+                                                            className="flex-1 px-2 py-1 text-xs bg-white border border-gray-200 rounded"
+                                                        />
+                                                        <button
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(inviteLink);
+                                                                // Could add a toast notification here
+                                                            }}
+                                                            className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs flex items-center gap-1"
+                                                            title="Copy invitation link"
+                                                        >
+                                                            <Copy size={12} />
+                                                            Copy
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 

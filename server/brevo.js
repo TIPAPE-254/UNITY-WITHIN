@@ -1,9 +1,19 @@
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
 const getBrevoConfig = () => {
+  // Prioritize Azure App Settings (available as environment variables)
+  // These can be set in Azure Portal > App Service > Configuration > Application Settings
   const apiKey = process.env.BREVO_API_KEY || "";
   const fromEmail = process.env.BREVO_FROM_EMAIL || "no-reply@unitywithin.app";
   const fromName = process.env.BREVO_FROM_NAME || "Unity Within";
+
+  // Log configuration source for debugging
+  if (apiKey) {
+    console.log('📧 Brevo configuration loaded from environment variables');
+  } else {
+    console.log('⚠️  Brevo API key not configured - emails will not be sent');
+  }
+
   return { apiKey, fromEmail, fromName };
 };
 
