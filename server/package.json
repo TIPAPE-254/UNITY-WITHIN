@@ -16,6 +16,7 @@
         "dotenv": "^17.2.3",
         "express": "^5.2.1",
         "node-cron": "^3.0.3",
+        "nodemailer": "^6.9.14",
         "openai": "^6.15.0",
         "pg": "^8.20.0",
         "socket.io": "^4.8.3",
