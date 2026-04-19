@@ -4,6 +4,7 @@ import { ClerkProvider } from '@clerk/react';
 import App from './App';
 import { ClerkSsoCallback } from './components/ClerkSsoCallback';
 import { TherapistInviteAccept } from './components/TherapistInviteAccept';
+import { VolunteerInviteAccept } from './src/components/VolunteerInviteAccept';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -16,6 +17,8 @@ const pathname = window.location.pathname;
 const isSsoCallbackRoute = pathname === '/sso-callback';
 const isTherapistInviteRoute = pathname.startsWith('/therapist-invite/');
 const therapistInviteToken = isTherapistInviteRoute ? pathname.replace('/therapist-invite/', '') : null;
+const isVolunteerInviteRoute = pathname.startsWith('/volunteer-invite/');
+const volunteerInviteToken = isVolunteerInviteRoute ? pathname.replace('/volunteer-invite/', '') : null;
 
 root.render(
   <React.StrictMode>
@@ -24,6 +27,8 @@ root.render(
         <ClerkSsoCallback />
       ) : isTherapistInviteRoute && therapistInviteToken ? (
         <TherapistInviteAccept token={therapistInviteToken} onSuccess={() => { window.location.href = '/login?invite=success'; }} />
+      ) : isVolunteerInviteRoute && volunteerInviteToken ? (
+        <VolunteerInviteAccept inviteToken={volunteerInviteToken} onNavigate={(view) => { window.location.href = '/'; }} />
       ) : (
         <App />
       )}
