@@ -501,14 +501,6 @@ app.post(
         `;
 
       const result = await sendEmail(recipient, emailSubject, html);
-      if (!result?.success) {
-        return res.status(502).json({
-          success: false,
-          error: result?.error || "Brevo send failed",
-          mock: Boolean(result?.mock),
-        });
-      }
-
       return res.json({
         success: true,
         delivered: true,
@@ -4973,11 +4965,20 @@ const buildTherapistInviteEmail = ({ inviteLink }) => `
 const sendBrevoEmail = async ({ toEmail, subject, htmlContent }) => {
   if (!toEmail) return { sent: false, reason: "missing-recipient" };
 
-  const result = await sendEmail(toEmail, subject, htmlContent);
-  return {
-    sent: Boolean(result?.success),
-    reason: result?.success ? null : result?.error || "send-failed",
-  };
+  try {
+    const result = await sendEmail(toEmail, subject, htmlContent);
+    return {
+      sent: true,
+      messageId: result?.messageId || null,
+      reason: null,
+    };
+  } catch (error) {
+    console.error("sendBrevoEmail error:", error.message);
+    return {
+      sent: false,
+      reason: error.message || "send-failed",
+    };
+  }
 };
 
 // Volunteer application intake
@@ -5082,17 +5083,23 @@ app.post("/api/volunteer/apply", async (req, res) => {
       </div>
     `;
 
-    const emailResult = await sendEmail(
-      email,
-      'We Received Your UNITY WITHIN Volunteer Application',
-      confirmationHtml
-    );
+    let emailSent = false;
+    try {
+      await sendEmail(
+        email,
+        'We Received Your UNITY WITHIN Volunteer Application',
+        confirmationHtml
+      );
+      emailSent = true;
+    } catch (emailError) {
+      console.error("Volunteer app email error:", emailError.message);
+    }
 
     return res.status(201).json({
       success: true,
       applicationId,
       whatsappSent: whatsappResult.success,
-      emailSent: emailResult.success,
+      emailSent,
       message: 'Application submitted successfully. Check your email for confirmation.'
     });
   } catch (error) {
@@ -5193,12 +5200,18 @@ app.post("/api/admin/invite-volunteer", requireAdmin, async (req, res) => {
 
     const inviteLink = `${getFrontendUrl(req)}/volunteer-invite/${token}`;
 
-    const emailSent = await sendVolunteerInvite(normalizedEmail, inviteLink);
+    let emailSent = false;
+    try {
+      await sendVolunteerInvite(normalizedEmail, inviteLink);
+      emailSent = true;
+    } catch (emailError) {
+      console.error("Volunteer invite email error:", emailError.message);
+    }
 
     res.json({
       success: true,
       inviteLink,
-      emailSent: emailSent.success,
+      emailSent,
       invite: {
         email: normalizedEmail,
         role: "self-selected",
@@ -5237,8 +5250,8 @@ app.post("/api/admin/send-email", requireAdmin, async (req, res) => {
           </div>
             </div>
         `;
-    const result = await sendEmail(to, subject, html);
-    res.json(result);
+    await sendEmail(to, subject, html);
+    res.json({ success: true, message: "Email sent successfully" });
   } catch (error) {
     console.error("❌ Custom email error:", error);
     res.status(500).json({ success: false, error: error.message });
@@ -6331,11 +6344,15 @@ app.post("/api/admin/invite-therapist", requireAdmin, async (req, res) => {
       [email, phoneRaw || null, token],
     );
 
-    const emailResult = await sendTherapistInvite(email, inviteLink);
-    const emailSent = emailResult.success;
-    const emailErrorMessage = emailSent
-      ? null
-      : emailResult.error || "Email delivery failed";
+    let emailSent = false;
+    let emailErrorMessage = null;
+    try {
+      await sendTherapistInvite(email, inviteLink);
+      emailSent = true;
+    } catch (emailError) {
+      console.error("Therapist invite email error:", emailError.message);
+      emailErrorMessage = emailError.message || "Email delivery failed";
+    }
 
     const sanitizedPhone = sanitizeWhatsAppPhone(phoneRaw);
     const whatsappMessage = encodeURIComponent(

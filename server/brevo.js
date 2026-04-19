@@ -1,35 +1,41 @@
-import Brevo from "@getbrevo/brevo";
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const FROM_EMAIL = process.env.BREVO_FROM_EMAIL;
+const FROM_NAME = process.env.BREVO_FROM_NAME;
 
-const apiInstance = new Brevo.TransactionalEmailsApi();
+export async function sendEmail(to, subject, htmlContent) {
+  try {
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        sender: {
+          email: FROM_EMAIL,
+          name: FROM_NAME
+        },
+        to: [{ email: to }],
+        subject,
+        htmlContent
+      })
+    });
 
-const getBrevoConfig = () => {
-  const apiKey = process.env.BREVO_API_KEY || "";
-  const fromEmail = process.env.BREVO_FROM_EMAIL || "no-reply@unitywithin.app";
-  const fromName = process.env.BREVO_FROM_NAME || "Unity Within";
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Brevo API error: ${errorText}`);
+    }
 
-  if (apiKey) {
-    console.log("Brevo configuration: API key mode");
-  } else {
-    console.log("Brevo not configured - emails will not be sent");
+    const data = await response.json();
+    console.log("✅ Email sent:", data.messageId);
+
+    return data;
+  } catch (error) {
+    console.error("❌ Email failed:", error.message);
+    throw error;
   }
-
-  return {
-    apiKey,
-    fromEmail,
-    fromName,
-  };
-};
-
-const setBrevoApiKey = (apiKey) => {
-  if (!apiKey) {
-    return false;
-  }
-  apiInstance.setApiKey(
-    Brevo.TransactionalEmailsApiApiKeys.apiKey,
-    apiKey,
-  );
-  return true;
-};
+}
 
 const ctaButton = (href, label) => `
   <a
@@ -63,45 +69,6 @@ const wrapTemplate = ({ title, body }) => `
     </div>
   </div>
 `;
-
-export const sendEmail = async (toEmail, subject, htmlContent) => {
-  try {
-    const config = getBrevoConfig();
-    if (!toEmail) {
-      return { success: false, error: "Missing recipient email" };
-    }
-
-    if (!setBrevoApiKey(config.apiKey)) {
-      return {
-        success: false,
-        error: "Brevo API key not configured",
-        mock: true,
-      };
-    }
-
-    const sendSmtpEmail = new Brevo.SendSmtpEmail();
-    sendSmtpEmail.sender = {
-      email: config.fromEmail,
-      name: config.fromName,
-    };
-    sendSmtpEmail.to = [{ email: toEmail }];
-    sendSmtpEmail.subject = subject;
-    sendSmtpEmail.htmlContent = htmlContent;
-
-    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    return {
-      success: true,
-      messageId: data?.messageId || null,
-      provider: "brevo-api",
-    };
-  } catch (error) {
-    console.error("Brevo API error:", error?.message || error);
-    return {
-      success: false,
-      error: error?.message || "Failed to send email",
-    };
-  }
-};
 
 export const sendResetEmail = async (email, resetLink) => {
   const html = wrapTemplate({
