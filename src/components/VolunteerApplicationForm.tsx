@@ -164,10 +164,18 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
         if (!formData.lastName.trim()) {
           newFieldErrors['lastName'] = 'Last name is needed to complete your profile 💙';
         }
-        if (!formData.email.trim()) {
-          newFieldErrors['email'] = 'We need your email to stay connected 💌';
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-          newFieldErrors['email'] = 'Oops! That email doesn\'t look quite right ✨';
+        // Only validate email if it's not tied to an invitation
+        if (!inviteEmail) {
+          if (!formData.email.trim()) {
+            newFieldErrors['email'] = 'We need your email to stay connected 💌';
+          } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+            newFieldErrors['email'] = 'Oops! That email doesn\'t look quite right ✨';
+          }
+        } else {
+          // If email is from invite, just check it's not empty
+          if (!formData.email.trim()) {
+            newFieldErrors['email'] = 'We need your email to stay connected 💌';
+          }
         }
         if (!formData.location.trim()) {
           newFieldErrors['location'] = 'Tell us where you\'re from 🌍';
@@ -233,8 +241,18 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
     
     if (!formData.firstName.trim()) submitFieldErrors['firstName'] = 'First name is required 💜';
     if (!formData.lastName.trim()) submitFieldErrors['lastName'] = 'Last name is required 💙';
-    if (!formData.email.trim()) submitFieldErrors['email'] = 'Email is required 💌';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) submitFieldErrors['email'] = 'Valid email is required ✨';
+    
+    // Email validation - skip if email is tied to invitation
+    if (!inviteEmail) {
+      if (!formData.email.trim()) submitFieldErrors['email'] = 'Email is required 💌';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) submitFieldErrors['email'] = 'Valid email is required ✨';
+    } else {
+      // If email is from invite, ensure it's not empty
+      if (!formData.email.trim()) {
+        submitFieldErrors['email'] = 'Email is required 💌';
+      }
+    }
+    
     if (!formData.location.trim()) submitFieldErrors['location'] = 'Location is required 🌍';
     if (!formData.availability) submitFieldErrors['availability'] = 'Availability is required 🌟';
     if (!formData.workPreference) submitFieldErrors['workPreference'] = 'Work preference is required 💼';
