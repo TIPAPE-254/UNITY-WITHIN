@@ -4999,10 +4999,22 @@ app.post("/api/volunteer/apply", async (req, res) => {
     notes,
   } = req.body || {};
 
-  if (!firstName || !lastName || !email || !location || !availability || !category || !whyVolunteer || !workPreference) {
+  // Detailed validation with specific error messages
+  const missingFields = [];
+  if (!firstName) missingFields.push('firstName');
+  if (!lastName) missingFields.push('lastName');
+  if (!email) missingFields.push('email');
+  if (!location) missingFields.push('location');
+  if (!availability) missingFields.push('availability');
+  if (!category) missingFields.push('category');
+  if (!whyVolunteer) missingFields.push('whyVolunteer');
+  if (!workPreference) missingFields.push('workPreference');
+
+  if (missingFields.length > 0) {
     return res.status(400).json({
       success: false,
-      error: "Missing required application fields",
+      error: `Missing required fields: ${missingFields.join(', ')}`,
+      missingFields,
     });
   }
 

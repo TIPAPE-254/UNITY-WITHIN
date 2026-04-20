@@ -199,7 +199,9 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
         }
         break;
       case 3: // Roles
-        if (selectedRoles.length === 0) {
+        if (!selectedCategory) {
+          newErrors[phase] = '💖 Please select a volunteer category!';
+        } else if (selectedRoles.length === 0) {
           newErrors[phase] = '💖 Choose at least one role that excites you!';
         }
         break;
@@ -236,52 +238,57 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
     e.preventDefault();
     setError('');
     
+    // First, mark ALL fields as touched to show all error states
+    setTouchedFields({ 
+      firstName: true, 
+      lastName: true, 
+      email: true, 
+      location: true,
+      availability: true,
+      workPreference: true,
+      whyVolunteer: true,
+      selectedCategory: true,
+      selectedRoles: true
+    });
+    
     // Validate all required fields before submitting
     const submitFieldErrors: Record<string, string> = {};
     
-    if (!formData.firstName.trim()) submitFieldErrors['firstName'] = 'First name is required 💜';
-    if (!formData.lastName.trim()) submitFieldErrors['lastName'] = 'Last name is required 💙';
+    if (!formData.firstName.trim()) submitFieldErrors['firstName'] = 'We\'d love to know your name 💜';
+    if (!formData.lastName.trim()) submitFieldErrors['lastName'] = 'Your last name completes your story 💙';
     
     // Email validation - skip if email is tied to invitation
     if (!inviteEmail) {
-      if (!formData.email.trim()) submitFieldErrors['email'] = 'Email is required 💌';
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) submitFieldErrors['email'] = 'Valid email is required ✨';
+      if (!formData.email.trim()) submitFieldErrors['email'] = 'Where should we send updates? 💌';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) submitFieldErrors['email'] = 'Hmm, that email doesn\'t look quite right ✨';
     } else {
-      // If email is from invite, ensure it's not empty
+      // If email is from invite, just check it's not empty
       if (!formData.email.trim()) {
-        submitFieldErrors['email'] = 'Email is required 💌';
+        submitFieldErrors['email'] = 'We need your email to stay connected 💌';
       }
     }
     
-    if (!formData.location.trim()) submitFieldErrors['location'] = 'Location is required 🌍';
-    if (!formData.availability) submitFieldErrors['availability'] = 'Availability is required 🌟';
-    if (!formData.workPreference) submitFieldErrors['workPreference'] = 'Work preference is required 💼';
-    if (!formData.whyVolunteer.trim()) submitFieldErrors['whyVolunteer'] = 'Tell us why you want to volunteer 💝';
+    if (!formData.location.trim()) submitFieldErrors['location'] = 'Tell us where you\'re joining from 🌍';
+    if (!formData.availability) submitFieldErrors['availability'] = 'When can we count on you? 🌟';
+    if (!formData.workPreference) submitFieldErrors['workPreference'] = 'How would you like to contribute? 💼';
+    if (!formData.whyVolunteer.trim()) submitFieldErrors['whyVolunteer'] = 'Share your heart with us 💝';
     
     if (selectedRoles.length === 0) {
+      setFieldErrors(prev => ({...prev, selectedRoles: 'Pick a role that calls to your heart 💖'}));
       setError('💖 Please select at least one volunteer role!');
-      setLoading(false);
       return;
     }
 
     if (!selectedCategory) {
       setError('💖 Please select a volunteer category!');
-      setLoading(false);
       return;
     }
 
     if (Object.keys(submitFieldErrors).length > 0) {
       setFieldErrors(submitFieldErrors);
-      setTouchedFields({ 
-        firstName: true, 
-        lastName: true, 
-        email: true, 
-        location: true,
-        availability: true,
-        workPreference: true,
-        whyVolunteer: true
-      });
-      setError('💫 Please fill in all required fields before submitting');
+      // Scroll to top to show errors
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setError('💫 We noticed a few fields are still awaiting your touch');
       return;
     }
 
@@ -292,24 +299,28 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
         .map(id => VOLUNTEER_ROLES.find(r => r.id === id)?.title)
         .filter(Boolean);
 
+      const submitPayload = {
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim() || null,
+        location: formData.location.trim(),
+        availability: formData.availability,
+        category: selectedCategory || 'Creative',
+        roles: roleNames,
+        skills: formData.skills.trim() || null,
+        whyVolunteer: formData.whyVolunteer.trim(),
+        mentalHealthContext: formData.mentalHealthContext || null,
+        workPreference: formData.workPreference,
+        notes: formData.notes.trim() || null,
+      };
+
+      console.log('Submitting application with data:', submitPayload);
+
       const response = await fetch(`${API_BASE_URL}/api/volunteer/apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          firstName: formData.firstName.trim(),
-          lastName: formData.lastName.trim(),
-          email: formData.email.trim().toLowerCase(),
-          phone: formData.phone.trim() || null,
-          location: formData.location.trim(),
-          availability: formData.availability,
-          category: selectedCategory,
-          roles: roleNames,
-          skills: formData.skills.trim() || null,
-          whyVolunteer: formData.whyVolunteer.trim(),
-          mentalHealthContext: formData.mentalHealthContext || null,
-          workPreference: formData.workPreference,
-          notes: formData.notes.trim() || null,
-        })
+        body: JSON.stringify(submitPayload)
       });
 
       const data = await response.json();
@@ -323,8 +334,23 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
         if (onSuccess) onSuccess();
       }, 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit application. Please try again.');
-      console.error('Application error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to submit application. Please try again.';
+      setError(errorMessage);
+      console.error('Application submission error:', {
+        error: errorMessage,
+        fullError: err,
+        formDataState: {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          location: formData.location,
+          availability: formData.availability,
+          workPreference: formData.workPreference,
+          whyVolunteer: formData.whyVolunteer,
+          selectedCategory,
+          selectedRoles
+        }
+      });
     } finally {
       setLoading(false);
     }
@@ -458,16 +484,38 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
         <div className="bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl p-8 md:p-12">
           
           {phaseError && (
-            <div className="mb-6 p-4 bg-pink-50 border-l-4 border-pink-600 text-pink-700 rounded-lg flex items-start gap-3">
-              <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
-              <span className="font-semibold">{phaseError}</span>
+            <div className="mb-6 p-5 bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-400 rounded-2xl flex items-start gap-3 shadow-lg">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <AlertCircle size={22} className="text-red-600" />
+              </div>
+              <div className="flex-1">
+                <p className="font-black text-red-700 text-lg mb-1">Almost there! 💛</p>
+                <p className="font-semibold text-red-600">{phaseError}</p>
+              </div>
             </div>
           )}
 
           {error && (
-            <div className="mb-6 p-4 bg-pink-50 border-l-4 border-pink-600 text-pink-700 rounded-lg flex items-start gap-3">
-              <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
-              <span className="font-semibold">{error}</span>
+            <div className="mb-6 p-5 bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-400 rounded-2xl flex items-start gap-3 shadow-lg">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <AlertCircle size={22} className="text-red-600" />
+              </div>
+              <div className="flex-1">
+                <p className="font-black text-red-700 text-lg mb-1">Hold on! 💛</p>
+                <p className="font-semibold text-red-600">{error}</p>
+                {Object.keys(fieldErrors).length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-red-200">
+                    <p className="text-sm font-semibold text-red-600 mb-2">Let's complete these together:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(fieldErrors).map(([key, msg]) => (
+                        <span key={key} className="px-3 py-1 bg-white border border-red-300 rounded-full text-sm font-semibold text-red-600">
+                          {msg}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -933,6 +981,12 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
                   </div>
                 </div>
 
+                {/* Category Card */}
+                <div className="bg-purple-100 rounded-2xl p-6 border-2 border-purple-600">
+                  <h3 className="font-black text-black text-lg mb-4">📂 Category</h3>
+                  <p className="font-bold text-black text-lg">{selectedCategory}</p>
+                </div>
+
                 {/* Roles Card */}
                 <div className="bg-white rounded-2xl p-6 border-2 border-pink-600">
                   <h3 className="font-black text-black text-lg mb-4">🎯 Selected Roles ({selectedRoles.length})</h3>
@@ -985,19 +1039,20 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
 
             {currentPhase === 5 ? (
               <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={loading}
-                className="flex items-center gap-2 px-8 py-3 bg-pink-600 text-white font-black rounded-full hover:bg-pink-700 transition-all disabled:opacity-50"
+                className="flex items-center justify-center gap-2 px-10 py-4 bg-gradient-to-r from-pink-600 to-purple-600 text-white font-black rounded-full hover:from-pink-700 hover:to-purple-700 transition-all disabled:opacity-50 cursor-pointer shadow-lg hover:shadow-xl transform hover:scale-105 text-lg w-full md:w-auto"
               >
                 {loading ? (
                   <>
                     <Loader size={18} className="animate-spin" />
-                    Submitting...
+                    Sending Application...
                   </>
                 ) : (
                   <>
-                    Submit ✨
-                    <ChevronRight size={20} />
+                    Submit My Application
+                    <Heart size={20} className="text-pink-200" />
                   </>
                 )}
               </button>
