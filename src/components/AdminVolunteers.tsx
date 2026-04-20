@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Copy, CheckCircle, Clock, XCircle, AlertCircle, TrendingUp, Users, Eye, Trash2 } from 'lucide-react';
+import { Mail, Copy, CheckCircle, Clock, XCircle, AlertCircle, TrendingUp, Users, Eye, Trash2, Shield } from 'lucide-react';
 import {
   sendVolunteerInvite,
   getVolunteerInvites,
@@ -13,6 +13,7 @@ import {
   approveInviteSubmission,
   rejectInviteSubmission
 } from '../services/volunteerService';
+import { VolunteerRBACManager } from './VolunteerRBACManager';
 
 interface VolunteerInvite {
   id: string;
@@ -34,6 +35,20 @@ interface AdminVolunteer {
   hours_contributed?: number;
 }
 
+interface VolunteerApplication {
+  id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  category?: string;
+  availability?: string;
+  skills?: string;
+  why_volunteer: string;
+  status: 'pending_admin_review' | 'approved' | 'rejected';
+  created_at: string;
+  invite_id?: number;
+}
+
 interface AdminVolunteersProps {
   onNavigate?: (view: string) => void;
   adminName?: string;
@@ -42,12 +57,18 @@ interface AdminVolunteersProps {
 export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, adminName = 'Admin' }) => {
   const [volunteers, setVolunteers] = useState<VolunteerInvite[]>([]);
   const [adminVolunteers, setAdminVolunteers] = useState<AdminVolunteer[]>([]);
+  const [applications, setApplications] = useState<VolunteerApplication[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [tab, setTab] = useState<'manage' | 'pending' | 'approved' | 'tracking'>('manage');
+  const [tab, setTab] = useState<'manage' | 'applications' | 'tracking' | 'rbac'>('manage');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [existingInviteLink, setExistingInviteLink] = useState<string | null>(null);
+  const [selectedRBACVolunteer, setSelectedRBACVolunteer] = useState<AdminVolunteer | null>(null);
+  const [selectedApplication, setSelectedApplication] = useState<VolunteerApplication | null>(null);
+  const [approvingWithRole, setApprovingWithRole] = useState<number | null>(null);
+  const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
+  const [rbacRoles, setRbacRoles] = useState<any[]>([]);
   const [activityVolunteer, setActivityVolunteer] = useState<AdminVolunteer | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityData, setActivityData] = useState<any>(null);
@@ -72,7 +93,35 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
   useEffect(() => {
     fetchVolunteers();
     fetchAdminVolunteers();
+    fetchApplications();
+    fetchRoles();
   }, []);
+
+  const fetchApplications = async () => {
+    try {
+      const response = await fetch('/api/admin/volunteer-applications');
+      if (response.ok) {
+        const data = await response.json();
+        setApplications(data.data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching applications:', err);
+    }
+  };
+
+  const fetchRoles = async () => {
+    try {
+      const response = await fetch('/api/admin/volunteer-rbac/roles', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setRbacRoles(data.roles || []);
+      }
+    } catch (err) {
+      console.error('Error fetching roles:', err);
+    }
+  };
 
   const fetchVolunteers = async () => {
     try {
@@ -278,6 +327,70 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
     }
   };
 
+  const handleApproveApplication = async (appId: number) => {
+    if (!selectedRoleId) {
+      setError('Please select a role');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/admin/volunteer-application/${appId}/approve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ rbacRoleId: selectedRoleId })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to approve application');
+      }
+
+      const data = await response.json();
+      setSuccess('Application approved! Email sent to volunteer.');
+      setSelectedApplication(null);
+      setApprovingWithRole(null);
+      setSelectedRoleId(null);
+      await fetchApplications();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve application');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejectApplication = async (appId: number) => {
+    if (!window.confirm('Reject this application?')) return;
+
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/admin/volunteer-application/${appId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ status: 'rejected' })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reject application');
+      }
+
+      setSuccess('Application rejected');
+      setSelectedApplication(null);
+      await fetchApplications();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reject application');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved':
@@ -307,9 +420,8 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
   };
 
   const filteredVolunteers = volunteers.filter(v => {
-    if (tab === 'pending') return v.status === 'pending';
-    if (tab === 'approved') return ['approved', 'active'].includes(v.status);
-    return true;
+    // Show all volunteers in manage tab
+    return tab === 'manage';
   });
 
   const stats = {
@@ -472,40 +584,30 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
         {/* Volunteers List */}
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
           {/* Tabs */}
-          <div className="flex border-b border-gray-200">
+          <div className="flex border-b border-gray-200 flex-wrap">
             <button
               onClick={() => setTab('manage')}
-              className={`flex-1 px-6 py-4 font-semibold transition-colors ${
+              className={`flex-1 min-w-[150px] px-6 py-4 font-semibold transition-colors ${
                 tab === 'manage'
                   ? 'text-purple-600 border-b-2 border-purple-600'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              All Volunteers ({volunteers.length})
+              Send Invites ({volunteers.length})
             </button>
             <button
-              onClick={() => setTab('pending')}
-              className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-                tab === 'pending'
-                  ? 'text-purple-600 border-b-2 border-purple-600'
+              onClick={() => setTab('applications')}
+              className={`flex-1 min-w-[150px] px-6 py-4 font-semibold transition-colors ${
+                tab === 'applications'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Pending ({stats.pending})
-            </button>
-            <button
-              onClick={() => setTab('approved')}
-              className={`flex-1 px-6 py-4 font-semibold transition-colors ${
-                tab === 'approved'
-                  ? 'text-purple-600 border-b-2 border-purple-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Approved ({stats.approved})
+              Applications ({applications.filter(a => a.status === 'pending_admin_review').length})
             </button>
             <button
               onClick={() => setTab('tracking')}
-              className={`flex-1 px-6 py-4 font-semibold transition-colors ${
+              className={`flex-1 min-w-[150px] px-6 py-4 font-semibold transition-colors ${
                 tab === 'tracking'
                   ? 'text-purple-600 border-b-2 border-purple-600'
                   : 'text-gray-600 hover:text-gray-900'
@@ -513,11 +615,231 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
             >
               Work Tracking ({adminVolunteers.length})
             </button>
+            <button
+              onClick={() => setTab('rbac')}
+              className={`flex-1 px-6 py-4 font-semibold transition-colors flex items-center justify-center gap-2 ${
+                tab === 'rbac'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Shield size={18} />
+              Permissions
+            </button>
           </div>
 
-          {/* Volunteers Table */}
+          {/* Volunteers Table/Content */}
           <div className="overflow-x-auto">
-            {tab === 'tracking' ? (
+            {tab === 'applications' ? (
+              <div className="p-6">
+                {selectedApplication ? (
+                  // Detailed application view with approval
+                  <div className="max-w-2xl">
+                    <button
+                      onClick={() => setSelectedApplication(null)}
+                      className="mb-4 px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 text-sm font-semibold"
+                    >
+                      ← Back to Applications
+                    </button>
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                      <h2 className="text-2xl font-bold text-gray-900 mb-4">{selectedApplication.first_name} {selectedApplication.last_name}</h2>
+                      <p className="text-gray-600 font-medium mb-6">{selectedApplication.email}</p>
+
+                      <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div>
+                          <p className="text-xs text-gray-600 font-semibold">Category</p>
+                          <p className="text-sm text-gray-900">{selectedApplication.category || 'Not specified'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-600 font-semibold">Availability</p>
+                          <p className="text-sm text-gray-900">{selectedApplication.availability || 'Not specified'}</p>
+                        </div>
+                      </div>
+
+                      <div className="mb-6">
+                        <p className="text-xs text-gray-600 font-semibold mb-2">Why Volunteer</p>
+                        <p className="text-sm text-gray-900 bg-white p-3 rounded border border-blue-100">
+                          {selectedApplication.why_volunteer}
+                        </p>
+                      </div>
+
+                      {selectedApplication.skills && (
+                        <div className="mb-6">
+                          <p className="text-xs text-gray-600 font-semibold mb-2">Skills</p>
+                          <p className="text-sm text-gray-900">{selectedApplication.skills}</p>
+                        </div>
+                      )}
+
+                      <div className="border-t border-blue-200 pt-6">
+                        <h3 className="font-semibold text-gray-900 mb-4">Approve & Assign Role</h3>
+
+                        {approvingWithRole === selectedApplication.id ? (
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Select RBAC Role *</label>
+                              <select
+                                value={selectedRoleId || ''}
+                                onChange={(e) => setSelectedRoleId(Number(e.target.value) || null)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="">-- Select Role --</option>
+                                {rbacRoles.map(role => (
+                                  <option key={role.id} value={role.id}>
+                                    {role.display_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleApproveApplication(selectedApplication.id)}
+                                disabled={loading || !selectedRoleId}
+                                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 font-semibold"
+                              >
+                                {loading ? 'Approving...' : 'Confirm Approval'}
+                              </button>
+                              <button
+                                onClick={() => setApprovingWithRole(null)}
+                                className="flex-1 px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 font-semibold"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setApprovingWithRole(selectedApplication.id)}
+                              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleRejectApplication(selectedApplication.id)}
+                              disabled={loading}
+                              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 font-semibold"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  // List of applications
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Pending Applications</h2>
+                    <div className="space-y-3">
+                      {applications.filter(a => a.status === 'pending_admin_review').length === 0 ? (
+                        <div className="text-center py-8 text-gray-600">
+                          <p>No pending applications</p>
+                        </div>
+                      ) : (
+                        applications
+                          .filter(a => a.status === 'pending_admin_review')
+                          .map(app => (
+                            <div
+                              key={app.id}
+                              className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition"
+                              onClick={() => setSelectedApplication(app)}
+                            >
+                              <div className="flex-1">
+                                <p className="font-medium text-gray-900">{app.first_name} {app.last_name}</p>
+                                <p className="text-sm text-gray-600">{app.email}</p>
+                                <p className="text-xs text-gray-500 mt-1">{new Date(app.created_at).toLocaleDateString()}</p>
+                              </div>
+                              <div className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-semibold">
+                                Pending Review
+                              </div>
+                            </div>
+                          ))
+                      )}
+                    </div>
+
+                    {applications.some(a => a.status === 'approved') && (
+                      <div className="mt-8">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Approved Applications</h3>
+                        <div className="space-y-3">
+                          {applications
+                            .filter(a => a.status === 'approved')
+                            .map(app => (
+                              <div key={app.id} className="flex items-center justify-between p-4 border border-green-200 rounded-lg bg-green-50">
+                                <div className="flex-1">
+                                  <p className="font-medium text-gray-900">{app.first_name} {app.last_name}</p>
+                                  <p className="text-sm text-gray-600">{app.email}</p>
+                                </div>
+                                <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
+                                  Approved
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : tab === 'rbac' ? (
+              <div className="p-6">
+                {selectedRBACVolunteer ? (
+                  <div>
+                    <button
+                      onClick={() => setSelectedRBACVolunteer(null)}
+                      className="mb-4 px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 text-sm font-semibold"
+                    >
+                      ← Back to Volunteers
+                    </button>
+                    <VolunteerRBACManager
+                      volunteerId={selectedRBACVolunteer.id}
+                      onClose={() => setSelectedRBACVolunteer(null)}
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Manage Volunteer Permissions (RBAC)</h3>
+                    <div className="space-y-2">
+                      {adminVolunteers.length === 0 ? (
+                        <div className="py-8 text-center text-gray-600">
+                          <Shield size={40} className="mx-auto mb-2 opacity-50" />
+                          <p>No volunteers found. Create volunteers first to manage permissions.</p>
+                        </div>
+                      ) : (
+                        adminVolunteers.map(volunteer => (
+                          <div
+                            key={volunteer.id}
+                            className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition"
+                            onClick={() => setSelectedRBACVolunteer(volunteer)}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold">
+                                {(volunteer.name || volunteer.email).charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900">{volunteer.name || 'Volunteer'}</p>
+                                <p className="text-sm text-gray-600">{volunteer.email}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                                volunteer.status === 'active'
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                {volunteer.status}
+                              </span>
+                              <Shield className="text-blue-600" size={20} />
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : tab === 'tracking' ? (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>

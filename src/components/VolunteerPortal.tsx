@@ -3,7 +3,7 @@ import {
   Heart, MessageCircle, Users, Sparkles, Zap, Target, Calendar, 
   Award, TrendingUp, Clock, FileText, Video, Globe, Palette, Shield,
   CheckCircle, Bell, Settings, BookOpen, Phone, ChevronRight, Play,
-  Star, Activity, Send, HeadphonesMic, Copy, Lock
+  Star, Activity, Send, Headphones, Copy
 } from 'lucide-react';
 import { User, ViewState } from '../types';
 import { getVolunteerDashboardData, getVolunteerProfile } from '../services/volunteerService';
@@ -67,7 +67,7 @@ const ROLE_CONFIGS: Record<string, RoleConfig> = {
   listener: {
     id: 'listener',
     title: 'Community Listener',
-    icon: <HeadphonesMic size={24} />,
+    icon: <Headphones size={24} />,
     color: 'text-black',
     bgGradient: 'bg-pink-600',
     features: [
@@ -172,7 +172,7 @@ const ROLE_CONFIGS: Record<string, RoleConfig> = {
       'Feature testing'
     ],
     quickActions: [
-      { label: 'Tickets', icon: <HeadphonesMic size={20} />, action: 'tickets' },
+      { label: 'Tickets', icon: <Headphones size={20} />, action: 'tickets' },
       { label: 'Knowledge Base', icon: <BookOpen size={20} />, action: 'kb' },
       { label: 'Report Issue', icon: <Zap size={20} />, action: 'report' },
       { label: 'Stats', icon: <TrendingUp size={20} />, action: 'stats' }
@@ -186,7 +186,7 @@ const CATEGORY_CONFIGS: Record<string, CategoryConfig> = {
     title: 'Community Support',
     description: 'Peer support, listening sessions, and community engagement tools.',
     modules: [
-      { title: 'Peer Support', description: 'Provide non-crisis listening sessions.', icon: <HeadphonesMic size={20} /> },
+      { title: 'Peer Support', description: 'Provide non-crisis listening sessions.', icon: <Headphones size={20} /> },
       { title: 'Community Rooms', description: 'Moderate chats and support rooms.', icon: <MessageCircle size={20} /> },
       { title: 'Care Playbook', description: 'Protocols for supporting community members.', icon: <BookOpen size={20} /> },
     ],
@@ -900,9 +900,9 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
   );
 };
 
-function Lock({ size }: { size: number }) {
+function Lock({ size, className }: { size: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </svg>

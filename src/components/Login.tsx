@@ -32,25 +32,97 @@ export const Login: React.FC<LoginProps> = ({ onNavigate, onLoginSuccess }) => {
       const data = await response.json();
       let user = data.user as User;
 
-      // Check if user has an approved volunteer application
+      // Check if user has an approved volunteer application and activate if needed
       try {
-        const volunteerResponse = await fetch(`${API_BASE_URL}/api/volunteer/status/${encodeURIComponent(email)}`);
-        if (volunteerResponse.ok) {
-          const volunteerData = await volunteerResponse.json();
-          if (volunteerData.success && volunteerData.isApproved) {
-            // Add volunteer information to user object
-            user = {
-              ...user,
-              volunteerStatus: volunteerData.status,
-              volunteerRoles: volunteerData.roles,
-              volunteerCategory: volunteerData.category,
-              applicationId: volunteerData.applicationId
-            };
+        // Check if user is an approved volunteer
+        const checkRes = await fetch(
+          `/api/volunteer/check-approved?email=${encodeURIComponent(user.email)}`
+        );
+
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (checkData.isApproved) {
+            const approved = checkData.approved;
+            console.log('✓ User is an approved volunteer');
+
+            // Check if already activated
+            if (approved.activatedAt) {
+              console.log('✓ Volunteer already activated');
+              // Already activated, just set role
+              user = {
+                ...user,
+                role: 'volunteer',
+                volunteerStatus: 'active',
+                volunteerId: approved.id,
+                volunteerRoles: approved.role && [approved.role.display_name] || [],
+                volunteerCategory: approved.role?.name || ''
+              };
+            } else {
+              // Not yet activated, try to activate now
+              console.log('✓ First-time activation, creating volunteer record...');
+
+              try {
+                const activateRes = await fetch(`/api/volunteer/activate/${user.id}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email: user.email })
+                });
+
+                if (activateRes.ok) {
+                  const activateData = await activateRes.json();
+                  if (activateData.activated) {
+                    console.log('✓ Volunteer activated successfully!');
+                    // Set volunteer role and information
+                    user = {
+                      ...user,
+                      role: 'volunteer',
+                      volunteerId: activateData.volunteer?.id,
+                      volunteerStatus: 'active',
+                      volunteerRoles: approved.role && [approved.role.display_name] || [],
+                      volunteerCategory: approved.role?.name || ''
+                    };
+                  } else {
+                    // Activation returned false, but user is approved
+                    console.log('⚠ Activation returned false, but user is approved - setting role anyway');
+                    user = {
+                      ...user,
+                      role: 'volunteer',
+                      volunteerStatus: 'approved',
+                      volunteerId: approved.id,
+                      volunteerRoles: approved.role && [approved.role.display_name] || [],
+                      volunteerCategory: approved.role?.name || ''
+                    };
+                  }
+                } else {
+                  // Activation failed but user is still approved
+                  console.log('⚠ Activation failed, but user is approved - setting role anyway');
+                  user = {
+                    ...user,
+                    role: 'volunteer',
+                    volunteerStatus: 'approved',
+                    volunteerId: approved.id,
+                    volunteerRoles: approved.role && [approved.role.display_name] || [],
+                    volunteerCategory: approved.role?.name || ''
+                  };
+                }
+              } catch (activateError) {
+                console.error('Error activating volunteer:', activateError);
+                // Still show volunteer portal even if activation fails
+                user = {
+                  ...user,
+                  role: 'volunteer',
+                  volunteerStatus: 'approved',
+                  volunteerId: approved.id,
+                  volunteerRoles: approved.role && [approved.role.display_name] || [],
+                  volunteerCategory: approved.role?.name || ''
+                };
+              }
+            }
           }
         }
       } catch (volunteerError) {
-        console.error('Error fetching volunteer status:', volunteerError);
-        // Continue with login even if volunteer status fetch fails
+        console.error('Error checking volunteer status:', volunteerError);
+        // Continue with login even if volunteer status check fails
       }
 
       onLoginSuccess(user);

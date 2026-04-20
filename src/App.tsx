@@ -14,14 +14,15 @@ import { Volunteer } from './components/Volunteer';
 import { AdminVolunteers } from './components/AdminVolunteers';
 import { VolunteerDashboard } from './components/VolunteerDashboard';
 import { VolunteerPortal } from './components/VolunteerPortal';
-import { VolunteerInviteAccept } from './components/VolunteerInviteAccept';
+import { VolunteerApplicationForm } from './components/VolunteerApplicationForm';
 import { AnalyticsTracker } from './components/AnalyticsTracker';
 import { usePushNotifications } from './hooks/usePushNotifications';
-import { Heart, Menu, X } from 'lucide-react';
+import { Heart, Menu, X, ShieldAlert, Phone } from 'lucide-react';
 
 export default function App() {
   const { register: requestPushPermission } = usePushNotifications();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [crisisModalOpen, setCrisisModalOpen] = useState(false);
   
   // Load user from localStorage
   const [user, setUser] = useState<User | null>(() => {
@@ -48,7 +49,17 @@ export default function App() {
       
       const savedUser = localStorage.getItem('unity_user');
       const hasUser = savedUser ? JSON.parse(savedUser) : null;
-      return hasUser ? 'dashboard' : 'landing';
+      
+      if (!hasUser) {
+        return 'landing';
+      }
+
+      // Route volunteers to their portal
+      if (hasUser.role === 'volunteer' || hasUser.volunteerStatus === 'approved') {
+        return 'volunteer-portal';
+      }
+
+      return 'dashboard';
     } catch (e) {
       return 'landing';
     }
@@ -88,8 +99,10 @@ export default function App() {
     setUser(loggedInUser);
     localStorage.setItem('unity_user', JSON.stringify(loggedInUser));
     
-    // Route approved volunteers to volunteer portal, regular users to dashboard
-    const targetView = loggedInUser.volunteerStatus === 'approved' ? 'volunteer-portal' : 'dashboard';
+    // Route volunteers to volunteer portal, regular users to dashboard
+    const targetView = loggedInUser.role === 'volunteer' || loggedInUser.volunteerStatus === 'approved' 
+      ? 'volunteer-portal' 
+      : 'dashboard';
     setCurrentView(targetView);
 
     void requestPushPermission().catch((error: unknown) => {
@@ -120,7 +133,7 @@ export default function App() {
       case 'volunteer':
         return <Volunteer onNavigate={handleNavigate} />;
       case 'volunteer-invite':
-        return <VolunteerInviteAccept inviteToken={inviteToken} onNavigate={handleNavigate} />;
+        return <VolunteerApplicationForm inviteToken={inviteToken} onNavigate={handleNavigate} />;
       case 'volunteer-portal':
         return <VolunteerPortal user={user || undefined} onNavigate={handleNavigate} />;
       case 'volunteer-dashboard':
@@ -191,10 +204,14 @@ export default function App() {
               <span className="font-extrabold text-lg text-gray-900">UNITY <span className="text-pink-500">WITHIN</span></span>
             </div>
 
-            {/* User Avatar */}
-            <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-pink-600 text-xs font-bold">
-              {user?.firstName?.charAt(0).toUpperCase() || 'U'}
-            </div>
+            {/* Crisis Button */}
+            <button
+              onClick={() => setCrisisModalOpen(true)}
+              className="p-2 text-red-600 hover:text-red-700 transition-colors"
+              title="Immediate Crisis Help"
+            >
+              <ShieldAlert size={20} />
+            </button>
           </div>
         )}
 
@@ -254,6 +271,70 @@ export default function App() {
               </div>
             </div>
           </>
+        )}
+
+        {/* Crisis Modal */}
+        {crisisModalOpen && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:hidden">
+            <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <ShieldAlert className="text-red-500" size={24} />
+                    Immediate Support
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">You matter. Help is available.</p>
+                </div>
+                <button
+                  onClick={() => setCrisisModalOpen(false)}
+                  className="p-1 bg-gray-100 rounded-full hover:bg-gray-200 text-gray-500"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <a
+                  href="tel:+254715765561"
+                  className="flex items-center gap-4 p-4 rounded-xl bg-pink-50 hover:bg-pink-100 transition-colors border border-pink-100 group"
+                >
+                  <div className="bg-white p-2 rounded-full text-pink-600 shadow-sm group-hover:scale-110 transition-transform">
+                    <Phone size={20} />
+                  </div>
+                  <div>
+                    <div className="font-bold text-gray-900">UNITY WITHIN Support</div>
+                    <div className="text-sm text-pink-600">+254 715 765 561</div>
+                  </div>
+                </a>
+
+                <a
+                  href="tel:1199"
+                  className="flex items-center gap-4 p-4 rounded-xl bg-red-50 hover:bg-red-100 transition-colors border border-red-100 group"
+                >
+                  <div className="bg-white p-2 rounded-full text-red-600 shadow-sm group-hover:scale-110 transition-transform">
+                    <Phone size={20} />
+                  </div>
+                  <div>
+                    <div className="font-bold text-gray-900">Emergency Services</div>
+                    <div className="text-sm text-red-600">1199</div>
+                  </div>
+                </a>
+
+                <a
+                  href="tel:116"
+                  className="flex items-center gap-4 p-4 rounded-xl bg-blue-50 hover:bg-blue-100 transition-colors border border-blue-100 group"
+                >
+                  <div className="bg-white p-2 rounded-full text-blue-600 shadow-sm group-hover:scale-110 transition-transform">
+                    <Phone size={20} />
+                  </div>
+                  <div>
+                    <div className="font-bold text-gray-900">Befrienders Kenya</div>
+                    <div className="text-sm text-blue-600">116</div>
+                  </div>
+                </a>
+              </div>
+            </div>
+          </div>
         )}
 
         {renderContent()}

@@ -5,7 +5,7 @@ export interface User {
   firstName: string;
   lastName?: string;
   email: string;
-  role?: 'user' | 'therapist' | 'admin';
+  role?: 'user' | 'therapist' | 'admin' | 'volunteer';
   authProvider?: 'email' | 'clerk';
   clerkUserId?: string;
   createdAt?: string;
@@ -14,6 +14,7 @@ export interface User {
   volunteerStatus?: VolunteerStatus;
   volunteerRoles?: string[];
   volunteerCategory?: string;
+  volunteerId?: string;
   applicationId?: string;
 }
 

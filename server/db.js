@@ -506,6 +506,106 @@ async function initializeDatabase() {
             console.log('✅ Added terms acceptance columns to therapists');
         }
 
+        // ────────────────────────────────────────────────────────────────
+        // RBAC (Role-Based Access Control) Tables
+        // ────────────────────────────────────────────────────────────────
+
+        // Volunteer RBAC Roles table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteer_rbac_roles (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) UNIQUE NOT NULL,
+                display_name VARCHAR(150) NOT NULL,
+                description TEXT,
+                is_system BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Volunteer Permissions table (all available permissions)
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteer_permissions (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) UNIQUE NOT NULL,
+                display_name VARCHAR(150) NOT NULL,
+                description TEXT,
+                category VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Role to Permissions mapping (many-to-many)
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteer_role_permissions (
+                role_id INTEGER NOT NULL REFERENCES volunteer_rbac_roles(id) ON DELETE CASCADE,
+                permission_id INTEGER NOT NULL REFERENCES volunteer_permissions(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (role_id, permission_id)
+            )
+        `);
+
+        // User-level permission overrides
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS volunteer_user_permissions (
+                id SERIAL PRIMARY KEY,
+                volunteer_id INTEGER NOT NULL REFERENCES volunteers(id) ON DELETE CASCADE,
+                permission_id INTEGER NOT NULL REFERENCES volunteer_permissions(id) ON DELETE CASCADE,
+                allowed BOOLEAN NOT NULL DEFAULT FALSE,
+                granted_by VARCHAR(255),
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(volunteer_id, permission_id)
+            )
+        `);
+
+        // Add rbac_role_id column to volunteers table if missing
+        const rbacRoleCheck = await client.query(`
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'volunteers' AND column_name = 'rbac_role_id'
+        `);
+        if (rbacRoleCheck.rows.length === 0) {
+            await client.query(`
+                ALTER TABLE volunteers ADD COLUMN rbac_role_id INTEGER 
+                REFERENCES volunteer_rbac_roles(id) ON DELETE SET NULL
+            `);
+            console.log('✅ Added rbac_role_id column to volunteers');
+        }
+
+        // ════════════════════════════════════════════════════════════════
+        // Volunteer Invite Pipeline Tables
+        // ════════════════════════════════════════════════════════════════
+
+        // Add invite_id to volunteer_applications if missing
+        const inviteIdCheck = await client.query(`
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'volunteer_applications' AND column_name = 'invite_id'
+        `);
+        if (inviteIdCheck.rows.length === 0) {
+            await client.query(`
+                ALTER TABLE volunteer_applications ADD COLUMN invite_id INTEGER 
+                REFERENCES volunteer_invites(id) ON DELETE SET NULL
+            `);
+            console.log('✅ Added invite_id to volunteer_applications');
+        }
+
+        // Create approved_volunteers table for tracking approved but not-yet-registered volunteers
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS approved_volunteers (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                first_name VARCHAR(120),
+                last_name VARCHAR(120),
+                role_id INTEGER REFERENCES volunteer_rbac_roles(id) ON DELETE SET NULL,
+                application_id INTEGER REFERENCES volunteer_applications(id) ON DELETE SET NULL,
+                approved_by VARCHAR(255),
+                approved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                activated_at TIMESTAMP NULL,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         console.log('✅ PostgreSQL tables initialized');
     } catch (error) {
         console.error('❌ Failed to initialize database:', error.message);

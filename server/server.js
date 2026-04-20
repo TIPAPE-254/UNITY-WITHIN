@@ -15,6 +15,14 @@ import {
   query,
   queryOne,
 } from "./db.js";
+import { seedRBAC } from "./seed_rbac.js";
+import {
+  handleVerifyInvite,
+  handleSubmitApplication,
+  handleApproveApplicationWithRole,
+  handleCheckApprovedStatus,
+  handleActivateVolunteer
+} from "./invitePipeline.js";
 import {
   sendResetEmail,
   sendVolunteerInvite,
@@ -5905,6 +5913,307 @@ app.get("/api/volunteer/roles", async (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════
+// RBAC Admin Endpoints (Volunteer Permissions Management)
+// ════════════════════════════════════════════════════════════════
+
+// Get all RBAC roles with their permissions
+app.get("/api/admin/volunteer-rbac/roles", requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        vrr.id,
+        vrr.name,
+        vrr.display_name,
+        vrr.description,
+        vrr.is_system,
+        COUNT(vrp.permission_id) as permission_count,
+        json_agg(json_build_object(
+          'id', vp.id,
+          'name', vp.name,
+          'display_name', vp.display_name,
+          'category', vp.category
+        ) ORDER BY vp.category, vp.name) FILTER (WHERE vp.id IS NOT NULL) as permissions
+      FROM volunteer_rbac_roles vrr
+      LEFT JOIN volunteer_role_permissions vrp ON vrr.id = vrp.role_id
+      LEFT JOIN volunteer_permissions vp ON vrp.permission_id = vp.id
+      GROUP BY vrr.id, vrr.name, vrr.display_name, vrr.description, vrr.is_system
+      ORDER BY vrr.display_name
+    `);
+    
+    return res.json({
+      success: true,
+      roles: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching RBAC roles:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get all defined permissions (for UI)
+app.get("/api/admin/volunteer-rbac/permissions", requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, name, display_name, category, description
+      FROM volunteer_permissions
+      ORDER BY category, display_name
+    `);
+    
+    // Group by category
+    const groupedByCategory = {};
+    result.rows.forEach(perm => {
+      if (!groupedByCategory[perm.category]) {
+        groupedByCategory[perm.category] = [];
+      }
+      groupedByCategory[perm.category].push(perm);
+    });
+    
+    return res.json({
+      success: true,
+      permissions: result.rows,
+      grouped: groupedByCategory
+    });
+  } catch (error) {
+    console.error('Error fetching permissions:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get a specific volunteer's permissions (resolved)
+app.get("/api/admin/volunteer-rbac/:volunteerId", requireAdmin, async (req, res) => {
+  const { volunteerId } = req.params;
+  try {
+    // Get volunteer info
+    const volunteerResult = await pool.query(`
+      SELECT id, email, name, rbac_role_id, status
+      FROM volunteers
+      WHERE id = $1
+    `, [volunteerId]);
+    
+    if (volunteerResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Volunteer not found' });
+    }
+    
+    const volunteer = volunteerResult.rows[0];
+    
+    // Get role info
+    let roleInfo = null;
+    if (volunteer.rbac_role_id) {
+      const roleResult = await pool.query(`
+        SELECT id, name, display_name, description
+        FROM volunteer_rbac_roles
+        WHERE id = $1
+      `, [volunteer.rbac_role_id]);
+      
+      if (roleResult.rows.length > 0) {
+        roleInfo = roleResult.rows[0];
+      }
+    }
+    
+    // Get role-based permissions
+    const rolePermsResult = await pool.query(`
+      SELECT vp.id, vp.name, vp.display_name, vp.category
+      FROM volunteer_role_permissions vrp
+      JOIN volunteer_permissions vp ON vrp.permission_id = vp.id
+      JOIN volunteers v ON v.rbac_role_id = vrp.role_id
+      WHERE v.id = $1
+      ORDER BY vp.category, vp.display_name
+    `, [volunteerId]);
+    
+    // Get user-specific overrides
+    const overridesResult = await pool.query(`
+      SELECT 
+        vup.id,
+        vp.id as permission_id,
+        vp.name,
+        vp.display_name,
+        vp.category,
+        vup.allowed,
+        vup.granted_by,
+        vup.reason,
+        vup.created_at
+      FROM volunteer_user_permissions vup
+      JOIN volunteer_permissions vp ON vup.permission_id = vp.id
+      WHERE vup.volunteer_id = $1
+      ORDER BY vp.category, vp.display_name
+    `, [volunteerId]);
+    
+    return res.json({
+      success: true,
+      volunteer: {
+        id: volunteer.id,
+        email: volunteer.email,
+        name: volunteer.name,
+        status: volunteer.status,
+        role: roleInfo
+      },
+      rolePermissions: rolePermsResult.rows,
+      overrides: overridesResult.rows
+    });
+  } catch (error) {
+    console.error('Error fetching volunteer permissions:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Change a volunteer's role
+app.post("/api/admin/volunteer-rbac/:volunteerId/role", requireAdmin, async (req, res) => {
+  const { volunteerId } = req.params;
+  const { roleId } = req.body || {};
+  
+  if (!roleId) {
+    return res.status(400).json({ success: false, error: 'Role ID is required' });
+  }
+  
+  try {
+    // Verify role exists
+    const roleCheck = await pool.query(`
+      SELECT id FROM volunteer_rbac_roles WHERE id = $1
+    `, [roleId]);
+    
+    if (roleCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Role not found' });
+    }
+    
+    // Update volunteer role
+    await pool.query(`
+      UPDATE volunteers
+      SET rbac_role_id = $1, updated_at = NOW()
+      WHERE id = $2
+    `, [roleId, volunteerId]);
+    
+    // Invalidate permission cache
+    const { clearVolunteerPermissionCache } = await import('./volunteerPermissions.js');
+    clearVolunteerPermissionCache(volunteerId);
+    
+    return res.json({
+      success: true,
+      message: 'Volunteer role updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating volunteer role:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Grant/Override a specific permission for a volunteer
+app.post("/api/admin/volunteer-rbac/:volunteerId/override", requireAdmin, async (req, res) => {
+  const { volunteerId } = req.params;
+  const { permissionId, allowed, reason } = req.body || {};
+  const adminEmail = req.user?.email || 'unknown-admin';
+  
+  if (!permissionId) {
+    return res.status(400).json({ success: false, error: 'Permission ID is required' });
+  }
+  
+  try {
+    // Verify permission exists
+    const permCheck = await pool.query(`
+      SELECT id FROM volunteer_permissions WHERE id = $1
+    `, [permissionId]);
+    
+    if (permCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Permission not found' });
+    }
+    
+    // Insert or update override
+    await pool.query(`
+      INSERT INTO volunteer_user_permissions (volunteer_id, permission_id, allowed, granted_by, reason)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (volunteer_id, permission_id) DO UPDATE SET
+        allowed = EXCLUDED.allowed,
+        granted_by = EXCLUDED.granted_by,
+        reason = EXCLUDED.reason,
+        updated_at = NOW()
+    `, [volunteerId, permissionId, allowed === true, adminEmail, reason || null]);
+    
+    // Invalidate cache
+    const { clearVolunteerPermissionCache } = await import('./volunteerPermissions.js');
+    clearVolunteerPermissionCache(volunteerId);
+    
+    return res.json({
+      success: true,
+      message: `Permission ${allowed ? 'granted' : 'revoked'} successfully`
+    });
+  } catch (error) {
+    console.error('Error setting permission override:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Remove a permission override (revert to role default)
+app.delete("/api/admin/volunteer-rbac/:volunteerId/override/:overrideId", requireAdmin, async (req, res) => {
+  const { volunteerId, overrideId } = req.params;
+  
+  try {
+    const result = await pool.query(`
+      DELETE FROM volunteer_user_permissions
+      WHERE id = $1 AND volunteer_id = $2
+      RETURNING id
+    `, [overrideId, volunteerId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Override not found' });
+    }
+    
+    // Invalidate cache
+    const { clearVolunteerPermissionCache } = await import('./volunteerPermissions.js');
+    clearVolunteerPermissionCache(volunteerId);
+    
+    return res.json({
+      success: true,
+      message: 'Override removed, permission reverted to role default'
+    });
+  } catch (error) {
+    console.error('Error removing permission override:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Resolve and return a volunteer's final permissions (for frontend)
+app.get("/api/volunteer-rbac/:volunteerId/resolved", async (req, res) => {
+  const { volunteerId } = req.params;
+  
+  try {
+    const { getVolunteerPermissions } = await import('./volunteerPermissions.js');
+    const permissions = await getVolunteerPermissions(volunteerId);
+    
+    const permissionArray = Array.from(permissions.entries()).map(([name, allowed]) => ({
+      name,
+      allowed
+    }));
+    
+    return res.json({
+      success: true,
+      permissions: permissionArray,
+      permissionMap: Object.fromEntries(permissions)
+    });
+  } catch (error) {
+    console.error('Error resolving permissions:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
+// VOLUNTEER INVITE PIPELINE
+// ════════════════════════════════════════════════════════════════
+
+// Verify invite token and get prefill data
+app.get("/api/volunteer/invite/:token/verify", handleVerifyInvite);
+
+// Submit application form (linked to invite)
+app.post("/api/volunteer/invite/:token/submit", handleSubmitApplication);
+
+// Check if email is approved volunteer
+app.get("/api/volunteer/check-approved", handleCheckApprovedStatus);
+
+// Activate volunteer when user signs up/logs in
+app.post("/api/volunteer/activate/:userId", requireStrictClerkSession, handleActivateVolunteer);
+
+// Admin: Approve application and assign role
+app.post("/api/admin/volunteer-application/:applicationId/approve", requireAdmin, handleApproveApplicationWithRole);
+
 app.post("/api/volunteer/onboarding", async (req, res) => {
   const {
     token,
@@ -11100,6 +11409,16 @@ server.listen(PORT, async () => {
     await initializeDatabase();
   } catch (error) {
     console.error("Database init error at server start (continuing):", error?.message || error);
+  }
+
+  // Seed RBAC system
+  try {
+    const dbReady = await isDatabaseAvailable();
+    if (dbReady) {
+      await seedRBAC();
+    }
+  } catch (error) {
+    console.error("RBAC seeding failed (continuing):", error?.message || error);
   }
 
   try {

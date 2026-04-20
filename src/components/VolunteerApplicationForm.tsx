@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mail, Phone, MapPin, HelpCircle, AlertCircle, CheckCircle, Loader, ChevronRight, ChevronLeft, Heart } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
+import { ViewState } from '../types';
 
 interface VolunteerApplicationFormProps {
   onSuccess?: () => void;
-  onNavigate?: (view: string) => void;
+  onNavigate?: (view: ViewState) => void;
   inviteEmail?: string;
+  inviteToken?: string;
 }
 
 // All 20 volunteer roles from documentation
@@ -37,7 +39,8 @@ const CATEGORIES = ['Creative', 'Tech', 'Community', 'Outreach', 'Support & Admi
 export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> = ({ 
   onSuccess,
   onNavigate,
-  inviteEmail
+  inviteEmail,
+  inviteToken
 }) => {
   const [currentPhase, setCurrentPhase] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -63,6 +66,40 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
     workPreference: '',
     notes: '',
   });
+
+  // Verify invite token on component load
+  useEffect(() => {
+    if (inviteToken) {
+      const verifyInvite = async () => {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/volunteer/invite/${inviteToken}/verify`);
+          const data = await response.json();
+          
+          if (!response.ok) {
+            const errorMessage = data.reason === 'already_used' 
+              ? 'This invite has already been used' 
+              : data.reason === 'already_approved'
+              ? 'This invitation has already been approved'
+              : data.reason === 'expired'
+              ? 'This invitation has expired'
+              : data.message || 'Invalid or expired invitation';
+            setError(errorMessage);
+            return;
+          }
+          
+          // Pre-fill email from verified invite
+          if (data.invite?.email) {
+            setFormData(prev => ({ ...prev, email: data.invite.email }));
+          }
+        } catch (err) {
+          setError('Failed to verify invitation. Please try again.');
+          console.error('Invite verification error:', err);
+        }
+      };
+      
+      verifyInvite();
+    }
+  }, [inviteToken]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -317,7 +354,12 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
 
       console.log('Submitting application with data:', submitPayload);
 
-      const response = await fetch(`${API_BASE_URL}/api/volunteer/apply`, {
+      // Use invite token endpoint if this is an invite application
+      const endpoint = inviteToken 
+        ? `${API_BASE_URL}/api/volunteer/invite/${inviteToken}/submit`
+        : `${API_BASE_URL}/api/volunteer/apply`;
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(submitPayload)
@@ -331,7 +373,12 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
 
       setSubmitted(true);
       setTimeout(() => {
-        if (onSuccess) onSuccess();
+        if (onSuccess) {
+          onSuccess();
+        } else if (inviteToken) {
+          // For invite submissions, redirect to login
+          window.location.href = '/login';
+        }
       }, 3000);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to submit application. Please try again.';
