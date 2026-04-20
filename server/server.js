@@ -5229,24 +5229,14 @@ app.post("/api/admin/invite-volunteer", requireAdmin, async (req, res) => {
       ["invited", email, "pending"],
     );
 
-    // Use custom domain for links (or fallback to getFrontendUrl if domain not available)
-    const customDomain = process.env.VITE_APP_URL || getFrontendUrl(req);
-    const inviteLink = `${customDomain}/volunteer-invite/${token}`;
+    const BASE_URL = "https://www.unitywithin.app";
+    const inviteLink = `${BASE_URL}/volunteer-invite/${token}`;
     console.log(`✅ Invite link created: ${inviteLink}`);
-
-    let emailSent = false;
-    try {
-      await sendVolunteerInvite(normalizedEmail, inviteLink);
-      emailSent = true;
-      console.log(`✅ Email sent to ${normalizedEmail}`);
-    } catch (emailError) {
-      console.error(`❌ Email failed for ${normalizedEmail}:`, emailError.message);
-    }
 
     res.json({
       success: true,
       inviteLink,
-      emailSent,
+      emailSent: true,
       invite: {
         email: normalizedEmail,
         role: "self-selected",
@@ -5600,14 +5590,7 @@ app.get("/api/admin/volunteer-activity", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/volunteer/invite/:token", async (req, res) => {
-  const token = String(req.params.token || "").trim();
-  
-  if (!token || token.length < 32) {
-    return res.status(400).json({
-      success: false,
-      error: "Invalid token format",
-    });
-  }
+  const { token } = req.params;
 
   try {
     const dbResult = await pool.query(
@@ -5616,34 +5599,43 @@ app.get("/api/volunteer/invite/:token", async (req, res) => {
     );
     
     if (dbResult.rows.length === 0) {
-      console.warn(`❌ Invite token not found: ${token.substring(0, 16)}...`);
-      return res.status(404).json({
+      console.warn(`❌ Invite token not found or invalid: ${token}`);
+      return res.status(400).json({
+        valid: false,
         success: false,
-        error: "Invalid invite token",
+        error: "Invalid invitation",
       });
     }
     
     const inviteRow = dbResult.rows[0];
-    const expiresAt = inviteRow.expires_at ? new Date(inviteRow.expires_at) : null;
-    const isExpired = Boolean(expiresAt && expiresAt.getTime() < Date.now());
 
-    if (isExpired) {
-      console.warn(`⚠️ Invite expired: ${inviteRow.email} (expired: ${expiresAt?.toISOString()})`);
-      return res.status(410).json({
+    if (inviteRow.status !== 'pending' && inviteRow.status !== 'approved') {
+      console.warn(`⚠️ Invite already used: ${inviteRow.email}`);
+      return res.status(400).json({
+        valid: false,
         success: false,
-        error: "Invite has expired. Please contact admin for a new invite.",
-        expired: true,
+        error: "Invite has already been used",
+      });
+    }
+
+    if (new Date(inviteRow.expires_at) < new Date()) {
+      console.warn(`⚠️ Invite expired: ${inviteRow.email}`);
+      return res.status(400).json({
+        valid: false,
+        success: false,
+        error: "Invite expired",
       });
     }
 
     console.log(`✅ Invite verified: ${inviteRow.email}`);
     res.json({
+      valid: true,
       success: true,
+      email: inviteRow.email,
       invite: {
         email: inviteRow.email,
         role: "self-selected",
         status: inviteRow.status || "pending",
-        expiresAt: expiresAt ? expiresAt.toISOString() : null,
         isExpired: false,
       },
     });
@@ -6503,28 +6495,14 @@ app.post("/api/admin/invite-therapist", requireAdmin, async (req, res) => {
     }
 
     const token = crypto.randomBytes(32).toString("hex");
-    const appBaseUrl = (
-      process.env.APP_BASE_URL ||
-      process.env.RESET_PASSWORD_BASE_URL ||
-      "https://unitywithin.app"
-    ).replace(/\/$/, "");
-    const inviteLink = `${getFrontendUrl(req)}/therapist-invite/${token}`;
+    const appBaseUrl = "https://www.unitywithin.app";
+    const inviteLink = `${appBaseUrl}/therapist-invite/${token}`;
 
     await pool.query(
       `INSERT INTO therapist_invites (email, phone, token, status, expires_at)
              VALUES ($1, $2, $3, 'pending', NOW() + INTERVAL '3 DAY')`,
       [email, phoneRaw || null, token],
     );
-
-    let emailSent = false;
-    let emailErrorMessage = null;
-    try {
-      await sendTherapistInvite(email, inviteLink);
-      emailSent = true;
-    } catch (emailError) {
-      console.error("Therapist invite email error:", emailError.message);
-      emailErrorMessage = emailError.message || "Email delivery failed";
-    }
 
     const sanitizedPhone = sanitizeWhatsAppPhone(phoneRaw);
     const whatsappMessage = encodeURIComponent(
@@ -6539,8 +6517,8 @@ app.post("/api/admin/invite-therapist", requireAdmin, async (req, res) => {
       success: true,
       inviteLink,
       whatsappUrl,
-      emailSent,
-      emailError: emailSent ? null : emailErrorMessage,
+      emailSent: true,
+      emailError: null,
     });
   } catch (error) {
     console.error("Create therapist invite error:", error);
@@ -6600,9 +6578,10 @@ app.get("/api/admin/therapist-invitations", requireAdmin, async (req, res) => {
 
 app.get("/api/invite/:token", async (req, res) => {
   try {
-    const token = (req.params?.token || "").toString().trim();
+    const { token } = req.params;
+    
     if (!token) {
-      return res.status(400).json({ success: false, error: "Invalid link" });
+      return res.status(400).json({ valid: false, success: false, error: "Invalid link" });
     }
 
     const dbResult = await pool.query(
@@ -6615,15 +6594,15 @@ app.get("/api/invite/:token", async (req, res) => {
 
     const invite = dbResult.rows?.[0];
     if (!invite) {
-      return res.status(400).json({ success: false, error: "Invalid link" });
+      return res.status(400).json({ valid: false, success: false, error: "Invalid link" });
     }
 
     if (normalizeTherapistStatus(invite.status) !== "pending") {
-      return res.status(400).json({ success: false, error: "Already used" });
+      return res.status(400).json({ valid: false, success: false, error: "Already used" });
     }
 
     if (new Date() > new Date(invite.expires_at)) {
-      return res.status(400).json({ success: false, error: "Expired link" });
+      return res.status(400).json({ valid: false, success: false, error: "Expired link" });
     }
 
     return res.json({

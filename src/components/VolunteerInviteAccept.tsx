@@ -33,7 +33,7 @@ export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ in
   const fetchInvite = async () => {
     try {
       setLoading(true);
-      if (!inviteToken || inviteToken.length < 32) {
+      if (!inviteToken) {
         setError('Invalid token format. Please check the link and try again.');
         setLoading(false);
         return;
