@@ -68,8 +68,8 @@ const ROLE_CONFIGS: Record<string, RoleConfig> = {
     id: 'listener',
     title: 'Community Listener',
     icon: <HeadphonesMic size={24} />,
-    color: 'text-purple-600',
-    bgGradient: 'from-purple-600 to-pink-600',
+    color: 'text-black',
+    bgGradient: 'bg-pink-600',
     features: [
       'One-on-one listening sessions',
       'Active listening practice',
@@ -87,8 +87,8 @@ const ROLE_CONFIGS: Record<string, RoleConfig> = {
     id: 'advocate',
     title: 'Mental Health Advocate',
     icon: <Zap size={24} />,
-    color: 'text-amber-600',
-    bgGradient: 'from-amber-500 to-orange-600',
+    color: 'text-white',
+    bgGradient: 'bg-black',
     features: [
       'Social media advocacy',
       'Community outreach',
@@ -106,8 +106,8 @@ const ROLE_CONFIGS: Record<string, RoleConfig> = {
     id: 'ambassador',
     title: 'Outreach Ambassador',
     icon: <Globe size={24} />,
-    color: 'text-green-600',
-    bgGradient: 'from-green-600 to-teal-600',
+    color: 'text-pink-600',
+    bgGradient: 'bg-white border-2 border-pink-600',
     features: [
       'School partnerships',
       'Campus outreach',
@@ -125,8 +125,8 @@ const ROLE_CONFIGS: Record<string, RoleConfig> = {
     id: 'content',
     title: 'Content & Story Volunteer',
     icon: <Palette size={24} />,
-    color: 'text-pink-600',
-    bgGradient: 'from-pink-500 to-rose-600',
+    color: 'text-black',
+    bgGradient: 'bg-pink-600',
     features: [
       'Social media content',
       'Blog writing',
@@ -144,8 +144,8 @@ const ROLE_CONFIGS: Record<string, RoleConfig> = {
     id: 'wellness',
     title: 'Wellness Program Support',
     icon: <Activity size={24} />,
-    color: 'text-blue-600',
-    bgGradient: 'from-blue-500 to-cyan-600',
+    color: 'text-white',
+    bgGradient: 'bg-black',
     features: [
       'Event facilitation',
       'Workshop support',
@@ -163,8 +163,8 @@ const ROLE_CONFIGS: Record<string, RoleConfig> = {
     id: 'tech',
     title: 'Tech Support Volunteer',
     icon: <Shield size={24} />,
-    color: 'text-indigo-600',
-    bgGradient: 'from-indigo-500 to-purple-600',
+    color: 'text-pink-600',
+    bgGradient: 'bg-white border-2 border-pink-600',
     features: [
       'User support tickets',
       'Platform assistance',
@@ -368,9 +368,9 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
 
   if (loading && !profile) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-[#f8f9fa] to-[#fff5f7] flex items-center justify-center p-6">
+      <div className="min-h-screen bg-white flex items-center justify-center p-6">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="w-16 h-16 border-4 border-pink-200 border-t-pink-600 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600">Loading your portal...</p>
         </div>
       </div>
@@ -378,7 +378,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#f8f9fa] to-[#fff5f7]">
+    <div className="min-h-screen bg-white">
       {/* Header with Role-Based Styling */}
       <header className={`bg-gradient-to-r ${roleConfig.bgGradient} text-white p-6 md:p-8`}>
         <div className="max-w-7xl mx-auto">
@@ -417,9 +417,9 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
       <div className="max-w-7xl mx-auto p-6 md:p-8">
         {/* Welcome Announcement - Shows when volunteer is newly approved */}
         {showWelcome && (
-          <div className="bg-gradient-to-r from-pink-50 to-purple-50 border-2 border-pink-200 rounded-2xl p-8 mb-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-pink-200 rounded-full opacity-10 -mr-16 -mt-16"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-purple-200 rounded-full opacity-10 -ml-12 -mb-12"></div>
+          <div className="bg-white border-2 border-pink-600 rounded-2xl p-8 mb-8 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-pink-100 rounded-full opacity-20 -mr-16 -mt-16"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-pink-100 rounded-full opacity-20 -ml-12 -mb-12"></div>
             
             <div className="relative z-10">
               <div className="flex items-start justify-between mb-4">
@@ -471,7 +471,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
         )}
 
         {/* Permission Status Card */}
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 mb-8 border-2 border-blue-200">
+        <div className="bg-pink-50 rounded-2xl p-6 mb-8 border-2 border-pink-600">
           <div className="flex items-start gap-4">
             <div className="text-3xl">✨</div>
             <div className="flex-1">
@@ -483,16 +483,16 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
               {/* Role-Specific Permissions Summary */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {(user?.volunteerRoles || []).map((role) => (
-                  <div key={role} className="bg-white rounded-lg p-3 border-l-4 border-blue-600">
+                  <div key={role} className="bg-white rounded-lg p-3 border-l-4 border-pink-600">
                     <p className="font-bold text-gray-900 text-sm">{role}</p>
                     <div className="flex flex-wrap gap-2 mt-2">
                       {(PERMISSIONS[role] || []).slice(0, 3).map((perm) => (
-                        <span key={perm} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-semibold">
+                        <span key={perm} className="text-xs bg-pink-100 text-pink-700 px-2 py-1 rounded font-semibold">
                           ✓ {perm.replace('-', ' ')}
                         </span>
                       ))}
                       {(PERMISSIONS[role] || []).length > 3 && (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-semibold">
+                        <span className="text-xs bg-pink-100 text-pink-700 px-2 py-1 rounded font-semibold">
                           +{(PERMISSIONS[role] || []).length - 3} more
                         </span>
                       )}
@@ -501,7 +501,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
                 ))}
               </div>
 
-              <div className="mt-3 p-3 bg-white rounded-lg border-l-4 border-green-600">
+              <div className="mt-3 p-3 bg-white rounded-lg border-l-4 border-pink-600">
                 <p className="text-xs text-gray-600">
                   <span className="font-bold">Tip:</span> Complete advanced training modules to unlock additional permissions and advance your role.
                 </p>
@@ -517,7 +517,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
               <h2 className="text-2xl font-bold text-gray-900">{categoryConfig.title}</h2>
               <p className="text-gray-600">{categoryConfig.description}</p>
             </div>
-            <span className="px-3 py-2 bg-purple-50 text-purple-700 rounded-lg text-sm font-semibold">
+            <span className="px-3 py-2 bg-pink-100 text-pink-700 rounded-lg text-sm font-semibold">
               Category: {roleCategory}
             </span>
           </div>
@@ -545,7 +545,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
                   onClick={() => hasPermission('voice-call') && handleStartSupportCall('voice')}
                   className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition-all ${
                     hasPermission('voice-call')
-                      ? 'bg-purple-600 text-white hover:bg-purple-700 cursor-pointer'
+                      ? 'bg-black text-white hover:bg-gray-800 cursor-pointer'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
                   }`}
                   title={!hasPermission('voice-call') ? 'Voice calls not available for your role' : ''}
@@ -571,14 +571,14 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
               </div>
             </div>
             {supportLink && hasPermission('voice-call') && hasPermission('video-call') && (
-              <div className="mt-4 bg-purple-50 rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="mt-4 bg-pink-50 rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-purple-800">Share this link with the client</p>
-                  <p className="text-xs text-purple-600 break-all">{supportLink}</p>
+                  <p className="text-sm font-semibold text-pink-800">Share this link with the client</p>
+                  <p className="text-xs text-pink-600 break-all">{supportLink}</p>
                 </div>
                 <button
                   onClick={handleCopySupportLink}
-                  className="px-3 py-2 bg-purple-200 text-purple-800 rounded-lg text-sm font-semibold flex items-center gap-2"
+                  className="px-3 py-2 bg-pink-200 text-pink-800 rounded-lg text-sm font-semibold flex items-center gap-2"
                 >
                   <Copy size={14} />
                   Copy Link
@@ -641,13 +641,13 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-2xl p-6 shadow-md border-l-4 border-purple-600">
+          <div className="bg-white rounded-2xl p-6 shadow-md border-l-4 border-pink-600">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-600 text-sm font-semibold">Hours</p>
                 <p className="text-3xl font-bold text-gray-900">{stats.hoursContributed}</p>
               </div>
-              <Clock size={40} className="text-purple-600 opacity-20" />
+              <Clock size={40} className="text-pink-600 opacity-20" />
             </div>
           </div>
 
@@ -661,23 +661,23 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl p-6 shadow-md border-l-4 border-blue-600">
+          <div className="bg-white rounded-2xl p-6 shadow-md border-l-4 border-pink-600">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-600 text-sm font-semibold">Sessions</p>
                 <p className="text-3xl font-bold text-gray-900">{stats.sessionsCompleted}</p>
               </div>
-              <MessageCircle size={40} className="text-blue-600 opacity-20" />
+              <MessageCircle size={40} className="text-pink-600 opacity-20" />
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl p-6 shadow-md border-l-4 border-green-600">
+          <div className="bg-white rounded-2xl p-6 shadow-md border-l-4 border-black">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-600 text-sm font-semibold">Impact</p>
                 <p className="text-3xl font-bold text-gray-900">{stats.impactScore}</p>
               </div>
-              <Award size={40} className="text-green-600 opacity-20" />
+              <Award size={40} className="text-black opacity-20" />
             </div>
           </div>
         </div>
@@ -695,7 +695,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
                 style={{ 
-                  borderColor: activeTab === tab ? roleConfig.color.includes('purple') ? '#9333ea' : roleConfig.color.includes('amber') ? '#d97706' : roleConfig.color.includes('green') ? '#16a34a' : roleConfig.color.includes('pink') ? '#db2777' : roleConfig.color.includes('blue') ? '#2563eb' : '#4f46e5' : 'transparent'
+                  borderColor: activeTab === tab ? (roleConfig.color.includes('pink') ? '#ec4899' : roleConfig.color.includes('white') ? '#000000' : '#000000') : 'transparent'
                 }}
               >
                 {tab === 'my-role' ? 'My Role' : tab}
@@ -709,15 +709,15 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
               <div className="space-y-8">
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Activity</h2>
-                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-6">
+                  <div className="bg-pink-50 rounded-xl p-6">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-bold text-gray-900">This Week</h3>
-                      <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
+                      <span className="px-3 py-1 bg-pink-100 text-pink-800 rounded-full text-sm font-semibold">
                         On Track
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
-                      <div className="bg-gradient-to-r from-purple-600 to-pink-600 h-3 rounded-full" style={{ width: '65%' }} />
+                      <div className="bg-pink-600 h-3 rounded-full" style={{ width: '65%' }} />
                     </div>
                     <p className="text-gray-600 text-sm">3.5 of 5 hours completed</p>
                   </div>
@@ -727,7 +727,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
                   <h2 className="text-2xl font-bold text-gray-900 mb-6">Upcoming</h2>
                   <div className="space-y-4">
                     <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
-                      <Calendar size={20} className="text-purple-600" />
+                      <Calendar size={20} className="text-pink-600" />
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">Weekly Team Sync</p>
                         <p className="text-sm text-gray-600">Tomorrow, 3:00 PM</p>
@@ -735,7 +735,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
                       <ChevronRight size={20} className="text-gray-400" />
                     </div>
                     <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
-                      <Video size={20} className="text-purple-600" />
+                      <Video size={20} className="text-pink-600" />
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">Training Session</p>
                         <p className="text-sm text-gray-600">Friday, 2:00 PM</p>
@@ -750,7 +750,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
             {/* My Role Tab */}
             {activeTab === 'my-role' && (
               <div className="space-y-8">
-                <div className={`bg-gradient-to-r ${roleConfig.bgGradient} rounded-2xl p-8 text-white`}>
+                <div className={`${roleConfig.bgGradient} rounded-2xl p-8 ${roleConfig.bgGradient.includes('bg-white') ? 'text-black' : 'text-white'}`}>
                   <div className="flex items-center gap-4 mb-4">
                     {roleConfig.icon}
                     <h3 className="text-2xl font-bold">{roleConfig.title}</h3>
@@ -787,35 +787,35 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Training</h2>
                 
                 <div className="space-y-4">
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-6 border-l-4 border-green-600">
+                  <div className="bg-white rounded-xl p-6 border-l-4 border-black">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                          <CheckCircle size={24} className="text-green-600" />
+                        <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center">
+                          <CheckCircle size={24} className="text-white" />
                         </div>
                         <div>
                           <h4 className="font-bold text-gray-900">Introduction to Unity Within</h4>
                           <p className="text-sm text-gray-600">Completed • 2 hours</p>
                         </div>
                       </div>
-                      <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
+                      <span className="px-3 py-1 bg-black text-white rounded-full text-sm font-semibold">
                         Completed
                       </span>
                     </div>
                   </div>
 
-                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-6 border-l-4 border-purple-600">
+                  <div className="bg-pink-50 rounded-xl p-6 border-l-4 border-pink-600">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                          <Play size={24} className="text-purple-600" />
+                        <div className="w-12 h-12 bg-pink-600 rounded-xl flex items-center justify-center">
+                          <Play size={24} className="text-white" />
                         </div>
                         <div>
                           <h4 className="font-bold text-gray-900">Active Listening Fundamentals</h4>
                           <p className="text-sm text-gray-600">45 minutes remaining</p>
                         </div>
                       </div>
-                      <button className="px-4 py-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition-colors">
+                      <button className="px-4 py-2 bg-pink-600 text-white font-bold rounded-lg hover:bg-pink-700 transition-colors">
                         Continue
                       </button>
                     </div>
@@ -847,46 +847,46 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Community</h2>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-gradient-to-br from-purple-100 to-pink-100 rounded-xl p-6">
+                  <div className="bg-white rounded-xl p-6 border-2 border-pink-600">
                     <div className="flex items-center gap-3 mb-4">
-                      <Users size={24} className="text-purple-600" />
+                      <Users size={24} className="text-pink-600" />
                       <h4 className="font-bold text-gray-900">Volunteer Network</h4>
                     </div>
                     <p className="text-gray-600 text-sm mb-4">Connect with 50+ volunteers across Kenya</p>
-                    <button className="w-full py-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition-colors">
+                    <button className="w-full py-2 bg-pink-600 text-white font-bold rounded-lg hover:bg-pink-700 transition-colors">
                       View Directory
                     </button>
                   </div>
 
-                  <div className="bg-gradient-to-br from-blue-100 to-cyan-100 rounded-xl p-6">
+                  <div className="bg-black rounded-xl p-6">
                     <div className="flex items-center gap-3 mb-4">
-                      <MessageCircle size={24} className="text-blue-600" />
-                      <h4 className="font-bold text-gray-900">Volunteer Chat</h4>
+                      <MessageCircle size={24} className="text-white" />
+                      <h4 className="font-bold text-white">Volunteer Chat</h4>
                     </div>
-                    <p className="text-gray-600 text-sm mb-4">Join the discussion</p>
-                    <button className="w-full py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors">
+                    <p className="text-white text-sm mb-4">Join the discussion</p>
+                    <button className="w-full py-2 bg-white text-black font-bold rounded-lg hover:bg-gray-100 transition-colors">
                       Open Chat
                     </button>
                   </div>
 
-                  <div className="bg-gradient-to-br from-green-100 to-teal-100 rounded-xl p-6">
+                  <div className="bg-white rounded-xl p-6 border-2 border-pink-600">
                     <div className="flex items-center gap-3 mb-4">
-                      <Star size={24} className="text-green-600" />
+                      <Star size={24} className="text-pink-600" />
                       <h4 className="font-bold text-gray-900">Success Stories</h4>
                     </div>
                     <p className="text-gray-600 text-sm mb-4">Share your impact</p>
-                    <button className="w-full py-2 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition-colors">
+                    <button className="w-full py-2 bg-pink-600 text-white font-bold rounded-lg hover:bg-pink-700 transition-colors">
                       Share Story
                     </button>
                   </div>
 
-                  <div className="bg-gradient-to-br from-amber-100 to-orange-100 rounded-xl p-6">
+                  <div className="bg-black rounded-xl p-6">
                     <div className="flex items-center gap-3 mb-4">
-                      <Award size={24} className="text-amber-600" />
-                      <h4 className="font-bold text-gray-900">Leaderboard</h4>
+                      <Award size={24} className="text-white" />
+                      <h4 className="font-bold text-white">Leaderboard</h4>
                     </div>
-                    <p className="text-gray-600 text-sm mb-4">See top volunteers</p>
-                    <button className="w-full py-2 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 transition-colors">
+                    <p className="text-white text-sm mb-4">See top volunteers</p>
+                    <button className="w-full py-2 bg-white text-black font-bold rounded-lg hover:bg-gray-100 transition-colors">
                       View Rankings
                     </button>
                   </div>

@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { Check, X, Eye, ChevronDown } from 'lucide-react';
+import { API_BASE_URL } from '../constants';
 import { getVolunteerDashboardData } from '../services/volunteerService';
 
 interface AdminVolunteerPortalProps {
@@ -16,6 +18,25 @@ interface DashboardData {
   first_name: string;
   email: string;
   role_title: string;
+}
+
+interface VolunteerApplication {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+  location: string;
+  availability: string;
+  category: string;
+  roles: string[];
+  skills?: string;
+  why_volunteer: string;
+  mental_health_context?: string;
+  work_preference: string;
+  notes?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
 }
 
 interface AdminTask {
@@ -99,15 +120,28 @@ export const AdminVolunteerPortal: React.FC<AdminVolunteerPortalProps> = ({
   userName = 'Admin Volunteer'
 }) => {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [activeTab, setActiveTab] = useState<'tasks' | 'volunteers' | 'reports'>('tasks');
+  const [activeTab, setActiveTab] = useState<'applications' | 'tasks' | 'volunteers' | 'reports'>('applications');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [applications, setApplications] = useState<VolunteerApplication[]>([]);
+  const [applicationsLoading, setApplicationsLoading] = useState(false);
+  const [applicationsError, setApplicationsError] = useState('');
+  const [applicationFilter, setApplicationFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [selectedApplication, setSelectedApplication] = useState<VolunteerApplication | null>(null);
+  const [showApplicationDetails, setShowApplicationDetails] = useState(false);
 
   useEffect(() => {
     if (userEmail) {
       loadDashboardData();
+      loadApplications();
     }
   }, [userEmail]);
+
+  useEffect(() => {
+    if (activeTab === 'applications') {
+      loadApplications();
+    }
+  }, [applicationFilter]);
 
   const loadDashboardData = async () => {
     try {
@@ -119,6 +153,61 @@ export const AdminVolunteerPortal: React.FC<AdminVolunteerPortalProps> = ({
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadApplications = async () => {
+    try {
+      setApplicationsLoading(true);
+      const url = new URL(`${API_BASE_URL}/api/admin/volunteer-applications`);
+      if (applicationFilter !== 'all') {
+        url.searchParams.set('status', applicationFilter);
+      }
+      
+      const response = await fetch(url.toString());
+      if (!response.ok) throw new Error('Failed to load applications');
+      
+      const data = await response.json();
+      setApplications(data.data || []);
+      setApplicationsError('');
+    } catch (err) {
+      setApplicationsError(err instanceof Error ? err.message : 'Failed to load applications');
+      setApplications([]);
+    } finally {
+      setApplicationsLoading(false);
+    }
+  };
+
+  const handleApplicationDecision = async (applicationId: number, decision: 'approved' | 'rejected') => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/admin/volunteer-applications/${applicationId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: decision })
+        }
+      );
+
+      if (!response.ok) throw new Error(`Failed to ${decision} application`);
+
+      // Update the application in the local state
+      setApplications(prev =>
+        prev.map(app =>
+          app.id === applicationId ? { ...app, status: decision } : app
+        )
+      );
+
+      if (selectedApplication?.id === applicationId) {
+        setSelectedApplication({ ...selectedApplication, status: decision });
+      }
+
+      // Show success message and refresh
+      setTimeout(() => {
+        loadApplications();
+      }, 500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update application');
     }
   };
 
@@ -188,10 +277,20 @@ export const AdminVolunteerPortal: React.FC<AdminVolunteerPortalProps> = ({
       <div className="bg-white rounded-lg shadow mb-6 border border-purple-200">
         <div className="flex border-b border-purple-200 flex-wrap">
           <button
+            onClick={() => setActiveTab('applications')}
+            className={`flex-1 py-4 px-6 font-semibold transition ${
+              activeTab === 'applications'
+                ? 'text-pink-600 border-b-2 border-pink-600'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            📋 Applications ({applications.filter(a => a.status === 'pending').length})
+          </button>
+          <button
             onClick={() => setActiveTab('tasks')}
             className={`flex-1 py-4 px-6 font-semibold transition ${
               activeTab === 'tasks'
-                ? 'text-purple-600 border-b-2 border-purple-600'
+                ? 'text-pink-600 border-b-2 border-pink-600'
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
@@ -201,7 +300,7 @@ export const AdminVolunteerPortal: React.FC<AdminVolunteerPortalProps> = ({
             onClick={() => setActiveTab('volunteers')}
             className={`flex-1 py-4 px-6 font-semibold transition ${
               activeTab === 'volunteers'
-                ? 'text-purple-600 border-b-2 border-purple-600'
+                ? 'text-pink-600 border-b-2 border-pink-600'
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
@@ -211,7 +310,7 @@ export const AdminVolunteerPortal: React.FC<AdminVolunteerPortalProps> = ({
             onClick={() => setActiveTab('reports')}
             className={`flex-1 py-4 px-6 font-semibold transition ${
               activeTab === 'reports'
-                ? 'text-purple-600 border-b-2 border-purple-600'
+                ? 'text-pink-600 border-b-2 border-pink-600'
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
@@ -221,6 +320,344 @@ export const AdminVolunteerPortal: React.FC<AdminVolunteerPortalProps> = ({
 
         {/* Tab Content */}
         <div className="p-6">
+          {activeTab === 'applications' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-800 mb-4">📋 Volunteer Applications</h3>
+                {applicationsError && (
+                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-4">
+                    <p className="text-red-700">{applicationsError}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Filter Buttons */}
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => setApplicationFilter('all')}
+                  className={`px-4 py-2 rounded-lg font-semibold transition ${
+                    applicationFilter === 'all'
+                      ? 'bg-pink-600 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  All ({applications.length})
+                </button>
+                <button
+                  onClick={() => setApplicationFilter('pending')}
+                  className={`px-4 py-2 rounded-lg font-semibold transition ${
+                    applicationFilter === 'pending'
+                      ? 'bg-yellow-600 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Pending ({applications.filter(a => a.status === 'pending').length})
+                </button>
+                <button
+                  onClick={() => setApplicationFilter('approved')}
+                  className={`px-4 py-2 rounded-lg font-semibold transition ${
+                    applicationFilter === 'approved'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Approved ({applications.filter(a => a.status === 'approved').length})
+                </button>
+                <button
+                  onClick={() => setApplicationFilter('rejected')}
+                  className={`px-4 py-2 rounded-lg font-semibold transition ${
+                    applicationFilter === 'rejected'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Rejected ({applications.filter(a => a.status === 'rejected').length})
+                </button>
+              </div>
+
+              {/* Applications List */}
+              {applicationsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <div className="w-12 h-12 border-4 border-pink-200 border-t-pink-600 rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading applications...</p>
+                  </div>
+                </div>
+              ) : applications.length === 0 ? (
+                <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
+                  <p className="text-gray-600 text-lg">No applications found</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {applications.map((app) => (
+                    <div
+                      key={app.id}
+                      className="bg-white rounded-lg border-2 border-gray-200 hover:border-pink-300 hover:shadow-lg transition p-6"
+                    >
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h4 className="text-xl font-bold text-gray-800">
+                            {app.first_name} {app.last_name}
+                          </h4>
+                          <p className="text-gray-600">{app.email}</p>
+                          <p className="text-sm text-gray-500">{app.location}</p>
+                        </div>
+                        <div className="text-right">
+                          <span
+                            className={`inline-block px-4 py-2 rounded-lg font-semibold text-sm ${
+                              app.status === 'pending'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : app.status === 'approved'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}
+                          >
+                            {app.status === 'pending'
+                              ? '⏳ Pending'
+                              : app.status === 'approved'
+                              ? '✓ Approved'
+                              : '✕ Rejected'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Application Details Preview */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 text-sm">
+                        <div className="bg-gray-50 rounded p-2">
+                          <p className="text-gray-600 text-xs font-semibold">Category</p>
+                          <p className="text-gray-800 font-bold">{app.category}</p>
+                        </div>
+                        <div className="bg-gray-50 rounded p-2">
+                          <p className="text-gray-600 text-xs font-semibold">Availability</p>
+                          <p className="text-gray-800 font-bold">{app.availability}</p>
+                        </div>
+                        <div className="bg-gray-50 rounded p-2">
+                          <p className="text-gray-600 text-xs font-semibold">Phone</p>
+                          <p className="text-gray-800 font-bold">{app.phone || 'Not provided'}</p>
+                        </div>
+                        <div className="bg-gray-50 rounded p-2">
+                          <p className="text-gray-600 text-xs font-semibold">Applied</p>
+                          <p className="text-gray-800 font-bold">{new Date(app.created_at).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+
+                      {/* Roles */}
+                      <div className="mb-4">
+                        <p className="text-sm font-semibold text-gray-600 mb-2">Interested Roles:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {Array.isArray(app.roles) && app.roles.map((role, idx) => (
+                            <span key={idx} className="bg-pink-100 text-pink-800 px-3 py-1 rounded-full text-sm font-semibold">
+                              {role}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Why Volunteer */}
+                      <div className="mb-4 bg-gray-50 rounded-lg p-3 border-l-4 border-pink-600">
+                        <p className="text-sm font-semibold text-gray-600 mb-1">Why Volunteer:</p>
+                        <p className="text-gray-800 text-sm">{app.why_volunteer}</p>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-3 flex-wrap">
+                        <button
+                          onClick={() => {
+                            setSelectedApplication(app);
+                            setShowApplicationDetails(true);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition"
+                        >
+                          <Eye size={16} />
+                          View Details
+                        </button>
+                        {app.status === 'pending' && (
+                          <>
+                            <button
+                              onClick={() => handleApplicationDecision(app.id, 'approved')}
+                              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition"
+                            >
+                              <Check size={16} />
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleApplicationDecision(app.id, 'rejected')}
+                              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition"
+                            >
+                              <X size={16} />
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Application Details Modal */}
+          {showApplicationDetails && selectedApplication && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                {/* Modal Header */}
+                <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-800">
+                      {selectedApplication.first_name} {selectedApplication.last_name}
+                    </h3>
+                    <p className="text-gray-600">{selectedApplication.email}</p>
+                  </div>
+                  <button
+                    onClick={() => setShowApplicationDetails(false)}
+                    className="text-gray-600 hover:text-gray-800 text-2xl"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                {/* Modal Content */}
+                <div className="p-6 space-y-6">
+                  {/* Status Badge */}
+                  <div>
+                    <h4 className="font-semibold text-gray-700 mb-2">Status</h4>
+                    <span
+                      className={`inline-block px-4 py-2 rounded-lg font-semibold text-sm ${
+                        selectedApplication.status === 'pending'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : selectedApplication.status === 'approved'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {selectedApplication.status === 'pending'
+                        ? '⏳ Pending Review'
+                        : selectedApplication.status === 'approved'
+                        ? '✓ Approved'
+                        : '✕ Rejected'}
+                    </span>
+                  </div>
+
+                  {/* Personal Details */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-1 text-sm">Email</h4>
+                      <p className="text-gray-800">{selectedApplication.email}</p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-1 text-sm">Phone</h4>
+                      <p className="text-gray-800">{selectedApplication.phone || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-1 text-sm">Location</h4>
+                      <p className="text-gray-800">{selectedApplication.location}</p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-1 text-sm">Category</h4>
+                      <p className="text-gray-800">{selectedApplication.category}</p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-1 text-sm">Availability</h4>
+                      <p className="text-gray-800">{selectedApplication.availability}</p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-1 text-sm">Work Preference</h4>
+                      <p className="text-gray-800">{selectedApplication.work_preference}</p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-1 text-sm">Applied On</h4>
+                      <p className="text-gray-800">{new Date(selectedApplication.created_at).toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  {/* Roles */}
+                  <div>
+                    <h4 className="font-semibold text-gray-700 mb-2">Interested Roles</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {Array.isArray(selectedApplication.roles) && selectedApplication.roles.map((role, idx) => (
+                        <span key={idx} className="bg-pink-100 text-pink-800 px-3 py-1 rounded-full text-sm font-semibold">
+                          {role}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Why Volunteer */}
+                  <div>
+                    <h4 className="font-semibold text-gray-700 mb-2">Why They Want to Volunteer</h4>
+                    <div className="bg-gray-50 rounded-lg p-4 border-l-4 border-pink-600">
+                      <p className="text-gray-800">{selectedApplication.why_volunteer}</p>
+                    </div>
+                  </div>
+
+                  {/* Skills */}
+                  {selectedApplication.skills && (
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-2">Skills</h4>
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <p className="text-gray-800">{selectedApplication.skills}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mental Health Context */}
+                  {selectedApplication.mental_health_context && (
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-2">Mental Health Context</h4>
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <p className="text-gray-800">{selectedApplication.mental_health_context}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  {selectedApplication.notes && (
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-2">Additional Notes</h4>
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <p className="text-gray-800">{selectedApplication.notes}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3 flex-wrap pt-4 border-t border-gray-200">
+                    {selectedApplication.status === 'pending' && (
+                      <>
+                        <button
+                          onClick={() => {
+                            handleApplicationDecision(selectedApplication.id, 'approved');
+                            setShowApplicationDetails(false);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition flex-1"
+                        >
+                          <Check size={16} />
+                          Approve Application
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleApplicationDecision(selectedApplication.id, 'rejected');
+                            setShowApplicationDetails(false);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition flex-1"
+                        >
+                          <X size={16} />
+                          Reject Application
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={() => setShowApplicationDetails(false)}
+                      className="flex items-center gap-2 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg font-semibold transition flex-1"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {activeTab === 'tasks' && (
             <div className="space-y-4">
               <h3 className="text-2xl font-bold text-gray-800 mb-4">Administrative Tasks</h3>
