@@ -5949,10 +5949,10 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
     const resolvedMentalHealth = application.mental_health_context || null;
     const resolvedMotivation = application.why_volunteer || null;
 
-    // Validate token again
+    // Validate token again - allow reuse for pending, approved, or previously submitted invites
     const invites = await query(
-      "SELECT id FROM volunteer_invites WHERE token = $1 AND status IN ($2, $3)",
-      [token, "pending", "approved"],
+      "SELECT id FROM volunteer_invites WHERE token = $1 AND status IN ($2, $3, $4)",
+      [token, "pending", "approved", "submitted"],
     );
     if (invites.length === 0)
       return res.status(400).json({ success: false, error: "Invalid token" });
