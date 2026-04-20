@@ -676,7 +676,7 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
                               )}
                             </button>
                             <button
-                              onClick={() => handleDeleteVolunteer({ id: Number(volunteer.id), email: volunteer.email })}
+                              onClick={() => handleDeleteVolunteer({ id: Number(volunteer.id), email: volunteer.email, status: volunteer.status })}
                               className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-sm font-semibold hover:bg-red-200 transition-colors flex items-center gap-1"
                               title="Delete volunteer"
                             >
