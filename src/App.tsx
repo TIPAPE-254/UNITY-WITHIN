@@ -17,10 +17,11 @@ import { VolunteerPortal } from './components/VolunteerPortal';
 import { VolunteerInviteAccept } from './components/VolunteerInviteAccept';
 import { AnalyticsTracker } from './components/AnalyticsTracker';
 import { usePushNotifications } from './hooks/usePushNotifications';
-import { Heart } from 'lucide-react';
+import { Heart, Menu, X } from 'lucide-react';
 
 export default function App() {
   const { register: requestPushPermission } = usePushNotifications();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Load user from localStorage
   const [user, setUser] = useState<User | null>(() => {
@@ -176,14 +177,83 @@ export default function App() {
         {/* Mobile Header - Hidden on landing, login, signup, and volunteer-invite pages */}
         {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && (
           <div className="md:hidden flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2 text-pink-600">
+            {/* Hamburger Menu */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 text-gray-600 hover:text-pink-600 transition-colors"
+            >
+              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+
+            {/* Centered Logo */}
+            <div className="flex-1 flex items-center justify-center gap-2 text-pink-600">
               <Heart className="fill-current" size={24} />
-              <span className="font-extrabold text-lg text-gray-900">UNITY</span>
+              <span className="font-extrabold text-lg text-gray-900">UNITY <span className="text-pink-500">WITHIN</span></span>
             </div>
+
+            {/* User Avatar */}
             <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-pink-600 text-xs font-bold">
               {user?.firstName?.charAt(0).toUpperCase() || 'U'}
             </div>
           </div>
+        )}
+
+        {/* Mobile Menu Drawer */}
+        {mobileMenuOpen && currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && (
+          <>
+            {/* Backdrop */}
+            <div 
+              className="fixed inset-0 bg-black/20 md:hidden z-40"
+              onClick={() => setMobileMenuOpen(false)}
+            ></div>
+            
+            {/* Drawer */}
+            <div className="fixed left-0 top-0 h-full w-64 bg-white border-r border-pink-100 z-50 p-6 overflow-y-auto">
+              <div className="flex items-center justify-between mb-10">
+                <div className="flex items-center gap-2 text-pink-600">
+                  <Heart className="fill-current" size={28} />
+                  <h1 className="text-xl font-extrabold tracking-tight text-gray-900">UNITY <span className="text-pink-500">WITHIN</span></h1>
+                </div>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <nav className="space-y-2">
+                {NAVIGATION_ITEMS.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setCurrentView(item.id);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 font-medium ${currentView === item.id
+                      ? 'bg-pink-50 text-pink-600 shadow-sm'
+                      : 'text-gray-500 hover:bg-gray-50 hover:text-pink-500'
+                      }`}
+                  >
+                    <item.icon size={20} className={currentView === item.id ? 'stroke-[2.5px]' : 'stroke-2'} />
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="mt-6 pt-6 border-t border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-600 font-bold">
+                    {user?.firstName?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <div className="text-sm">
+                    <p className="font-bold text-gray-900">{user?.firstName || 'User Account'}</p>
+                    <p className="text-gray-400 text-xs">you matter!</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
         )}
 
         {renderContent()}
