@@ -8,7 +8,10 @@ import {
   copyInviteLink,
   getAdminVolunteers,
   getVolunteerActivity,
-  deleteVolunteer
+  deleteVolunteer,
+  deleteInvite,
+  approveInviteSubmission,
+  rejectInviteSubmission
 } from '../services/volunteerService';
 
 interface VolunteerInvite {
@@ -48,6 +51,7 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
   const [activityVolunteer, setActivityVolunteer] = useState<AdminVolunteer | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityData, setActivityData] = useState<any>(null);
+  const [selectedInviteLink, setSelectedInviteLink] = useState<VolunteerInvite | null>(null);
 
   // Form states
   const [inviteEmail, setInviteEmail] = useState('');
@@ -126,6 +130,10 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleViewInviteLink = (invite: VolunteerInvite) => {
+    setSelectedInviteLink(invite);
   };
 
   const handleApproveVolunteer = async (inviteId: string) => {
@@ -214,6 +222,57 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete volunteer');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteInvite = async (invite: VolunteerInvite) => {
+    const confirmed = window.confirm(`Delete invite for ${invite.email}? They won't be able to access the link.`);
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      await deleteInvite(invite.id);
+      setSuccess('Invite deleted');
+      await fetchVolunteers();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete invite');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApproveInvite = async (invite: VolunteerInvite) => {
+    const confirmed = window.confirm(`Approve ${invite.email}? They will be marked as active.`);
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      await approveInviteSubmission(invite.id);
+      setSuccess('Volunteer approved');
+      await fetchVolunteers();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve invite');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejectInvite = async (invite: VolunteerInvite) => {
+    const reason = prompt('Enter rejection reason (optional):');
+    if (reason === null) return; // User cancelled
+
+    try {
+      setLoading(true);
+      await rejectInviteSubmission(invite.id, reason || undefined);
+      setSuccess('Volunteer rejected');
+      await fetchVolunteers();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reject invite');
     } finally {
       setLoading(false);
     }
@@ -569,6 +628,14 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
                             {volunteer.status === 'pending' && (
                               <>
                                 <button
+                                  onClick={() => handleViewInviteLink(volunteer)}
+                                  className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm font-semibold hover:bg-purple-200 transition-colors flex items-center gap-1"
+                                  title="View invite link"
+                                >
+                                  <Eye size={14} />
+                                  View Link
+                                </button>
+                                <button
                                   onClick={() => handleApproveVolunteer(volunteer.id)}
                                   disabled={loading}
                                   className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-sm font-semibold hover:bg-green-200 transition-colors disabled:opacity-50"
@@ -704,6 +771,87 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Invite Link Modal */}
+        {selectedInviteLink && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl p-8 max-w-2xl w-full">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900">Invite Link</h3>
+                  <p className="text-sm text-gray-600">{selectedInviteLink.email}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedInviteLink(null)}
+                  className="px-3 py-2 bg-gray-200 text-gray-900 rounded-lg text-sm font-semibold hover:bg-gray-300"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm text-gray-600 font-semibold mb-2">Link Details</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500">Email</p>
+                      <p className="text-sm font-semibold text-gray-900">{selectedInviteLink.email}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500">Role</p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {volunteerRoles.find(r => r.id === selectedInviteLink.role)?.label || selectedInviteLink.role}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500">Status</p>
+                      <p className="text-sm font-semibold text-gray-900 capitalize">{selectedInviteLink.status}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500">Invited At</p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {new Date(selectedInviteLink.invitedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm text-gray-600 font-semibold mb-2">Invitation Link</p>
+                  <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                    <code className="block text-xs text-blue-900 break-all font-mono mb-3 p-3 bg-white rounded border border-blue-200">
+                      {selectedInviteLink.inviteLink}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedInviteLink.inviteLink);
+                        setCopiedId(selectedInviteLink.id);
+                        setTimeout(() => setCopiedId(null), 2000);
+                      }}
+                      className="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                    >
+                      {copiedId === selectedInviteLink.id ? (
+                        <>
+                          <CheckCircle size={16} />
+                          Copied to Clipboard
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={16} />
+                          Copy Link
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-500 text-center">
+                  Share this link with {selectedInviteLink.email} to activate their volunteer account
+                </p>
+              </div>
             </div>
           </div>
         )}

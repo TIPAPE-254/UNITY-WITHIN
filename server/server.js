@@ -5185,27 +5185,62 @@ app.post("/api/admin/invite-volunteer", requireAdmin, async (req, res) => {
       }
     }
 
-    const token = crypto.randomBytes(32).toString("hex");
+    // Generate token: crypto.randomUUID() is cleaner and safer
+    const token = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-    await pool.query(
-      "INSERT INTO volunteer_invites (email, token, expires_at, status) VALUES ($1, $2, $3, $4)",
+    console.log(`📝 Creating invite for ${normalizedEmail} with token: ${token}`);
+
+    // Step 1: Insert token INTO DATABASE - CRITICAL
+    const insertResult = await pool.query(
+      "INSERT INTO volunteer_invites (email, token, expires_at, status) VALUES ($1, $2, $3, $4) RETURNING id, token, expires_at",
       [normalizedEmail, token, expiresAt, "pending"],
     );
+    
+    if (!insertResult.rows.length) {
+      console.error(`❌ INSERT failed for ${normalizedEmail}`);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to create invite in database",
+      });
+    }
+
+    const savedToken = insertResult.rows[0].token;
+    console.log(`✅ Token inserted into DB: ${savedToken}`);
+
+    // Step 2: VERIFY token was actually saved (critical debugging step)
+    const verify = await pool.query(
+      "SELECT token, email, expires_at FROM volunteer_invites WHERE token = $1",
+      [token],
+    );
+    
+    if (!verify.rows.length) {
+      console.error(`❌ VERIFICATION FAILED: Token ${token} not found in DB after INSERT!`);
+      return res.status(500).json({
+        success: false,
+        error: "Token verification failed. Please try again.",
+      });
+    }
+    
+    console.log(`✅ Token verified in DB: ${verify.rows[0].email}, expires: ${verify.rows[0].expires_at}`);
 
     await pool.query(
       "UPDATE volunteer_applications SET status = $1 WHERE LOWER(email) = LOWER($2) AND status = $3",
       ["invited", email, "pending"],
     );
 
-    const inviteLink = `${getFrontendUrl(req)}/volunteer-invite/${token}`;
+    // Use custom domain for links (or fallback to getFrontendUrl if domain not available)
+    const customDomain = process.env.VITE_APP_URL || getFrontendUrl(req);
+    const inviteLink = `${customDomain}/volunteer-invite/${token}`;
+    console.log(`✅ Invite link created: ${inviteLink}`);
 
     let emailSent = false;
     try {
       await sendVolunteerInvite(normalizedEmail, inviteLink);
       emailSent = true;
+      console.log(`✅ Email sent to ${normalizedEmail}`);
     } catch (emailError) {
-      console.error("Volunteer invite email error:", emailError.message);
+      console.error(`❌ Email failed for ${normalizedEmail}:`, emailError.message);
     }
 
     res.json({
@@ -5566,20 +5601,42 @@ app.get("/api/admin/volunteer-activity", requireAdmin, async (req, res) => {
 
 app.get("/api/volunteer/invite/:token", async (req, res) => {
   const token = String(req.params.token || "").trim();
+  
+  if (!token || token.length < 32) {
+    return res.status(400).json({
+      success: false,
+      error: "Invalid token format",
+    });
+  }
+
   try {
     const dbResult = await pool.query(
-      "SELECT email, status, expires_at FROM volunteer_invites WHERE LOWER(token) = LOWER($1)",
+      "SELECT id, email, status, expires_at, created_at FROM volunteer_invites WHERE token = $1",
       [token],
     );
+    
     if (dbResult.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Invalid invite token" });
+      console.warn(`❌ Invite token not found: ${token.substring(0, 16)}...`);
+      return res.status(404).json({
+        success: false,
+        error: "Invalid invite token",
+      });
     }
+    
     const inviteRow = dbResult.rows[0];
     const expiresAt = inviteRow.expires_at ? new Date(inviteRow.expires_at) : null;
     const isExpired = Boolean(expiresAt && expiresAt.getTime() < Date.now());
 
+    if (isExpired) {
+      console.warn(`⚠️ Invite expired: ${inviteRow.email} (expired: ${expiresAt?.toISOString()})`);
+      return res.status(410).json({
+        success: false,
+        error: "Invite has expired. Please contact admin for a new invite.",
+        expired: true,
+      });
+    }
+
+    console.log(`✅ Invite verified: ${inviteRow.email}`);
     res.json({
       success: true,
       invite: {
@@ -5587,11 +5644,15 @@ app.get("/api/volunteer/invite/:token", async (req, res) => {
         role: "self-selected",
         status: inviteRow.status || "pending",
         expiresAt: expiresAt ? expiresAt.toISOString() : null,
-        isExpired,
+        isExpired: false,
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error("Invite verification error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Database error verifying invite. Please try again.",
+    });
   }
 });
 
@@ -5714,17 +5775,128 @@ app.post("/api/volunteer/onboarding", async (req, res) => {
 
     await pool.query(
       "UPDATE volunteer_invites SET status = $1 WHERE token = $2",
-      ["accepted", token],
+      ["submitted", token],
     );
 
     await pool.query(
       "UPDATE volunteer_applications SET status = $1 WHERE LOWER(email) = LOWER($2)",
-      ["active", email],
+      ["submitted", email],
     );
 
-    res.json({ success: true, message: "Volunteer onboarding complete" });
+    res.json({ success: true, message: "Form submitted successfully. Admin will review your submission." });
   } catch (error) {
     console.error("❌ Onboarding error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ===== ADMIN INVITE MANAGEMENT =====
+
+/**
+ * DELETE /api/admin/invite/:id
+ * Admin deletes a volunteer invite
+ */
+app.delete("/api/admin/invite/:id", requireAdmin, async (req, res) => {
+  const inviteId = Number(req.params.id);
+  try {
+    const result = await pool.query(
+      "DELETE FROM volunteer_invites WHERE id = $1 RETURNING email",
+      [inviteId]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ success: false, error: "Invite not found" });
+    }
+    console.log(`✅ Admin deleted invite for ${result.rows[0].email}`);
+    res.json({ success: true, message: "Invite deleted" });
+  } catch (error) {
+    console.error("Delete invite error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/admin/invite/:id/approve
+ * Admin approves a volunteer submission
+ */
+app.patch("/api/admin/invite/:id/approve", requireAdmin, async (req, res) => {
+  const inviteId = Number(req.params.id);
+  try {
+    const result = await pool.query(
+      "UPDATE volunteer_invites SET status = $1 WHERE id = $2 RETURNING email",
+      ["approved", inviteId]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ success: false, error: "Invite not found" });
+    }
+    // Update volunteer status to active
+    await pool.query(
+      "UPDATE volunteers SET status = $1 WHERE email = $2",
+      ["active", result.rows[0].email]
+    );
+    // Try to auto-register as Community Listener if applicable
+    await pool.query(
+      `INSERT INTO peer_support_listeners (volunteer_id, is_available, calls_handled, average_rating)
+       SELECT id, FALSE, 0, 0 FROM volunteers WHERE email = $1
+       ON CONFLICT (volunteer_id) DO NOTHING`,
+      [result.rows[0].email]
+    );
+    console.log(`✅ Admin approved volunteer: ${result.rows[0].email}`);
+    res.json({ success: true, message: "Volunteer approved" });
+  } catch (error) {
+    console.error("Approve invite error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/admin/invite/:id/reject
+ * Admin rejects a volunteer submission
+ */
+app.patch("/api/admin/invite/:id/reject", requireAdmin, async (req, res) => {
+  const inviteId = Number(req.params.id);
+  const { reason } = req.body;
+  try {
+    const result = await pool.query(
+      "UPDATE volunteer_invites SET status = $1 WHERE id = $2 RETURNING email",
+      ["rejected", inviteId]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ success: false, error: "Invite not found" });
+    }
+    // Update volunteer status to rejected
+    await pool.query(
+      "UPDATE volunteers SET status = $1 WHERE email = $2",
+      ["rejected", result.rows[0].email]
+    );
+    console.log(`❌ Admin rejected volunteer: ${result.rows[0].email}${reason ? ` (${reason})` : ""}`);
+    res.json({ success: true, message: "Volunteer rejected" });
+  } catch (error) {
+    console.error("Reject invite error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/admin/invites/pending
+ * Get all pending volunteer invites (not yet submitted) and submitted (awaiting decision)
+ */
+app.get("/api/admin/invites/pending", requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT 
+        vi.id, vi.email, vi.status, vi.expires_at, vi.created_at,
+        v.name, v.phone, v.county, v.skills, v.matched_role_id, v.category
+       FROM volunteer_invites vi
+       LEFT JOIN volunteers v ON LOWER(vi.email) = LOWER(v.email)
+       WHERE vi.status IN ('pending', 'submitted')
+       ORDER BY vi.created_at DESC`
+    );
+    res.json({
+      success: true,
+      invites: result.rows
+    });
+  } catch (error) {
+    console.error("Get pending invites error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

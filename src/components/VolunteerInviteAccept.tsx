@@ -33,14 +33,30 @@ export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ in
   const fetchInvite = async () => {
     try {
       setLoading(true);
+      if (!inviteToken || inviteToken.length < 32) {
+        setError('Invalid token format. Please check the link and try again.');
+        setLoading(false);
+        return;
+      }
       const data = await getVolunteerInvite(inviteToken);
+      if (!data.success) {
+        setError(data.error || 'Invalid or expired invitation');
+        setLoading(false);
+        return;
+      }
       setInvite(data.invite);
+      if (data.invite?.isExpired) {
+        setError('This invitation has expired. Please request a new one from the admin.');
+        setLoading(false);
+        return;
+      }
       setFormData(prev => ({
         ...prev,
         email: data.invite?.email || ''
       }));
       setError('');
     } catch (err) {
+      console.error('Fetch invite error:', err);
       setError(err instanceof Error ? err.message : 'Invalid or expired invitation');
     } finally {
       setLoading(false);

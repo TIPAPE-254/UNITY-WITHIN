@@ -380,6 +380,63 @@ export const deleteVolunteer = async (volunteerId: string | number) => {
   }
 };
 
+/**
+ * Delete invite (admin) - removes pending invite before volunteer responds
+ */
+export const deleteInvite = async (inviteId: string | number) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/admin/invite/${inviteId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete invite');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error deleting invite:', error);
+    throw error;
+  }
+};
+
+/**
+ * Approve invite submission (admin) - volunteer filled form, admin approves
+ */
+export const approveInviteSubmission = async (inviteId: string | number) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/admin/invite/${inviteId}/approve`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (!response.ok) {
+      throw new Error('Failed to approve invite');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error approving invite:', error);
+    throw error;
+  }
+};
+
+/**
+ * Reject invite submission (admin) - volunteer filled form, admin rejects
+ */
+export const rejectInviteSubmission = async (inviteId: string | number, reason?: string) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/admin/invite/${inviteId}/reject`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+    if (!response.ok) {
+      throw new Error('Failed to reject invite');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error rejecting invite:', error);
+    throw error;
+  }
+};
+
 // ========== PEER SUPPORT LISTENER ENDPOINTS ==========
 
 /**
