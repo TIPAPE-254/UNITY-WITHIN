@@ -286,6 +286,24 @@ const [isLive, setIsLive] = useState(true);
         }
     };
 
+    const deleteVolunteerInvite = async (inviteId: string) => {
+        if (!window.confirm('Are you sure you want to delete this invitation? This action cannot be undone.')) return;
+        
+        try {
+            const res = await apiFetch(`${API_BASE_URL}/admin/invite/${inviteId}`, { method: 'DELETE' });
+            if (res.ok) {
+                setVolunteers(prev => prev.filter(v => v.id !== inviteId));
+                void refreshNow();
+            } else {
+                const data = await res.json();
+                alert(data.error || 'Failed to delete invitation');
+            }
+        } catch (error) {
+            console.error('Error deleting invitation:', error);
+            alert('An error occurred while deleting the invitation');
+        }
+    };
+
      const handleSendVolunteerInvite = async (e: React.FormEvent) => {
          e.preventDefault();
          if (!inviteForm.email.trim()) return;
@@ -621,6 +639,13 @@ const [isLive, setIsLive] = useState(true);
                                                             ) : (
                                                                 <span className="text-[10px] text-gray-400">No action</span>
                                                             )}
+                                                            <button
+                                                                onClick={() => deleteVolunteerInvite(v.id)}
+                                                                className="p-1 px-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-2"
+                                                                title="Delete invitation"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
                                                         </td>
                                                     </tr>
                                                 ))}

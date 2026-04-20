@@ -57,7 +57,7 @@ export default function App() {
   useEffect(() => {
     try {
       const pathname = window.location.pathname;
-      const match = pathname.match(/\/volunteer-invite\/([a-f0-9]+)/i);
+      const match = pathname.match(/\/volunteer-invite\/([a-f0-9-]+)/i);
       if (match && match[1]) {
         const token = match[1];
         setInviteToken(token);

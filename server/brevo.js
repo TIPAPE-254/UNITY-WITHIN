@@ -1,6 +1,8 @@
-const BREVO_API_KEY = process.env.BREVO_API_KEY;
-const FROM_EMAIL = process.env.BREVO_FROM_EMAIL;
-const FROM_NAME = process.env.BREVO_FROM_NAME;
+// Fetch Brevo configuration from environment variables
+// Supports both standard names and Azure-prefixed (APPSETTING_) names
+const BREVO_API_KEY = process.env.BREVO_API_KEY || process.env.APPSETTING_BREVO_API_KEY;
+const FROM_EMAIL = process.env.BREVO_FROM_EMAIL || process.env.APPSETTING_BREVO_FROM_EMAIL || "info.unitywithin@gmail.com";
+const FROM_NAME = process.env.BREVO_FROM_NAME || process.env.APPSETTING_BREVO_FROM_NAME || "Unity Within";
 
 export async function sendEmail(to, subject, htmlContent) {
   try {
