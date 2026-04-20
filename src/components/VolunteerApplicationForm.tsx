@@ -264,6 +264,12 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
       return;
     }
 
+    if (!selectedCategory) {
+      setError('💖 Please select a volunteer category!');
+      setLoading(false);
+      return;
+    }
+
     if (Object.keys(submitFieldErrors).length > 0) {
       setFieldErrors(submitFieldErrors);
       setTouchedFields({ 
@@ -296,7 +302,7 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
           phone: formData.phone.trim() || null,
           location: formData.location.trim(),
           availability: formData.availability,
-          category: formData.category,
+          category: selectedCategory,
           roles: roleNames,
           skills: formData.skills.trim() || null,
           whyVolunteer: formData.whyVolunteer.trim(),
