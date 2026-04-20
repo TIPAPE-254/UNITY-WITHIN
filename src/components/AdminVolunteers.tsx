@@ -649,6 +649,14 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
                                 >
                                   Reject
                                 </button>
+                                <button
+                                  onClick={() => handleDeleteInvite(volunteer)}
+                                  disabled={loading}
+                                  className="px-2 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
+                                  title="Delete invite"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
                               </>
                             )}
                             <button
