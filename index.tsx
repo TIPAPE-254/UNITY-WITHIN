@@ -5,6 +5,7 @@ import App from './App';
 import { ClerkSsoCallback } from './components/ClerkSsoCallback';
 import { TherapistInviteAccept } from './components/TherapistInviteAccept';
 import { VolunteerInviteAccept } from './src/components/VolunteerInviteAccept';
+import { VolunteerApplicationForm } from './src/components/VolunteerApplicationForm';
 import { SupportCall } from './src/components/SupportCall';
 
 const rootElement = document.getElementById('root');
@@ -37,7 +38,7 @@ root.render(
       ) : isTherapistInviteRoute && therapistInviteToken ? (
         <TherapistInviteAccept token={therapistInviteToken} onSuccess={() => { window.location.href = '/login?invite=success'; }} />
       ) : isVolunteerInviteRoute && volunteerInviteToken ? (
-        <VolunteerInviteAccept inviteToken={volunteerInviteToken} onNavigate={(view) => { window.location.href = '/'; }} />
+        <VolunteerApplicationForm inviteToken={volunteerInviteToken} onNavigate={(view) => { window.location.href = '/'; }} />
       ) : isSupportCallRoute && supportCallRoomId ? (
         <SupportCall roomId={supportCallRoomId} mode={supportCallMode} />
       ) : (

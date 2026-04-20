@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mail, Phone, MapPin, HelpCircle, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
 
 interface VolunteerApplicationFormProps {
   onSuccess?: () => void;
   onNavigate?: (view: string) => void;
+  inviteToken?: string;
 }
 
 // All 20 volunteer roles from documentation
@@ -35,7 +36,8 @@ const CATEGORIES = ['Creative', 'Tech', 'Community', 'Outreach', 'Support & Admi
 
 export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> = ({ 
   onSuccess,
-  onNavigate 
+  onNavigate,
+  inviteToken
 }) => {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -57,6 +59,28 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
     workPreference: '',
     notes: '',
   });
+
+  useEffect(() => {
+    if (inviteToken) {
+      const fetchInvite = async () => {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/volunteer/invite/${inviteToken}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.invite) {
+              setFormData(prev => ({
+                ...prev,
+                email: data.invite.email || ''
+              }));
+            }
+          }
+        } catch (err) {
+          console.error('Error pre-filling invite:', err);
+        }
+      };
+      fetchInvite();
+    }
+  }, [inviteToken]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -116,6 +140,7 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
           mentalHealthContext: formData.mentalHealthContext || null,
           workPreference: formData.workPreference,
           notes: formData.notes.trim() || null,
+          token: inviteToken || null,
         })
       });
 
@@ -229,8 +254,9 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
                   value={formData.email}
                   onChange={handleInputChange}
                   placeholder="your@email.com"
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-600 focus:outline-none"
+                  className={`w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-600 focus:outline-none ${inviteToken ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   required
+                  disabled={!!inviteToken}
                 />
               </div>
 

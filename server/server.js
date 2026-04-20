@@ -4997,6 +4997,7 @@ app.post("/api/volunteer/apply", async (req, res) => {
     mentalHealthContext,
     workPreference,
     notes,
+    token, // Optional invitation token
   } = req.body || {};
 
   if (!firstName || !lastName || !email || !location || !availability || !category || !whyVolunteer || !workPreference) {
@@ -5013,6 +5014,29 @@ app.post("/api/volunteer/apply", async (req, res) => {
       : [];
 
   try {
+    // If a token is provided, validate it first
+    if (token) {
+      const inviteResult = await pool.query(
+        "SELECT email FROM volunteer_invites WHERE token = $1 AND status IN ($2, $3)",
+        [token, "pending", "approved"]
+      );
+
+      if (inviteResult.rows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid or expired invitation token",
+        });
+      }
+
+      // Optional: enforce email match
+      if (inviteResult.rows[0].email.toLowerCase() !== email.toLowerCase()) {
+        return res.status(400).json({
+          success: false,
+          error: "Email mismatch with invitation",
+        });
+      }
+    }
+
     const insertResult = await pool.query(
       `INSERT INTO volunteer_applications (
         first_name, last_name, email, phone, location, availability,
@@ -5034,11 +5058,20 @@ app.post("/api/volunteer/apply", async (req, res) => {
         mentalHealthContext ? String(mentalHealthContext).trim() : null,
         String(workPreference).trim(),
         notes ? String(notes).trim() : null,
-        "pending",
+        token ? "invited" : "pending",
       ],
     );
 
     const applicationId = insertResult.rows?.[0]?.id;
+
+    // If token was used, mark the invite as submitted
+    if (token) {
+      await pool.query(
+        "UPDATE volunteer_invites SET status = $1 WHERE token = $2",
+        ["submitted", token]
+      );
+      console.log(`✅ Invite ${token} marked as submitted via application`);
+    }
 
     // Send WhatsApp notification to admin
     const whatsappResult = await sendApplicationNotification({
