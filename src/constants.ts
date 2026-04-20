@@ -2,7 +2,7 @@ import { Home, MessageCircleHeart, BookHeart, Wind, GraduationCap, Sparkles, Use
 import { ViewState } from './types';
 
 export const APP_NAME = "UNITY WITHIN";
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 export const NAVIGATION_ITEMS: { id: ViewState; label: string; icon: any }[] = [
   { id: 'dashboard', label: 'Home', icon: Home },

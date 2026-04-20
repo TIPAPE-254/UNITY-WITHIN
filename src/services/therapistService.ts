@@ -103,7 +103,7 @@ export const acceptTherapistInvite = async (token: string, profileData: {
  */
 export const getTherapistProfile = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/support/therapists/profile/self`, {
+    const response = await fetch(`${API_BASE_URL}/api/support/therapists/profile/self`, {
       headers: {
         'x-role': 'therapist',
         'x-user-id': '',
@@ -134,7 +134,7 @@ export const updateTherapistProfile = async (profileData: {
   sessionPrice?: string;
 }) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/support/therapists/profile/self`, {
+    const response = await fetch(`${API_BASE_URL}/api/support/therapists/profile/self`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(profileData)
