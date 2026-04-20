@@ -5,6 +5,7 @@ import { API_BASE_URL } from '../constants';
 interface VolunteerApplicationFormProps {
   onSuccess?: () => void;
   onNavigate?: (view: string) => void;
+  inviteEmail?: string;
 }
 
 // All 20 volunteer roles from documentation
@@ -35,7 +36,8 @@ const CATEGORIES = ['Creative', 'Tech', 'Community', 'Outreach', 'Support & Admi
 
 export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> = ({ 
   onSuccess,
-  onNavigate 
+  onNavigate,
+  inviteEmail
 }) => {
   const [currentPhase, setCurrentPhase] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -50,7 +52,7 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
-    email: '',
+    email: inviteEmail || '',
     phone: '',
     location: '',
     availability: '',
@@ -64,6 +66,10 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    // Prevent email changes if this is an invite
+    if (name === 'email' && inviteEmail) {
+      return;
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
     validateField(name, value);
   };
@@ -548,14 +554,22 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
                   onChange={handleInputChange}
                   onBlur={() => handleFieldBlur('email')}
                   placeholder="your@email.com"
+                  disabled={!!inviteEmail}
                   className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:border-transparent bg-white transition-all ${
-                    touchedFields['email'] && fieldErrors['email']
+                    inviteEmail
+                      ? 'border-gray-300 bg-gray-50 text-gray-600 cursor-not-allowed'
+                      : touchedFields['email'] && fieldErrors['email']
                       ? 'border-red-500 focus:ring-red-400'
                       : 'border-black focus:ring-pink-600'
                   }`}
                   required
                 />
-                {touchedFields['email'] && fieldErrors['email'] && (
+                {inviteEmail && (
+                  <p className="mt-2 text-sm text-gray-600 font-semibold">
+                    ✓ Email tied to your invitation
+                  </p>
+                )}
+                {touchedFields['email'] && fieldErrors['email'] && !inviteEmail && (
                   <p className="mt-2 text-sm text-red-600 font-semibold flex items-center gap-1">
                     <AlertCircle size={14} />
                     {fieldErrors['email']}

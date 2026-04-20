@@ -245,12 +245,12 @@ export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ in
                 <input
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  disabled
                   placeholder="john@example.com"
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-600 focus:outline-none transition-colors"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed transition-colors"
                   required
                 />
-                <p className="text-gray-500 text-sm mt-1">This must match the email the invitation was sent to</p>
+                <p className="text-gray-500 text-sm mt-1">This email is tied to your invitation and cannot be changed</p>
               </div>
 
               {/* Phone */}
