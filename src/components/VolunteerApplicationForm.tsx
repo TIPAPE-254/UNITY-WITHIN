@@ -571,7 +571,7 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
                   value={formData.email}
                   onChange={handleInputChange}
                   onBlur={() => handleFieldBlur('email')}
-                  placeholder="your@email.com"
+                  placeholder={inviteEmail || 'your@email.com'}
                   disabled={!!inviteEmail}
                   className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:border-transparent bg-white transition-all ${
                     inviteEmail

@@ -246,7 +246,7 @@ export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ in
                   type="email"
                   value={formData.email}
                   disabled
-                  placeholder="john@example.com"
+                  placeholder={formData.email || 'john@example.com'}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed transition-colors"
                   required
                 />
