@@ -578,3 +578,40 @@ export const toggleListenerAvailability = async (
     throw error;
   }
 };
+
+/**
+ * Check volunteer permission for a specific action
+ * Used for role-based access control in the volunteer portal
+ */
+export const checkVolunteerPermission = async (
+  email: string,
+  action: string
+): Promise<{ hasPermission: boolean; reason?: string; volunteerRoles?: string[] }> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/volunteer/check-permission`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, action })
+    });
+
+    if (!response.ok) {
+      return {
+        hasPermission: false,
+        reason: 'Failed to check permission'
+      };
+    }
+
+    const data = await response.json();
+    return {
+      hasPermission: data.hasPermission,
+      reason: data.message,
+      volunteerRoles: data.volunteerRoles
+    };
+  } catch (error) {
+    console.error('Error checking permission:', error);
+    return {
+      hasPermission: false,
+      reason: 'Error checking permission'
+    };
+  }
+};

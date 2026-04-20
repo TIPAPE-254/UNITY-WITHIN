@@ -10,6 +10,11 @@ export interface User {
   clerkUserId?: string;
   createdAt?: string;
   profileImage?: string;
+  // Volunteer fields
+  volunteerStatus?: VolunteerStatus;
+  volunteerRoles?: string[];
+  volunteerCategory?: string;
+  applicationId?: string;
 }
 
 export interface NavigationItem {

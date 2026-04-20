@@ -1,5 +1,6 @@
 import React from 'react';
 import { User, ViewState } from '../types';
+import { API_BASE_URL } from '../constants';
 
 interface LoginProps {
   onNavigate: (view: ViewState) => void;
@@ -29,7 +30,30 @@ export const Login: React.FC<LoginProps> = ({ onNavigate, onLoginSuccess }) => {
       }
 
       const data = await response.json();
-      onLoginSuccess(data.user);
+      let user = data.user as User;
+
+      // Check if user has an approved volunteer application
+      try {
+        const volunteerResponse = await fetch(`${API_BASE_URL}/api/volunteer/status/${encodeURIComponent(email)}`);
+        if (volunteerResponse.ok) {
+          const volunteerData = await volunteerResponse.json();
+          if (volunteerData.success && volunteerData.isApproved) {
+            // Add volunteer information to user object
+            user = {
+              ...user,
+              volunteerStatus: volunteerData.status,
+              volunteerRoles: volunteerData.roles,
+              volunteerCategory: volunteerData.category,
+              applicationId: volunteerData.applicationId
+            };
+          }
+        }
+      } catch (volunteerError) {
+        console.error('Error fetching volunteer status:', volunteerError);
+        // Continue with login even if volunteer status fetch fails
+      }
+
+      onLoginSuccess(user);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';
       setError(errorMessage);

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { ViewState } from '../types';
 import { getVolunteerInvite, acceptVolunteerInvite, getVolunteerRoles } from '../services/volunteerService';
 
 interface VolunteerInviteAcceptProps {
   inviteToken: string;
-  onNavigate?: (view: string) => void;
+  onNavigate?: (view: ViewState) => void;
 }
 
 export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ inviteToken, onNavigate }) => {
@@ -33,7 +34,7 @@ export const VolunteerInviteAccept: React.FC<VolunteerInviteAcceptProps> = ({ in
   const fetchInvite = async () => {
     try {
       setLoading(true);
-      if (!inviteToken) {
+      if (!inviteToken || inviteToken.length < 32) {
         setError('Invalid token format. Please check the link and try again.');
         setLoading(false);
         return;

@@ -4997,7 +4997,6 @@ app.post("/api/volunteer/apply", async (req, res) => {
     mentalHealthContext,
     workPreference,
     notes,
-    token, // Optional invitation token
   } = req.body || {};
 
   if (!firstName || !lastName || !email || !location || !availability || !category || !whyVolunteer || !workPreference) {
@@ -5014,29 +5013,6 @@ app.post("/api/volunteer/apply", async (req, res) => {
       : [];
 
   try {
-    // If a token is provided, validate it first
-    if (token) {
-      const inviteResult = await pool.query(
-        "SELECT email FROM volunteer_invites WHERE token = $1 AND status IN ($2, $3)",
-        [token, "pending", "approved"]
-      );
-
-      if (inviteResult.rows.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid or expired invitation token",
-        });
-      }
-
-      // Optional: enforce email match
-      if (inviteResult.rows[0].email.toLowerCase() !== email.toLowerCase()) {
-        return res.status(400).json({
-          success: false,
-          error: "Email mismatch with invitation",
-        });
-      }
-    }
-
     const insertResult = await pool.query(
       `INSERT INTO volunteer_applications (
         first_name, last_name, email, phone, location, availability,
@@ -5058,20 +5034,11 @@ app.post("/api/volunteer/apply", async (req, res) => {
         mentalHealthContext ? String(mentalHealthContext).trim() : null,
         String(workPreference).trim(),
         notes ? String(notes).trim() : null,
-        token ? "invited" : "pending",
+        "pending",
       ],
     );
 
     const applicationId = insertResult.rows?.[0]?.id;
-
-    // If token was used, mark the invite as submitted
-    if (token) {
-      await pool.query(
-        "UPDATE volunteer_invites SET status = $1 WHERE token = $2",
-        ["submitted", token]
-      );
-      console.log(`✅ Invite ${token} marked as submitted via application`);
-    }
 
     // Send WhatsApp notification to admin
     const whatsappResult = await sendApplicationNotification({
@@ -5141,6 +5108,152 @@ app.post("/api/volunteer/apply", async (req, res) => {
   }
 });
 
+// Get volunteer status by email - returns approved status and selected roles
+app.get("/api/volunteer/status/:email", async (req, res) => {
+  const { email } = req.params;
+  
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      error: "Email is required",
+      status: "none"
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT id, status, category, roles, why_volunteer, skills, work_preference 
+       FROM volunteer_applications 
+       WHERE LOWER(email) = LOWER($1) 
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [String(email).trim().toLowerCase()]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        success: true,
+        status: "none",
+        isApproved: false,
+        roles: [],
+        category: null
+      });
+    }
+
+    const application = result.rows[0];
+    const roles = Array.isArray(application.roles) ? application.roles : (application.roles ? JSON.parse(application.roles) : []);
+    
+    return res.json({
+      success: true,
+      status: application.status,
+      isApproved: application.status === "approved",
+      roles: roles,
+      category: application.category,
+      applicationId: application.id,
+      skills: application.skills,
+      motivation: application.why_volunteer,
+      workPreference: application.work_preference
+    });
+  } catch (error) {
+    console.error("Volunteer status error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      status: "none"
+    });
+  }
+});
+
+// ============================================
+// VOLUNTEER PERMISSION SYSTEM
+// ============================================
+const VOLUNTEER_PERMISSIONS = {
+  'Community Listener': [
+    'start-session', 'schedule', 'training', 'resources', 'peer-support', 'voice-call', 'video-call'
+  ],
+  'Mental Health Advocate': [
+    'campaigns', 'share', 'events', 'analytics', 'training', 'resources'
+  ],
+  'Outreach Ambassador': [
+    'partners', 'schedule-event', 'materials', 'reporting', 'events', 'resources'
+  ],
+  'Content & Story Volunteer': [
+    'create', 'templates', 'approvals', 'ideas', 'training', 'resources'
+  ],
+  'Wellness Program Support': [
+    'programs', 'lead', 'feedback', 'training', 'resources'
+  ],
+  'Tech Support Volunteer': [
+    'tickets', 'kb', 'report', 'stats', 'training', 'resources'
+  ]
+};
+
+// Check volunteer permissions endpoint
+app.post("/api/volunteer/check-permission", async (req, res) => {
+  const { email, action } = req.body || {};
+  
+  if (!email || !action) {
+    return res.status(400).json({
+      success: false,
+      error: "Email and action are required"
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT id, status, roles 
+       FROM volunteer_applications 
+       WHERE LOWER(email) = LOWER($1) 
+       AND status = 'approved'
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [String(email).trim().toLowerCase()]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        success: true,
+        hasPermission: false,
+        reason: "Volunteer not found or not approved"
+      });
+    }
+
+    const application = result.rows[0];
+    const roles = Array.isArray(application.roles) ? application.roles : (application.roles ? JSON.parse(application.roles) : []);
+    
+    // Check if any of the volunteer's roles have this permission
+    let hasPermission = false;
+    roles.forEach(role => {
+      const rolePermissions = VOLUNTEER_PERMISSIONS[role];
+      if (rolePermissions && rolePermissions.includes(action)) {
+        hasPermission = true;
+      }
+    });
+    
+    // Training and resources are always available to approved volunteers
+    if (action === 'training' || action === 'resources') {
+      hasPermission = true;
+    }
+
+    return res.json({
+      success: true,
+      hasPermission,
+      action,
+      volunteerRoles: roles,
+      message: hasPermission 
+        ? `Permission granted for action: ${action}`
+        : `Permission denied for action: ${action}`
+    });
+  } catch (error) {
+    console.error("Permission check error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      hasPermission: false
+    });
+  }
+});
+
 // Admin: list volunteer applications
 app.get("/api/admin/volunteer-applications", requireAdmin, async (req, res) => {
   const { status, category } = req.query || {};
@@ -5183,6 +5296,88 @@ app.patch("/api/admin/volunteer-applications/:id", requireAdmin, async (req, res
     );
     return res.json({ success: true });
   } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin: revoke volunteer permissions (change status from approved back to pending or inactive)
+app.post("/api/admin/volunteer-applications/:id/revoke", requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body || {};
+
+  try {
+    // Get the current application
+    const getResult = await pool.query(
+      "SELECT id, email, first_name, last_name, status FROM volunteer_applications WHERE id = $1",
+      [id]
+    );
+
+    if (getResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    const application = getResult.rows[0];
+
+    if (application.status !== 'approved') {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Only approved volunteers can have permissions revoked"
+      });
+    }
+
+    // Update status to 'revoked' to indicate permissions have been removed
+    const updateResult = await pool.query(
+      `UPDATE volunteer_applications 
+       SET status = $1, revoked_at = NOW(), revoke_reason = $2 
+       WHERE id = $3
+       RETURNING id, status`,
+      ['revoked', reason || 'No reason provided', id]
+    );
+
+    // Send email notification to the volunteer
+    const revokeNotificationHtml = `
+      <div style="background: #ffffff; margin: 0; padding: 24px 12px; font-family: 'Segoe UI', Arial, sans-serif; color: #111111;">
+        <div style="max-width: 640px; margin: 0 auto; border: 1px solid #fecaca; border-radius: 16px; overflow: hidden; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); padding: 20px 24px;">
+            <p style="margin: 0; font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: #ffffff; font-weight: 700;">⚠️ PERMISSION REVOKED</p>
+            <h2 style="margin: 8px 0 0; color: #ffffff; font-size: 22px; line-height: 1.3;">Volunteer Permissions Revoked</h2>
+          </div>
+          <div style="padding: 24px; font-size: 14px; line-height: 1.7; color: #111111;">
+            <p style="margin: 0 0 12px;">Hi ${application.first_name},</p>
+            <p style="margin: 0 0 12px;">Your volunteer permissions have been revoked by the UNITY WITHIN admin team.</p>
+            
+            <p style="margin: 12px 0 0; font-weight: 600; color: #dc2626;">Reason:</p>
+            <p style="margin: 6px 0 12px; padding: 12px; background: #fee2e2; border-left: 4px solid #dc2626; color: #111111;">${reason || 'No specific reason provided'}</p>
+            
+            <p style="margin: 12px 0 0; font-size: 12px; color: #666;">You can reapply for volunteerism after 30 days if you believe this was done in error.</p>
+            <p style="margin: 12px 0 0; font-size: 12px; color: #666;">For questions, please contact support@unitywithin.app</p>
+          </div>
+          <div style="border-top: 1px solid #fecaca; background: #fef2f2; padding: 16px 24px;">
+            <p style="margin: 0; font-size: 12px; color: #991b1b;">UNITY WITHIN • Supporting Mental Health</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    try {
+      await sendEmail(
+        application.email,
+        'Your Volunteer Permissions Have Been Revoked',
+        revokeNotificationHtml
+      );
+    } catch (emailError) {
+      console.error("Revoke notification email error:", emailError.message);
+      // Continue even if email fails
+    }
+
+    return res.json({ 
+      success: true, 
+      message: 'Volunteer permissions revoked successfully',
+      applicationId: id,
+      newStatus: 'revoked'
+    });
+  } catch (error) {
+    console.error("Revoke permission error:", error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -5262,14 +5457,24 @@ app.post("/api/admin/invite-volunteer", requireAdmin, async (req, res) => {
       ["invited", email, "pending"],
     );
 
-    const BASE_URL = "https://www.unitywithin.app";
-    const inviteLink = `${BASE_URL}/volunteer-invite/${token}`;
+    // Use custom domain for links (or fallback to getFrontendUrl if domain not available)
+    const customDomain = process.env.VITE_APP_URL || getFrontendUrl(req);
+    const inviteLink = `${customDomain}/volunteer-invite/${token}`;
     console.log(`✅ Invite link created: ${inviteLink}`);
+
+    let emailSent = false;
+    try {
+      await sendVolunteerInvite(normalizedEmail, inviteLink);
+      emailSent = true;
+      console.log(`✅ Email sent to ${normalizedEmail}`);
+    } catch (emailError) {
+      console.error(`❌ Email failed for ${normalizedEmail}:`, emailError.message);
+    }
 
     res.json({
       success: true,
       inviteLink,
-      emailSent: true,
+      emailSent,
       invite: {
         email: normalizedEmail,
         role: "self-selected",
@@ -5623,7 +5828,14 @@ app.get("/api/admin/volunteer-activity", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/volunteer/invite/:token", async (req, res) => {
-  const { token } = req.params;
+  const token = String(req.params.token || "").trim();
+  
+  if (!token || token.length < 32) {
+    return res.status(400).json({
+      success: false,
+      error: "Invalid token format",
+    });
+  }
 
   try {
     const dbResult = await pool.query(
@@ -5632,43 +5844,34 @@ app.get("/api/volunteer/invite/:token", async (req, res) => {
     );
     
     if (dbResult.rows.length === 0) {
-      console.warn(`❌ Invite token not found or invalid: ${token}`);
-      return res.status(400).json({
-        valid: false,
+      console.warn(`❌ Invite token not found: ${token.substring(0, 16)}...`);
+      return res.status(404).json({
         success: false,
-        error: "Invalid invitation",
+        error: "Invalid invite token",
       });
     }
     
     const inviteRow = dbResult.rows[0];
+    const expiresAt = inviteRow.expires_at ? new Date(inviteRow.expires_at) : null;
+    const isExpired = Boolean(expiresAt && expiresAt.getTime() < Date.now());
 
-    if (inviteRow.status !== 'pending' && inviteRow.status !== 'approved') {
-      console.warn(`⚠️ Invite already used: ${inviteRow.email}`);
-      return res.status(400).json({
-        valid: false,
+    if (isExpired) {
+      console.warn(`⚠️ Invite expired: ${inviteRow.email} (expired: ${expiresAt?.toISOString()})`);
+      return res.status(410).json({
         success: false,
-        error: "Invite has already been used",
-      });
-    }
-
-    if (new Date(inviteRow.expires_at) < new Date()) {
-      console.warn(`⚠️ Invite expired: ${inviteRow.email}`);
-      return res.status(400).json({
-        valid: false,
-        success: false,
-        error: "Invite expired",
+        error: "Invite has expired. Please contact admin for a new invite.",
+        expired: true,
       });
     }
 
     console.log(`✅ Invite verified: ${inviteRow.email}`);
     res.json({
-      valid: true,
       success: true,
-      email: inviteRow.email,
       invite: {
         email: inviteRow.email,
         role: "self-selected",
         status: inviteRow.status || "pending",
+        expiresAt: expiresAt ? expiresAt.toISOString() : null,
         isExpired: false,
       },
     });
@@ -6528,14 +6731,28 @@ app.post("/api/admin/invite-therapist", requireAdmin, async (req, res) => {
     }
 
     const token = crypto.randomBytes(32).toString("hex");
-    const appBaseUrl = "https://www.unitywithin.app";
-    const inviteLink = `${appBaseUrl}/therapist-invite/${token}`;
+    const appBaseUrl = (
+      process.env.APP_BASE_URL ||
+      process.env.RESET_PASSWORD_BASE_URL ||
+      "https://unitywithin.app"
+    ).replace(/\/$/, "");
+    const inviteLink = `${getFrontendUrl(req)}/therapist-invite/${token}`;
 
     await pool.query(
       `INSERT INTO therapist_invites (email, phone, token, status, expires_at)
              VALUES ($1, $2, $3, 'pending', NOW() + INTERVAL '3 DAY')`,
       [email, phoneRaw || null, token],
     );
+
+    let emailSent = false;
+    let emailErrorMessage = null;
+    try {
+      await sendTherapistInvite(email, inviteLink);
+      emailSent = true;
+    } catch (emailError) {
+      console.error("Therapist invite email error:", emailError.message);
+      emailErrorMessage = emailError.message || "Email delivery failed";
+    }
 
     const sanitizedPhone = sanitizeWhatsAppPhone(phoneRaw);
     const whatsappMessage = encodeURIComponent(
@@ -6550,8 +6767,8 @@ app.post("/api/admin/invite-therapist", requireAdmin, async (req, res) => {
       success: true,
       inviteLink,
       whatsappUrl,
-      emailSent: true,
-      emailError: null,
+      emailSent,
+      emailError: emailSent ? null : emailErrorMessage,
     });
   } catch (error) {
     console.error("Create therapist invite error:", error);
@@ -6611,10 +6828,9 @@ app.get("/api/admin/therapist-invitations", requireAdmin, async (req, res) => {
 
 app.get("/api/invite/:token", async (req, res) => {
   try {
-    const { token } = req.params;
-    
+    const token = (req.params?.token || "").toString().trim();
     if (!token) {
-      return res.status(400).json({ valid: false, success: false, error: "Invalid link" });
+      return res.status(400).json({ success: false, error: "Invalid link" });
     }
 
     const dbResult = await pool.query(
@@ -6627,15 +6843,15 @@ app.get("/api/invite/:token", async (req, res) => {
 
     const invite = dbResult.rows?.[0];
     if (!invite) {
-      return res.status(400).json({ valid: false, success: false, error: "Invalid link" });
+      return res.status(400).json({ success: false, error: "Invalid link" });
     }
 
     if (normalizeTherapistStatus(invite.status) !== "pending") {
-      return res.status(400).json({ valid: false, success: false, error: "Already used" });
+      return res.status(400).json({ success: false, error: "Already used" });
     }
 
     if (new Date() > new Date(invite.expires_at)) {
-      return res.status(400).json({ valid: false, success: false, error: "Expired link" });
+      return res.status(400).json({ success: false, error: "Expired link" });
     }
 
     return res.json({

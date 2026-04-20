@@ -57,7 +57,7 @@ export default function App() {
   useEffect(() => {
     try {
       const pathname = window.location.pathname;
-      const match = pathname.match(/\/volunteer-invite\/([a-f0-9-]+)/i);
+      const match = pathname.match(/\/volunteer-invite\/([a-f0-9]+)/i);
       if (match && match[1]) {
         const token = match[1];
         setInviteToken(token);
@@ -86,7 +86,10 @@ export default function App() {
   const handleLoginSuccess = (loggedInUser: User) => {
     setUser(loggedInUser);
     localStorage.setItem('unity_user', JSON.stringify(loggedInUser));
-    setCurrentView('dashboard');
+    
+    // Route approved volunteers to volunteer portal, regular users to dashboard
+    const targetView = loggedInUser.volunteerStatus === 'approved' ? 'volunteer-portal' : 'dashboard';
+    setCurrentView(targetView);
 
     void requestPushPermission().catch((error: unknown) => {
       console.error('Push permission request failed:', error);

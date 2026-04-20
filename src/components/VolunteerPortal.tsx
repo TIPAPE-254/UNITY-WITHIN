@@ -3,7 +3,7 @@ import {
   Heart, MessageCircle, Users, Sparkles, Zap, Target, Calendar, 
   Award, TrendingUp, Clock, FileText, Video, Globe, Palette, Shield,
   CheckCircle, Bell, Settings, BookOpen, Phone, ChevronRight, Play,
-  Star, Activity, Send, HeadphonesMic, Copy
+  Star, Activity, Send, HeadphonesMic, Copy, Lock
 } from 'lucide-react';
 import { User, ViewState } from '../types';
 import { getVolunteerDashboardData, getVolunteerProfile } from '../services/volunteerService';
@@ -29,6 +29,39 @@ interface CategoryConfig {
   description: string;
   modules: { title: string; description: string; icon: React.ReactNode }[];
 }
+
+// ============================================
+// ROLE-BASED PERMISSIONS MATRIX
+// ============================================
+type PermissionAction = 
+  | 'start-session' | 'schedule' | 'training' | 'resources'
+  | 'campaigns' | 'share' | 'events' | 'analytics'
+  | 'partners' | 'schedule-event' | 'materials' | 'reporting'
+  | 'create' | 'templates' | 'approvals' | 'ideas'
+  | 'programs' | 'lead' | 'feedback'
+  | 'tickets' | 'kb' | 'report' | 'stats'
+  | 'peer-support' | 'voice-call' | 'video-call';
+
+const PERMISSIONS: Record<string, PermissionAction[]> = {
+  'Community Listener': [
+    'start-session', 'schedule', 'training', 'resources', 'peer-support', 'voice-call', 'video-call'
+  ],
+  'Mental Health Advocate': [
+    'campaigns', 'share', 'events', 'analytics', 'training', 'resources'
+  ],
+  'Outreach Ambassador': [
+    'partners', 'schedule-event', 'materials', 'reporting', 'events', 'resources'
+  ],
+  'Content & Story Volunteer': [
+    'create', 'templates', 'approvals', 'ideas', 'training', 'resources'
+  ],
+  'Wellness Program Support': [
+    'programs', 'lead', 'feedback', 'training', 'resources'
+  ],
+  'Tech Support Volunteer': [
+    'tickets', 'kb', 'report', 'stats', 'training', 'resources'
+  ]
+};
 
 const ROLE_CONFIGS: Record<string, RoleConfig> = {
   listener: {
@@ -206,6 +239,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [supportLink, setSupportLink] = useState<string | null>(null);
   const [supportMode, setSupportMode] = useState<'voice' | 'video'>('voice');
+  const [showWelcome, setShowWelcome] = useState(true);
   const [stats, setStats] = useState({
     hoursContributed: 0,
     peopleSupported: 0,
@@ -260,9 +294,54 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
     return CATEGORY_CONFIGS[normalized] || CATEGORY_CONFIGS.community;
   };
 
+  // ============================================
+  // PERMISSION CHECKING FUNCTIONS
+  // ============================================
+  const getVolunteerPermissions = (): PermissionAction[] => {
+    const selectedRoles = user?.volunteerRoles || [];
+    const allPermissions = new Set<PermissionAction>();
+    
+    // Always grant training and resources to all approved volunteers
+    allPermissions.add('training');
+    allPermissions.add('resources');
+    
+    // Add role-specific permissions
+    selectedRoles.forEach(role => {
+      const rolePermissions = PERMISSIONS[role];
+      if (rolePermissions) {
+        rolePermissions.forEach(permission => allPermissions.add(permission));
+      }
+    });
+    
+    return Array.from(allPermissions);
+  };
+
+  const hasPermission = (action: PermissionAction): boolean => {
+    const permissions = getVolunteerPermissions();
+    return permissions.includes(action);
+  };
+
+  const checkFeatureAccess = (action: PermissionAction): { allowed: boolean; message?: string } => {
+    if (hasPermission(action)) {
+      return { allowed: true };
+    }
+    
+    const selectedRoles = user?.volunteerRoles || [];
+    const roleText = selectedRoles.length > 0 ? selectedRoles.join(', ') : 'your role';
+    
+    return {
+      allowed: false,
+      message: `This feature is not available for ${roleText}. Complete additional training or request role expansion.`
+    };
+  };
+
+  // Use application data if available, otherwise fall back to profile
+  const userCategory = user?.volunteerCategory || profile?.role_category || 'Community';
+  const userRoles = user?.volunteerRoles || [];
+  
   const roleTitle = profile?.role_title || profile?.volunteerRole || 'Community Listener';
   const roleConfig = getRoleConfig(roleTitle);
-  const roleCategory = profile?.role_category || profile?.category || 'Community';
+  const roleCategory = userCategory;
   const categoryConfig = getCategoryConfig(roleCategory);
   const isCommunityListener = roleTitle.toLowerCase().includes('listener') || categoryConfig.id === 'community';
 
@@ -336,6 +415,101 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto p-6 md:p-8">
+        {/* Welcome Announcement - Shows when volunteer is newly approved */}
+        {showWelcome && (
+          <div className="bg-gradient-to-r from-pink-50 to-purple-50 border-2 border-pink-200 rounded-2xl p-8 mb-8 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-pink-200 rounded-full opacity-10 -mr-16 -mt-16"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-purple-200 rounded-full opacity-10 -ml-12 -mb-12"></div>
+            
+            <div className="relative z-10">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-start gap-4">
+                  <div className="text-4xl">🎉</div>
+                  <div>
+                    <h2 className="text-2xl font-black text-gray-900 mb-2">Welcome to the UNITY WITHIN Volunteer Community! 💜</h2>
+                    <p className="text-gray-700 mb-4">Your application has been approved! We're excited to have you join our mission to support mental health and healing.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowWelcome(false)}
+                  className="text-gray-400 hover:text-gray-600 mt-2"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Matched Skills/Roles */}
+              {userRoles && userRoles.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm font-bold text-gray-600 mb-2 uppercase tracking-wide">Your Matched Roles:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {userRoles.map((role) => (
+                      <span key={role} className="bg-white border-2 border-pink-400 text-pink-600 px-4 py-2 rounded-full font-bold text-sm">
+                        ✨ {role}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white rounded-xl p-4 border-l-4 border-pink-600">
+                  <p className="font-bold text-gray-900 mb-1">📚 Get Started</p>
+                  <p className="text-sm text-gray-600">Review training materials and guidelines for your role</p>
+                </div>
+                <div className="bg-white rounded-xl p-4 border-l-4 border-purple-600">
+                  <p className="font-bold text-gray-900 mb-1">🤝 Connect</p>
+                  <p className="text-sm text-gray-600">Meet other volunteers through our community</p>
+                </div>
+                <div className="bg-white rounded-xl p-4 border-l-4 border-blue-600">
+                  <p className="font-bold text-gray-900 mb-1">💪 Make Impact</p>
+                  <p className="text-sm text-gray-600">Start supporting and making a difference today</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Permission Status Card */}
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 mb-8 border-2 border-blue-200">
+          <div className="flex items-start gap-4">
+            <div className="text-3xl">✨</div>
+            <div className="flex-1">
+              <h3 className="text-lg font-black text-gray-900 mb-2">Your Role Permissions</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                You have access to {getVolunteerPermissions().length} features across your approved roles.
+              </p>
+              
+              {/* Role-Specific Permissions Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {(user?.volunteerRoles || []).map((role) => (
+                  <div key={role} className="bg-white rounded-lg p-3 border-l-4 border-blue-600">
+                    <p className="font-bold text-gray-900 text-sm">{role}</p>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {(PERMISSIONS[role] || []).slice(0, 3).map((perm) => (
+                        <span key={perm} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-semibold">
+                          ✓ {perm.replace('-', ' ')}
+                        </span>
+                      ))}
+                      {(PERMISSIONS[role] || []).length > 3 && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-semibold">
+                          +{(PERMISSIONS[role] || []).length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 p-3 bg-white rounded-lg border-l-4 border-green-600">
+                <p className="text-xs text-gray-600">
+                  <span className="font-bold">Tip:</span> Complete advanced training modules to unlock additional permissions and advance your role.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Category Modules */}
         <div className="bg-white rounded-2xl shadow-md p-6 mb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
@@ -367,22 +541,36 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
               </div>
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => handleStartSupportCall('voice')}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold flex items-center gap-2"
+                  disabled={!hasPermission('voice-call')}
+                  onClick={() => hasPermission('voice-call') && handleStartSupportCall('voice')}
+                  className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition-all ${
+                    hasPermission('voice-call')
+                      ? 'bg-purple-600 text-white hover:bg-purple-700 cursor-pointer'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                  }`}
+                  title={!hasPermission('voice-call') ? 'Voice calls not available for your role' : ''}
                 >
                   <Phone size={18} />
                   Start Voice Call
+                  {!hasPermission('voice-call') && <Lock size={14} />}
                 </button>
                 <button
-                  onClick={() => handleStartSupportCall('video')}
-                  className="px-4 py-2 bg-pink-600 text-white rounded-lg font-semibold flex items-center gap-2"
+                  disabled={!hasPermission('video-call')}
+                  onClick={() => hasPermission('video-call') && handleStartSupportCall('video')}
+                  className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition-all ${
+                    hasPermission('video-call')
+                      ? 'bg-pink-600 text-white hover:bg-pink-700 cursor-pointer'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                  }`}
+                  title={!hasPermission('video-call') ? 'Video calls not available for your role' : ''}
                 >
                   <Video size={18} />
                   Start Video Call
+                  {!hasPermission('video-call') && <Lock size={14} />}
                 </button>
               </div>
             </div>
-            {supportLink && (
+            {supportLink && hasPermission('voice-call') && hasPermission('video-call') && (
               <div className="mt-4 bg-purple-50 rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-purple-800">Share this link with the client</p>
@@ -400,20 +588,55 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
           </div>
         )}
 
-        {/* Quick Actions - Role Based */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {roleConfig.quickActions.map((action, idx) => (
-            <button
-              key={idx}
-              onClick={() => console.log('Action:', action.action)}
-              className="bg-white p-6 rounded-2xl shadow-md hover:shadow-lg transition-all group text-left"
-            >
-              <div className={`${roleConfig.color} mb-3 group-hover:scale-110 transition-transform`}>
-                {action.icon}
-              </div>
-              <p className="font-bold text-gray-900">{action.label}</p>
-            </button>
-          ))}
+        {/* Quick Actions - Role Based with Permissions */}
+        <div className="mb-8">
+          <h3 className="text-lg font-bold text-gray-900 mb-4">Quick Actions</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {roleConfig.quickActions.map((action, idx) => {
+              const hasAccess = hasPermission(action.action as PermissionAction);
+              const accessInfo = checkFeatureAccess(action.action as PermissionAction);
+              
+              return (
+                <div
+                  key={idx}
+                  className={`relative group`}
+                >
+                  <button
+                    disabled={!hasAccess}
+                    onClick={() => {
+                      if (hasAccess) {
+                        console.log('Action:', action.action);
+                      }
+                    }}
+                    className={`w-full h-full bg-white p-6 rounded-2xl shadow-md transition-all text-left ${
+                      hasAccess
+                        ? 'hover:shadow-lg group-hover:scale-105 cursor-pointer'
+                        : 'opacity-60 cursor-not-allowed'
+                    }`}
+                  >
+                    <div className={`${roleConfig.color} mb-3 transition-transform ${hasAccess ? 'group-hover:scale-110' : ''}`}>
+                      {action.icon}
+                    </div>
+                    <p className="font-bold text-gray-900">{action.label}</p>
+                    {!hasAccess && (
+                      <div className="mt-2 text-xs text-red-600 font-semibold flex items-center gap-1">
+                        <Lock size={12} />
+                        Locked
+                      </div>
+                    )}
+                  </button>
+
+                  {/* Permission Tooltip */}
+                  {!hasAccess && (
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-gray-900 text-white text-xs rounded-lg p-3 opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
+                      {accessInfo.message}
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Stats Grid */}

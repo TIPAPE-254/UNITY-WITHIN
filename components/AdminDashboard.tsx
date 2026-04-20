@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, MessageSquare, Shield, Activity, Flag, Plus, Trash2, Book, Trophy, AlertCircle, Search, ArrowLeft, ExternalLink, Mail, Phone, Send, Stethoscope, Copy } from 'lucide-react';
+import { Users, MessageSquare, Shield, Activity, Flag, Plus, Trash2, Book, Trophy, AlertCircle, Search, ArrowLeft, ExternalLink, Mail, Phone, Send, Stethoscope, Copy, CheckCircle, XCircle } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
 import { Button } from './Button';
 import { inviteTherapist } from '../services/therapistService';
 
-type AdminTab = 'overview' | 'users' | 'volunteers' | 'rooms' | 'messages' | 'blocked' | 'moods' | 'journals' | 'wins' | 'reports' | 'therapists';
+type AdminTab = 'overview' | 'users' | 'volunteers' | 'applications' | 'rooms' | 'messages' | 'blocked' | 'moods' | 'journals' | 'wins' | 'reports' | 'therapists';
 
 export const AdminDashboard: React.FC = () => {
     const [stats, setStats] = useState({ userCount: 0, messageCount: 0, moodCount: 0 });
     const [volunteerStats, setVolunteerStats] = useState({ total: 0, active: 0, pending: 0 });
     const [users, setUsers] = useState<any[]>([]);
     const [volunteers, setVolunteers] = useState<any[]>([]);
+    const [applications, setApplications] = useState<any[]>([]);
     const [rooms, setRooms] = useState<any[]>([]);
     const [messages, setMessages] = useState<any[]>([]);
     const [blockedLogs, setBlockedLogs] = useState<any[]>([]);
@@ -125,6 +126,11 @@ const [isLive, setIsLive] = useState(true);
                 const data = await res.json();
                 if (data.success) setVolunteers(data.invites || []);
             },
+            applications: async () => {
+                const res = await apiFetch(`${API_BASE_URL}/admin/volunteer-applications`);
+                const data = await res.json();
+                if (data.success) setApplications(data.data || []);
+            },
             rooms: async () => {
                 const res = await apiFetch(`${API_BASE_URL}/chat/rooms`);
                 const data = await res.json();
@@ -172,6 +178,7 @@ const [isLive, setIsLive] = useState(true);
             fetchStats(),
             fetchTabData('users', null),
             fetchTabData('volunteers', null),
+            fetchTabData('applications', null),
             fetchTabData('rooms', null),
             fetchTabData('messages', null),
             fetchTabData('blocked', null),
@@ -286,21 +293,40 @@ const [isLive, setIsLive] = useState(true);
         }
     };
 
-    const deleteVolunteerInvite = async (inviteId: string) => {
-        if (!window.confirm('Are you sure you want to delete this invitation? This action cannot be undone.')) return;
-        
-        try {
-            const res = await apiFetch(`${API_BASE_URL}/admin/invite/${inviteId}`, { method: 'DELETE' });
-            if (res.ok) {
-                setVolunteers(prev => prev.filter(v => v.id !== inviteId));
-                void refreshNow();
-            } else {
-                const data = await res.json();
-                alert(data.error || 'Failed to delete invitation');
-            }
-        } catch (error) {
-            console.error('Error deleting invitation:', error);
-            alert('An error occurred while deleting the invitation');
+    const approveApplication = async (applicationId: number) => {
+        const res = await apiFetch(`${API_BASE_URL}/admin/volunteer-applications/${applicationId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'approved' })
+        });
+        if (res.ok) {
+            setApplications(prev => prev.map(a => a.id === applicationId ? { ...a, status: 'approved' } : a));
+            void refreshNow();
+        }
+    };
+
+    const rejectApplication = async (applicationId: number) => {
+        const res = await apiFetch(`${API_BASE_URL}/admin/volunteer-applications/${applicationId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'rejected' })
+        });
+        if (res.ok) {
+            setApplications(prev => prev.map(a => a.id === applicationId ? { ...a, status: 'rejected' } : a));
+            void refreshNow();
+        }
+    };
+
+    const revokeApplication = async (applicationId: number, reason: string = '') => {
+        if (!window.confirm('Are you sure you want to revoke this volunteer\'s permissions? They will receive a notification email.')) {
+            return;
+        }
+
+        const res = await apiFetch(`${API_BASE_URL}/admin/volunteer-applications/${applicationId}/revoke`, {
+            method: 'POST',
+            body: JSON.stringify({ reason })
+        });
+        if (res.ok) {
+            setApplications(prev => prev.map(a => a.id === applicationId ? { ...a, status: 'revoked' } : a));
+            void refreshNow();
         }
     };
 
@@ -386,6 +412,16 @@ const [isLive, setIsLive] = useState(true);
             result = users.filter(u => (u.name || '').toLowerCase().includes(query) || (u.email || '').toLowerCase().includes(query));
         } else if (activeTab === 'volunteers') {
             result = volunteers.filter(v => (v.email || '').toLowerCase().includes(query) || (v.role || '').toLowerCase().includes(query) || (v.status || '').toLowerCase().includes(query));
+        } else if (activeTab === 'applications') {
+            result = applications.filter(a => 
+                (a.first_name || '').toLowerCase().includes(query) || 
+                (a.last_name || '').toLowerCase().includes(query) || 
+                (a.email || '').toLowerCase().includes(query) || 
+                (a.category || '').toLowerCase().includes(query) || 
+                (a.status || '').toLowerCase().includes(query)
+            );
+            // Sort by most recent first
+            result.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
         } else if (activeTab === 'messages' || selectedRoom) {
             result = messages.filter(m => (m.content || '').toLowerCase().includes(query) || (m.user_name || '').toLowerCase().includes(query));
             // Sort by most recent first
@@ -484,6 +520,7 @@ const [isLive, setIsLive] = useState(true);
                 {renderTabBtn('overview', 'Dashboard', Shield)}
                 {renderTabBtn('users', 'Users', Users)}
                 {renderTabBtn('volunteers', 'Volunteers', Users)}
+                {renderTabBtn('applications', 'Applications', Mail)}
                 {renderTabBtn('therapists', 'Therapists', Stethoscope)}
                 {renderTabBtn('rooms', 'Rooms', Users)}
                 {renderTabBtn('messages', 'Messages', MessageSquare)}
@@ -639,18 +676,182 @@ const [isLive, setIsLive] = useState(true);
                                                             ) : (
                                                                 <span className="text-[10px] text-gray-400">No action</span>
                                                             )}
-                                                            <button
-                                                                onClick={() => deleteVolunteerInvite(v.id)}
-                                                                className="p-1 px-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-2"
-                                                                title="Delete invitation"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
                                                         </td>
                                                     </tr>
                                                 ))}
                                             </tbody>
                                             </table>
+                                        </div>
+                                    </div>
+                                 )}
+
+                                 {activeTab === 'applications' && (
+                                    <div className="space-y-4">
+                                        <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 flex items-start gap-3">
+                                            <AlertCircle size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
+                                            <div className="text-sm text-blue-700">
+                                                <div className="font-bold">Pending Applications: {filteredContent().filter(a => a.status === 'pending').length}</div>
+                                                <p className="text-xs mt-1">Review applicant details and approve or reject their submission.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2">
+                                            {filteredContent().length === 0 ? (
+                                                <div className="text-center py-12">
+                                                    <Mail size={32} className="mx-auto text-gray-300 mb-2" />
+                                                    <p className="text-gray-500">No applications found</p>
+                                                </div>
+                                            ) : (
+                                                filteredContent().map((app: any) => (
+                                                    <div key={app.id} className={`rounded-xl border-2 p-6 transition-all ${
+                                                        app.status === 'approved' 
+                                                            ? 'bg-green-50 border-green-200' 
+                                                            : app.status === 'rejected'
+                                                            ? 'bg-red-50 border-red-200'
+                                                            : 'bg-yellow-50 border-yellow-200 hover:shadow-md'
+                                                    }`}>
+                                                        <div className="flex justify-between items-start mb-4">
+                                                            <div className="flex-1">
+                                                                <h4 className="text-lg font-bold text-gray-800">{app.first_name} {app.last_name}</h4>
+                                                                <div className="flex items-center gap-3 mt-1">
+                                                                    <a href={`mailto:${app.email}`} className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                                                                        <Mail size={14} />
+                                                                        {app.email}
+                                                                    </a>
+                                                                    {app.phone && (
+                                                                        <a href={`tel:${app.phone}`} className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                                                                            <Phone size={14} />
+                                                                            {app.phone}
+                                                                        </a>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                                                app.status === 'approved'
+                                                                    ? 'bg-green-200 text-green-800'
+                                                                    : app.status === 'rejected'
+                                                                    ? 'bg-red-200 text-red-800'
+                                                                    : 'bg-yellow-200 text-yellow-800'
+                                                            }`}>
+                                                                {app.status?.toUpperCase() || 'PENDING'}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
+                                                            <div>
+                                                                <p className="text-xs text-gray-600 font-semibold">Location</p>
+                                                                <p className="text-gray-800 font-semibold">{app.location}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-gray-600 font-semibold">Category</p>
+                                                                <p className="text-gray-800 font-semibold">{app.category}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-gray-600 font-semibold">Hours/Week</p>
+                                                                <p className="text-gray-800 font-semibold">{app.availability}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-gray-600 font-semibold">Work Type</p>
+                                                                <p className="text-gray-800 font-semibold">{app.work_preference}</p>
+                                                            </div>
+                                                        </div>
+
+                                                        {app.roles && (
+                                                            <div className="mb-4">
+                                                                <p className="text-xs text-gray-600 font-semibold mb-2">Selected Roles:</p>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {typeof app.roles === 'string' ? (
+                                                                        <span className="px-2 py-1 bg-white bg-opacity-50 text-gray-700 rounded text-xs">{app.roles}</span>
+                                                                    ) : Array.isArray(app.roles) ? (
+                                                                        app.roles.map((role: string, idx: number) => (
+                                                                            <span key={idx} className="px-2 py-1 bg-white bg-opacity-50 text-gray-700 rounded text-xs">{role}</span>
+                                                                        ))
+                                                                    ) : (
+                                                                        <span className="text-xs text-gray-500">No roles selected</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {app.why_volunteer && (
+                                                            <div className="mb-4 bg-white bg-opacity-50 rounded p-3">
+                                                                <p className="text-xs text-gray-600 font-semibold mb-1">Why Volunteer:</p>
+                                                                <p className="text-sm text-gray-700 line-clamp-3">{app.why_volunteer}</p>
+                                                            </div>
+                                                        )}
+
+                                                        {app.mental_health_context && (
+                                                            <div className="text-xs text-gray-600 mb-4">
+                                                                <p className="font-semibold">Mental Health Context:</p>
+                                                                <p className="text-gray-700">{app.mental_health_context}</p>
+                                                            </div>
+                                                        )}
+
+                                                        {app.status === 'pending' && (
+                                                            <div className="flex gap-2 pt-4 border-t">
+                                                                <button
+                                                                    onClick={() => approveApplication(app.id)}
+                                                                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 flex items-center justify-center gap-2 transition-colors"
+                                                                >
+                                                                    <CheckCircle size={16} />
+                                                                    Approve
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => rejectApplication(app.id)}
+                                                                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 flex items-center justify-center gap-2 transition-colors"
+                                                                >
+                                                                    <XCircle size={16} />
+                                                                    Reject
+                                                                </button>
+                                                            </div>
+                                                        )}
+
+                                                        {app.status === 'approved' && (
+                                                            <div className="flex gap-2 pt-4 border-t">
+                                                                <div className="flex-1 px-4 py-2 bg-green-50 text-green-700 rounded-lg font-bold flex items-center justify-center gap-2 border border-green-200">
+                                                                    <CheckCircle size={16} />
+                                                                    Approved
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const reason = window.prompt('Enter reason for revoking permissions (optional):');
+                                                                        if (reason !== null) {
+                                                                            revokeApplication(app.id, reason);
+                                                                        }
+                                                                    }}
+                                                                    className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg font-bold hover:bg-orange-700 flex items-center justify-center gap-2 transition-colors"
+                                                                    title="Revoke this volunteer's access permissions"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                    Revoke Permission
+                                                                </button>
+                                                            </div>
+                                                        )}
+
+                                                        {app.status === 'revoked' && (
+                                                            <div className="flex gap-2 pt-4 border-t">
+                                                                <div className="flex-1 px-4 py-2 bg-orange-50 text-orange-700 rounded-lg font-bold flex items-center justify-center gap-2 border border-orange-200">
+                                                                    <AlertCircle size={16} />
+                                                                    Permissions Revoked
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {app.status === 'rejected' && (
+                                                            <div className="flex gap-2 pt-4 border-t">
+                                                                <div className="flex-1 px-4 py-2 bg-red-50 text-red-700 rounded-lg font-bold flex items-center justify-center gap-2 border border-red-200">
+                                                                    <XCircle size={16} />
+                                                                    Rejected
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        <p className="text-xs text-gray-500 mt-3">
+                                                            Submitted: {new Date(app.created_at).toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                ))
+                                            )}
                                         </div>
                                     </div>
                                  )}
