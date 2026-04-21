@@ -199,29 +199,37 @@ export default function App() {
       <main className={`${(currentView === 'landing' || currentView === 'login' || currentView === 'signup' || currentView === 'volunteer-invite') ? 'w-full' : 'flex-1 md:ml-64'} p-4 pb-24 md:p-8 md:pb-8 max-w-5xl mx-auto w-full transition-all`}>
         {/* Mobile Header - Hidden on landing, login, signup, and volunteer-invite pages */}
         {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && (
-          <div className="md:hidden flex items-center justify-between mb-6">
-            {/* Hamburger Menu */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 text-gray-600 hover:text-pink-600 transition-colors"
-            >
-              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
-
-            {/* Centered Logo */}
-            <div className="flex-1 flex items-center justify-center gap-2 text-pink-600">
-              <Heart className="fill-current" size={24} />
-              <span className="font-extrabold text-lg text-gray-900">UNITY <span className="text-pink-500">WITHIN</span></span>
+          <div className="md:hidden flex items-center justify-between mb-6 px-2">
+            {/* Hamburger Menu - Left */}
+            <div className="flex-shrink-0">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 text-gray-600 hover:text-pink-600 transition-colors rounded-lg hover:bg-gray-100"
+                aria-label="Open menu"
+              >
+                {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              </button>
             </div>
 
-            {/* Crisis Button */}
-            <button
-              onClick={() => setCrisisModalOpen(true)}
-              className="p-2 text-red-600 hover:text-red-700 transition-colors"
-              title="Immediate Crisis Help"
-            >
-              <ShieldAlert size={20} />
-            </button>
+            {/* UNITY WITHIN - Center */}
+            <div className="flex-1 flex items-center justify-center mx-4">
+              <div className="flex items-center gap-2 text-pink-600">
+                <Heart className="fill-current" size={24} />
+                <span className="font-extrabold text-lg text-gray-900">UNITY <span className="text-pink-500">WITHIN</span></span>
+              </div>
+            </div>
+
+            {/* Crisis Button - Right */}
+            <div className="flex-shrink-0">
+              <button
+                onClick={() => setCrisisModalOpen(true)}
+                className="p-2 text-red-600 hover:text-red-700 transition-colors rounded-lg hover:bg-red-50"
+                title="Immediate Crisis Help"
+                aria-label="Crisis support"
+              >
+                <ShieldAlert size={20} />
+              </button>
+            </div>
           </div>
         )}
 
