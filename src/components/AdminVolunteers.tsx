@@ -64,8 +64,10 @@ interface ApprovedVolunteer {
   role_display_name?: string | null;
 }
 
+import { ViewState } from '../types';
+
 interface AdminVolunteersProps {
-  onNavigate?: (view: string) => void;
+  onNavigate?: (view: ViewState) => void;
   adminName?: string;
 }
 

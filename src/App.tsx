@@ -18,7 +18,7 @@ import { VolunteerApplicationForm } from './components/VolunteerApplicationForm'
 import { VolunteerProfilePage } from './components/VolunteerProfilePage';
 import { AnalyticsTracker } from './components/AnalyticsTracker';
 import { usePushNotifications } from './hooks/usePushNotifications';
-import { Heart, Menu, X, ShieldAlert, Phone } from 'lucide-react';
+import { Heart, Menu, X, ShieldAlert, Phone, Users } from 'lucide-react';
 
 export default function App() {
   const { register: requestPushPermission } = usePushNotifications();
@@ -51,7 +51,7 @@ export default function App() {
       const pathname = window.location.pathname;
 
       // Check for invite token
-      const inviteMatch = pathname.match(/\/volunteer-invite\/([a-f0-9]+)/i);
+      const inviteMatch = pathname.match(/\/volunteer-invite\/([a-f0-9\-]+)/i);
       if (inviteMatch && inviteMatch[1]) {
         const token = inviteMatch[1];
         setInviteToken(token);
@@ -148,6 +148,8 @@ export default function App() {
         return <VolunteerProfilePage email={volunteerProfileEmail || undefined} onNavigate={handleNavigate} />;
       case 'volunteer-dashboard':
         return <VolunteerDashboard user={user || undefined} onNavigate={handleNavigate} />;
+      case 'admin-volunteers':
+        return <AdminVolunteers onNavigate={handleNavigate} adminName={user?.firstName} />;
       default:
         return <LandingPage onNavigate={handleNavigate} onGetStarted={() => handleNavigate('signup')} />;
     }
@@ -179,6 +181,20 @@ export default function App() {
                 {item.label}
               </button>
             ))}
+            
+            {/* Admin Navigation */}
+            {(user?.role === 'admin' || user?.email === 'lepiromatayo@gmail.com') && (
+              <button
+                onClick={() => setCurrentView('admin-volunteers')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 font-medium ${currentView === 'admin-volunteers'
+                  ? 'bg-purple-50 text-purple-600 shadow-sm'
+                  : 'text-gray-500 hover:bg-gray-50 hover:text-purple-500'
+                  }`}
+              >
+                <Users size={20} className={currentView === 'admin-volunteers' ? 'stroke-[2.5px]' : 'stroke-2'} />
+                Admin Volunteers
+              </button>
+            )}
           </nav>
 
           <div className="mt-auto pt-6 border-t border-gray-100">
@@ -274,6 +290,23 @@ export default function App() {
                     {item.label}
                   </button>
                 ))}
+                
+                {/* Admin Navigation */}
+                {(user?.role === 'admin' || user?.email === 'lepiromatayo@gmail.com') && (
+                  <button
+                    onClick={() => {
+                      setCurrentView('admin-volunteers');
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 font-medium ${currentView === 'admin-volunteers'
+                      ? 'bg-purple-50 text-purple-600 shadow-sm'
+                      : 'text-gray-500 hover:bg-gray-50 hover:text-purple-500'
+                      }`}
+                  >
+                    <Users size={20} className={currentView === 'admin-volunteers' ? 'stroke-[2.5px]' : 'stroke-2'} />
+                    Admin Volunteers
+                  </button>
+                )}
               </nav>
 
               <div className="mt-6 pt-6 border-t border-gray-100">

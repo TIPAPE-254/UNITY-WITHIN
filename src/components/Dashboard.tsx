@@ -6,9 +6,11 @@ import { Sun, Sparkles, TrendingUp, Flame, Trophy, Star, Sprout, Flower, Trees, 
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts';
 import { User, UserProgress, Goal, Habit, SafetyPlan, Badge, WearableData } from '../types';
 
+import { ViewState } from '../types';
+
 interface DashboardProps {
   userName?: string;
-  onNavigate: (view: any) => void;
+  onNavigate: (view: ViewState) => void;
   onLogout?: () => void;
 }
 
