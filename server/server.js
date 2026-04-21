@@ -5054,7 +5054,7 @@ app.post("/api/volunteer/apply", async (req, res) => {
         mentalHealthContext ? String(mentalHealthContext).trim() : null,
         String(workPreference).trim(),
         notes ? String(notes).trim() : null,
-        "pending",
+        "pending_admin_review",
       ],
     );
 
@@ -5562,6 +5562,30 @@ app.get("/api/admin/volunteers", requireAdmin, async (req, res) => {
     res.json({ success: true, data: dbResult.rows });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin: list approved volunteers (RBAC pipeline)
+app.get("/api/admin/approved-volunteers", requireAdmin, async (req, res) => {
+  try {
+    const dbResult = await pool.query(
+      `SELECT
+          av.id,
+          av.email,
+          av.first_name,
+          av.last_name,
+          av.approved_at,
+          av.activated_at,
+          av.role_id,
+          vrr.name as role_name,
+          vrr.display_name as role_display_name
+       FROM approved_volunteers av
+       LEFT JOIN volunteer_rbac_roles vrr ON av.role_id = vrr.id
+       ORDER BY av.approved_at DESC, av.id DESC`,
+    );
+    return res.json({ success: true, data: dbResult.rows || [] });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -6677,19 +6701,77 @@ app.get("/api/volunteer/dashboard", async (req, res) => {
     return res.status(401).json({ success: false, error: "Unauthorized" });
 
   try {
-    const volunteers = await query(
-      `SELECT v.*, r.title as role_title, r.description as role_description, r.category as role_category
-       FROM volunteers v 
-       LEFT JOIN volunteer_roles r ON v.matched_role_id = r.id 
-       WHERE v.email = $1`,
+    // 1) Preferred: RBAC-backed volunteer record
+    const volunteersRbac = await query(
+      `SELECT v.*, vrr.display_name as role_title, vrr.description as role_description, vrr.name as role_category
+       FROM volunteers v
+       LEFT JOIN volunteer_rbac_roles vrr ON v.rbac_role_id = vrr.id
+       WHERE LOWER(v.email) = LOWER($1)`,
       [email],
     );
-    if (volunteers.length === 0)
-      return res
-        .status(404)
-        .json({ success: false, error: "Volunteer not found" });
 
-    const volunteer = volunteers[0];
+    // 2) Legacy fallback: matched_role_id → volunteer_roles
+    const volunteersLegacy = volunteersRbac.length
+      ? []
+      : await query(
+          `SELECT v.*, r.title as role_title, r.description as role_description, r.category as role_category
+           FROM volunteers v
+           LEFT JOIN volunteer_roles r ON v.matched_role_id = r.id
+           WHERE LOWER(v.email) = LOWER($1)`,
+          [email],
+        );
+
+    // 3) Approved-but-not-activated fallback: approved_volunteers → volunteer_rbac_roles
+    const approvedFallback = (volunteersRbac.length || volunteersLegacy.length)
+      ? []
+      : await query(
+          `SELECT
+              av.id as approved_id,
+              av.email,
+              av.first_name,
+              av.last_name,
+              av.approved_at,
+              av.activated_at,
+              vrr.display_name as role_title,
+              vrr.description as role_description,
+              vrr.name as role_category
+           FROM approved_volunteers av
+           LEFT JOIN volunteer_rbac_roles vrr ON av.role_id = vrr.id
+           WHERE LOWER(av.email) = LOWER($1)
+           LIMIT 1`,
+          [email],
+        );
+
+    const volunteer = volunteersRbac[0] || volunteersLegacy[0] || null;
+
+    if (!volunteer && approvedFallback.length === 0) {
+      return res.status(404).json({ success: false, error: "Volunteer not found" });
+    }
+
+    // If we only have the approved fallback, return a minimal profile shape
+    if (!volunteer) {
+      const approved = approvedFallback[0];
+      return res.json({
+        success: true,
+        data: {
+          profile: {
+            id: null,
+            email: approved.email,
+            first_name: approved.first_name,
+            last_name: approved.last_name,
+            status: approved.activated_at ? 'active' : 'approved',
+            role_title: approved.role_title,
+            role_description: approved.role_description,
+            role_category: approved.role_category,
+            hours_contributed: 0,
+          },
+          tasks: [],
+          training: [],
+          shifts: [],
+        },
+      });
+    }
+
     const tasks = await query(
       "SELECT * FROM volunteer_tasks WHERE volunteer_id = $1 ORDER BY due_date ASC",
       [volunteer.id],
@@ -6703,7 +6785,7 @@ app.get("/api/volunteer/dashboard", async (req, res) => {
       [volunteer.id],
     );
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         profile: volunteer,
@@ -6845,6 +6927,93 @@ app.put("/api/volunteer/profile/:userId", async (req, res) => {
   }
 });
 
+// Public Volunteer Profile Endpoint
+// Allows viewing approved volunteer profiles without authentication
+app.get("/api/volunteer/public", async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ success: false, error: "Volunteer email is required" });
+    }
+
+    // Query approved volunteers with their role information
+    const volunteerResult = await pool.query(
+      `SELECT
+          av.id,
+          av.email,
+          av.first_name,
+          av.last_name,
+          av.approved_at,
+          av.activated_at,
+          av.role_id,
+          vrr.name as role_name,
+          vrr.display_name as role_display_name,
+          vrr.category as role_category,
+          vrr.description as role_description,
+          v.skills,
+          v.phone,
+          v.county,
+          v.bio,
+          v.hours_contributed,
+          v.sessions_completed
+       FROM approved_volunteers av
+       LEFT JOIN volunteer_rbac_roles vrr ON av.role_id = vrr.id
+       LEFT JOIN volunteers v ON av.email = v.email
+       WHERE LOWER(av.email) = LOWER($1)
+       LIMIT 1`,
+      [email.trim().toLowerCase()]
+    );
+
+    if (volunteerResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Volunteer profile not found or not yet approved"
+      });
+    }
+
+    const volunteer = volunteerResult.rows[0];
+
+    // Parse skills if stored as JSON
+    let parsedSkills = [];
+    if (volunteer.skills) {
+      try {
+        parsedSkills = Array.isArray(volunteer.skills)
+          ? volunteer.skills
+          : JSON.parse(volunteer.skills);
+      } catch {
+        parsedSkills = [];
+      }
+    }
+
+    // Build public profile response
+    const publicProfile = {
+      id: volunteer.id,
+      email: volunteer.email,
+      first_name: volunteer.first_name,
+      last_name: volunteer.last_name,
+      role_name: volunteer.role_name,
+      role_display_name: volunteer.role_display_name,
+      role_category: volunteer.role_category,
+      role_description: volunteer.role_description,
+      approved_at: volunteer.approved_at,
+      activated_at: volunteer.activated_at,
+      hours_contributed: volunteer.hours_contributed || 0,
+      sessions_completed: volunteer.sessions_completed || 0,
+      impact_score: Math.min(100, Math.floor((volunteer.hours_contributed || 0) * 10)),
+      skills: parsedSkills,
+      phone: volunteer.phone || null,
+      location: volunteer.county || null,
+      bio: volunteer.bio || null,
+    };
+
+    return res.json({ success: true, profile: publicProfile });
+  } catch (error) {
+    console.error('Error fetching public volunteer profile:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Volunteer Portal Endpoints
 
 /**
@@ -6860,8 +7029,8 @@ app.get("/api/portal/me", async (req, res) => {
 
     // Get volunteer profile
     const volunteerResult = await pool.query(
-      `SELECT id, name, email, phone, county, matched_role_id, category, 
-              availability, work_preference, mental_health_context, 
+      `SELECT id, name, email, phone, county, matched_role_id, category,
+              availability, work_preference, mental_health_context,
               motivation, status, hours_contributed, created_at
        FROM volunteers WHERE LOWER(email) = LOWER($1) LIMIT 1`,
       [email]

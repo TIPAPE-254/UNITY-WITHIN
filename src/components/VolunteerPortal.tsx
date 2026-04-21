@@ -276,7 +276,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
       console.error('Failed to load portal data:', err);
       setProfile({
         firstName: user?.firstName || 'Volunteer',
-        volunteerRole: 'Community Listener',
+        volunteerRole: (user?.volunteerRoles && user.volunteerRoles[0]) || 'Community Listener',
         matched_role_id: 1
       });
     } finally {
@@ -284,9 +284,37 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
     }
   };
 
+  const getRoleKeyFromTitle = (roleTitle: string = ''): keyof typeof ROLE_CONFIGS => {
+    const role = roleTitle.toLowerCase();
+    if (role.includes('community listener')) return 'listener';
+    if (role.includes('mental health advocate')) return 'advocate';
+    if (role.includes('outreach ambassador')) return 'ambassador';
+    if (role.includes('content') || role.includes('story')) return 'content';
+    if (role.includes('wellness')) return 'wellness';
+    if (role.includes('tech')) return 'tech';
+    return 'listener';
+  };
+
   const getRoleConfig = (roleTitle: string): RoleConfig => {
-    const normalizedRole = roleTitle?.toLowerCase().replace(/[^a-z]/g, '') || 'listener';
-    return ROLE_CONFIGS[normalizedRole] || ROLE_CONFIGS.listener;
+    // Prefer the approved RBAC role key (e.g. listener/advocate/ambassador/content/wellness/tech)
+    const rbacName = (user?.volunteerCategory || '').toLowerCase();
+    const normalizedRbac = rbacName.replace(/[^a-z]/g, '');
+    const mappedKey: keyof typeof ROLE_CONFIGS | null =
+      normalizedRbac.includes('communitylistener') ? 'listener'
+      : normalizedRbac.includes('mentalhealthadvocate') ? 'advocate'
+      : normalizedRbac.includes('outreachambassador') ? 'ambassador'
+      : normalizedRbac.includes('contentcreator') ? 'content'
+      : normalizedRbac.includes('wellnesssupport') ? 'wellness'
+      : normalizedRbac.includes('techsupport') ? 'tech'
+      : null;
+
+    if (mappedKey) {
+      return ROLE_CONFIGS[mappedKey];
+    }
+
+    // Fallback to matching by display title
+    const inferredKey = getRoleKeyFromTitle(roleTitle);
+    return ROLE_CONFIGS[inferredKey] || ROLE_CONFIGS.listener;
   };
 
   const getCategoryConfig = (category: string): CategoryConfig => {
@@ -339,7 +367,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({ user, onNaviga
   const userCategory = user?.volunteerCategory || profile?.role_category || 'Community';
   const userRoles = user?.volunteerRoles || [];
   
-  const roleTitle = profile?.role_title || profile?.volunteerRole || 'Community Listener';
+  const roleTitle = userRoles[0] || profile?.role_title || profile?.volunteerRole || 'Community Listener';
   const roleConfig = getRoleConfig(roleTitle);
   const roleCategory = userCategory;
   const categoryConfig = getCategoryConfig(roleCategory);

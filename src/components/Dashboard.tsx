@@ -4,7 +4,7 @@ import { Button } from './Button';
 import { generateDailyAffirmation } from '../services/geminiService';
 import { Sun, Sparkles, TrendingUp, Flame, Trophy, Star, Sprout, Flower, Trees, Wind, BrainCircuit, Heart, Zap, Phone, ExternalLink, Brain, AlertTriangle, Video, Copy } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts';
-import { UserProgress, Goal, Habit, SafetyPlan, Badge, WearableData } from '../types';
+import { User, UserProgress, Goal, Habit, SafetyPlan, Badge, WearableData } from '../types';
 
 interface DashboardProps {
   userName?: string;
@@ -87,6 +87,21 @@ const buildWeeklyMoodData = (logs: MoodLog[]): MoodChartDatum[] => {
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNavigate, onLogout }) => {
+  const savedUser: User | null = (() => {
+    try {
+      const raw = localStorage.getItem('unity_user');
+      return raw ? (JSON.parse(raw) as User) : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const isApprovedVolunteer =
+    savedUser?.role === 'volunteer' || savedUser?.volunteerStatus === 'approved' || savedUser?.volunteerStatus === 'active';
+
+  const volunteerRoleLabel =
+    (savedUser?.volunteerRoles && savedUser.volunteerRoles[0]) || savedUser?.volunteerCategory || 'Volunteer';
+
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [moodChartData, setMoodChartData] = useState<MoodChartDatum[]>(() => buildWeeklyMoodData([]));
   const [affirmation, setAffirmation] = useState<string>("Loading your daily calm...");
@@ -240,7 +255,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/moods?userId=${encodeURIComponent(userId)}&range=week`);
+      const response = await fetch(`${API_BASE_URL}/moods?userId=${encodeURIComponent(userId)}&range=week`);
       if (!response.ok) {
         throw new Error('Failed to fetch mood history');
       }
@@ -258,7 +273,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
     if (!userId) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/moods`, {
+      const response = await fetch(`${API_BASE_URL}/moods`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -287,7 +302,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
 
     void fetchMoodHistory();
 
-    const streamUrl = `${API_BASE_URL}/api/moods/stream?userId=${encodeURIComponent(userId)}`;
+    const streamUrl = `${API_BASE_URL}/moods/stream?userId=${encodeURIComponent(userId)}`;
     const stream = new EventSource(streamUrl);
 
     const handleMoodUpdate = (event: MessageEvent) => {
@@ -480,6 +495,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
           </button>
         )}
       </header>
+
+      {isApprovedVolunteer && (
+        <section className="bg-white rounded-3xl p-6 shadow-sm border border-unity-50">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-unity-black">Volunteer Portal</h2>
+              <p className="text-sm text-gray-500">Role: <span className="font-semibold text-gray-800">{volunteerRoleLabel}</span></p>
+            </div>
+            <button
+              onClick={() => onNavigate('volunteer-portal')}
+              className="px-4 py-2 rounded-2xl text-sm font-semibold bg-unity-500 text-white hover:bg-unity-600 transition-colors"
+            >
+              Open Volunteer Portal
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Progress / Level Card */}
       <section className="bg-white rounded-3xl p-6 shadow-sm border border-unity-50 relative overflow-hidden">

@@ -5,11 +5,11 @@ import {
 } from 'lucide-react';
 
 const BRAND = {
-  sage: '#1D9E75',
+  sage: '#f46bd6',
   sageLight: '#E8F5EE',
-  lavender: '#7F77DD',
+  lavender: '#dd77c2',
   lavenderLight: '#EFEDF9',
-  amber: '#EF9F27',
+  amber: '#282623',
   amberLight: '#FEF3E2',
   cream: '#FFF5F7',
   creamDark: '#FEF0F2',

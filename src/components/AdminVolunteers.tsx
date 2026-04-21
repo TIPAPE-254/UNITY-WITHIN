@@ -40,13 +40,28 @@ interface VolunteerApplication {
   email: string;
   first_name: string;
   last_name: string;
+  phone?: string | null;
+  location?: string;
   category?: string;
   availability?: string;
+  roles?: unknown;
   skills?: string;
   why_volunteer: string;
-  status: 'pending_admin_review' | 'approved' | 'rejected';
+  status: 'pending' | 'pending_admin_review' | 'approved' | 'rejected';
   created_at: string;
   invite_id?: number;
+}
+
+interface ApprovedVolunteer {
+  id: number;
+  email: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  approved_at?: string | null;
+  activated_at?: string | null;
+  role_id?: number | null;
+  role_name?: string | null;
+  role_display_name?: string | null;
 }
 
 interface AdminVolunteersProps {
@@ -58,10 +73,11 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
   const [volunteers, setVolunteers] = useState<VolunteerInvite[]>([]);
   const [adminVolunteers, setAdminVolunteers] = useState<AdminVolunteer[]>([]);
   const [applications, setApplications] = useState<VolunteerApplication[]>([]);
+  const [approvedVolunteers, setApprovedVolunteers] = useState<ApprovedVolunteer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [tab, setTab] = useState<'manage' | 'applications' | 'tracking' | 'rbac'>('manage');
+  const [tab, setTab] = useState<'manage' | 'applications' | 'approved' | 'tracking' | 'rbac'>('manage');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [existingInviteLink, setExistingInviteLink] = useState<string | null>(null);
   const [selectedRBACVolunteer, setSelectedRBACVolunteer] = useState<AdminVolunteer | null>(null);
@@ -79,6 +95,26 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
   const [inviteRole, setInviteRole] = useState('listener');
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [applicationSearch, setApplicationSearch] = useState('');
+  const [applicationStatusFilter, setApplicationStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+
+  const isPendingApplication = (status: VolunteerApplication['status']) =>
+    status === 'pending_admin_review' || status === 'pending';
+
+  const getApplicationRoles = (app: VolunteerApplication): string[] => {
+    const raw = app.roles;
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.filter(Boolean).map(String);
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.filter(Boolean).map(String) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
 
   const volunteerRoles = [
     { id: 'listener', label: 'Community Listener' },
@@ -94,25 +130,66 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
     fetchVolunteers();
     fetchAdminVolunteers();
     fetchApplications();
+    fetchApprovedVolunteers();
     fetchRoles();
   }, []);
 
+  const getAdminAuthHeaders = (extra?: Record<string, string>) => {
+    const token = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('unity_user');
+    let storedEmail: string | undefined;
+    if (storedUser) {
+      try {
+        storedEmail = (JSON.parse(storedUser)?.email as string | undefined) || undefined;
+      } catch {
+        storedEmail = undefined;
+      }
+    }
+
+    const headers: Record<string, string> = {
+      ...(extra || {}),
+    };
+
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (storedEmail) headers['x-user-email'] = storedEmail;
+
+    return headers;
+  };
+
   const fetchApplications = async () => {
     try {
-      const response = await fetch('/api/admin/volunteer-applications');
-      if (response.ok) {
-        const data = await response.json();
-        setApplications(data.data || []);
+      const response = await fetch('/api/admin/volunteer-applications', {
+        headers: getAdminAuthHeaders()
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to fetch applications');
       }
+      setApplications(data?.data || []);
     } catch (err) {
       console.error('Error fetching applications:', err);
+    }
+  };
+
+  const fetchApprovedVolunteers = async () => {
+    try {
+      const response = await fetch('/api/admin/approved-volunteers', {
+        headers: getAdminAuthHeaders()
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to fetch approved volunteers');
+      }
+      setApprovedVolunteers(data?.data || []);
+    } catch (err) {
+      console.error('Error fetching approved volunteers:', err);
     }
   };
 
   const fetchRoles = async () => {
     try {
       const response = await fetch('/api/admin/volunteer-rbac/roles', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: getAdminAuthHeaders()
       });
       if (response.ok) {
         const data = await response.json();
@@ -367,7 +444,7 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
 
     try {
       setLoading(true);
-      const response = await fetch(`/api/admin/volunteer-application/${appId}`, {
+      const response = await fetch(`/api/admin/volunteer-applications/${appId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -397,6 +474,7 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
       case 'active':
         return 'bg-green-50 border-green-200 text-green-800';
       case 'pending':
+      case 'pending_admin_review':
         return 'bg-yellow-50 border-yellow-200 text-yellow-800';
       case 'rejected':
         return 'bg-red-50 border-red-200 text-red-800';
@@ -411,6 +489,7 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
       case 'active':
         return <CheckCircle size={18} className="text-green-600" />;
       case 'pending':
+      case 'pending_admin_review':
         return <Clock size={18} className="text-yellow-600" />;
       case 'rejected':
         return <XCircle size={18} className="text-red-600" />;
@@ -603,7 +682,17 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Applications ({applications.filter(a => a.status === 'pending_admin_review').length})
+              Applications ({applications.length})
+            </button>
+            <button
+              onClick={() => setTab('approved')}
+              className={`flex-1 min-w-[150px] px-6 py-4 font-semibold transition-colors ${
+                tab === 'approved'
+                  ? 'text-green-600 border-b-2 border-green-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Approved Volunteers ({approvedVolunteers.length})
             </button>
             <button
               onClick={() => setTab('tracking')}
@@ -648,6 +737,14 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
 
                       <div className="grid grid-cols-2 gap-4 mb-6">
                         <div>
+                          <p className="text-xs text-gray-600 font-semibold">Phone</p>
+                          <p className="text-sm text-gray-900">{selectedApplication.phone || 'Not provided'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-600 font-semibold">Location</p>
+                          <p className="text-sm text-gray-900">{selectedApplication.location || 'Not specified'}</p>
+                        </div>
+                        <div>
                           <p className="text-xs text-gray-600 font-semibold">Category</p>
                           <p className="text-sm text-gray-900">{selectedApplication.category || 'Not specified'}</p>
                         </div>
@@ -656,6 +753,22 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
                           <p className="text-sm text-gray-900">{selectedApplication.availability || 'Not specified'}</p>
                         </div>
                       </div>
+
+                      {getApplicationRoles(selectedApplication).length > 0 && (
+                        <div className="mb-6">
+                          <p className="text-xs text-gray-600 font-semibold mb-2">Roles</p>
+                          <div className="flex flex-wrap gap-2">
+                            {getApplicationRoles(selectedApplication).map((role) => (
+                              <span
+                                key={role}
+                                className="px-3 py-1 bg-white border border-blue-100 rounded-full text-xs font-semibold text-gray-800"
+                              >
+                                {role}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="mb-6">
                         <p className="text-xs text-gray-600 font-semibold mb-2">Why Volunteer</p>
@@ -674,7 +787,20 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
                       <div className="border-t border-blue-200 pt-6">
                         <h3 className="font-semibold text-gray-900 mb-4">Approve & Assign Role</h3>
 
-                        {approvingWithRole === selectedApplication.id ? (
+                        {!isPendingApplication(selectedApplication.status) ? (
+                          <div className={`flex items-center gap-2 px-4 py-3 rounded-lg border ${getStatusColor(selectedApplication.status)}`}>
+                            {getStatusIcon(selectedApplication.status)}
+                            <span className="text-sm font-semibold">
+                              {selectedApplication.status === 'approved'
+                                ? 'This application is already approved.'
+                                : selectedApplication.status === 'rejected'
+                                  ? 'This application was rejected.'
+                                  : 'This application is not pending review.'}
+                            </span>
+                          </div>
+                         ) : (
+
+                         approvingWithRole === selectedApplication.id ? (
                           <div className="space-y-4">
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-2">Select RBAC Role *</label>
@@ -724,6 +850,8 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
                               Reject
                             </button>
                           </div>
+                        )
+
                         )}
                       </div>
                     </div>
@@ -731,15 +859,47 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
                 ) : (
                   // List of applications
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Pending Applications</h2>
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Applications</h2>
+
+                    <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                      <input
+                        value={applicationSearch}
+                        onChange={(e) => setApplicationSearch(e.target.value)}
+                        placeholder="Search by name or email"
+                        className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <select
+                        value={applicationStatusFilter}
+                        onChange={(e) => setApplicationStatusFilter(e.target.value as any)}
+                        className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="all">All statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                    </div>
+
                     <div className="space-y-3">
-                      {applications.filter(a => a.status === 'pending_admin_review').length === 0 ? (
+                      {applications.length === 0 ? (
                         <div className="text-center py-8 text-gray-600">
-                          <p>No pending applications</p>
+                          <p>No applications</p>
                         </div>
                       ) : (
                         applications
-                          .filter(a => a.status === 'pending_admin_review')
+                          .slice()
+                          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                          .filter((app) => {
+                            if (applicationStatusFilter === 'pending' && !isPendingApplication(app.status)) return false;
+                            if (applicationStatusFilter === 'approved' && app.status !== 'approved') return false;
+                            if (applicationStatusFilter === 'rejected' && app.status !== 'rejected') return false;
+
+                            const q = applicationSearch.trim().toLowerCase();
+                            if (!q) return true;
+                            const name = `${app.first_name || ''} ${app.last_name || ''}`.trim().toLowerCase();
+                            const email = String(app.email || '').toLowerCase();
+                            return name.includes(q) || email.includes(q);
+                          })
                           .map(app => (
                             <div
                               key={app.id}
@@ -751,36 +911,87 @@ export const AdminVolunteers: React.FC<AdminVolunteersProps> = ({ onNavigate, ad
                                 <p className="text-sm text-gray-600">{app.email}</p>
                                 <p className="text-xs text-gray-500 mt-1">{new Date(app.created_at).toLocaleDateString()}</p>
                               </div>
-                              <div className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-semibold">
-                                Pending Review
+                              <div className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(app.status)}`}>
+                                {app.status === 'pending_admin_review' || app.status === 'pending'
+                                  ? 'Pending Review'
+                                  : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
                               </div>
                             </div>
                           ))
                       )}
                     </div>
-
-                    {applications.some(a => a.status === 'approved') && (
-                      <div className="mt-8">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Approved Applications</h3>
-                        <div className="space-y-3">
-                          {applications
-                            .filter(a => a.status === 'approved')
-                            .map(app => (
-                              <div key={app.id} className="flex items-center justify-between p-4 border border-green-200 rounded-lg bg-green-50">
-                                <div className="flex-1">
-                                  <p className="font-medium text-gray-900">{app.first_name} {app.last_name}</p>
-                                  <p className="text-sm text-gray-600">{app.email}</p>
-                                </div>
-                                <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
-                                  Approved
-                                </div>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
+              </div>
+            ) : tab === 'approved' ? (
+              <div className="p-6">
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900">Approved Volunteers (DB)</h2>
+                  <button
+                    onClick={fetchApprovedVolunteers}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-semibold"
+                  >
+                    Refresh
+                  </button>
+                </div>
+
+                 {approvedVolunteers.length === 0 ? (
+                   <div className="text-center py-10 text-gray-600">
+                     <p>No approved volunteers found.</p>
+                   </div>
+                 ) : (
+                   <div className="overflow-x-auto">
+                     <table className="w-full">
+                       <thead className="bg-gray-50 border-b border-gray-200">
+                         <tr>
+                           <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Name</th>
+                           <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Email</th>
+                           <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Role</th>
+                           <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Approved</th>
+                           <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Activated</th>
+                           <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Actions</th>
+                         </tr>
+                       </thead>
+                       <tbody>
+                         {approvedVolunteers.map((row) => {
+                           const name = `${row.first_name || ''} ${row.last_name || ''}`.trim() || '—';
+                           const role = row.role_display_name || row.role_name || '—';
+                           const approvedAt = row.approved_at ? new Date(row.approved_at).toLocaleDateString() : '—';
+                           const activatedAt = row.activated_at ? new Date(row.activated_at).toLocaleDateString() : 'Not yet';
+                           const profileUrl = `/volunteer/${encodeURIComponent(row.email)}`;
+                           return (
+                             <tr key={row.id} className="border-b border-gray-200 hover:bg-gray-50">
+                               <td className="px-6 py-4 text-sm text-gray-900">{name}</td>
+                               <td className="px-6 py-4 text-sm text-gray-900">{row.email}</td>
+                               <td className="px-6 py-4 text-sm text-gray-700">{role}</td>
+                               <td className="px-6 py-4 text-sm text-gray-700">{approvedAt}</td>
+                               <td className="px-6 py-4 text-sm">
+                                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${
+                                   row.activated_at
+                                     ? 'bg-green-50 border-green-200 text-green-800'
+                                     : 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                                 }`}>
+                                   {activatedAt}
+                                 </span>
+                               </td>
+                               <td className="px-6 py-4 text-sm">
+                                 <a
+                                   href={profileUrl}
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-200 transition-colors"
+                                 >
+                                   <Eye size={14} />
+                                   View Profile
+                                 </a>
+                               </td>
+                             </tr>
+                           );
+                         })}
+                       </tbody>
+                     </table>
+                   </div>
+                 )}
               </div>
             ) : tab === 'rbac' ? (
               <div className="p-6">

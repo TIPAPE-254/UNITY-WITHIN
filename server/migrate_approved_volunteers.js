@@ -50,7 +50,7 @@ async function migrateApprovedVolunteers() {
 
       // Try to find a role for them (default to Community Listener)
       let roleId = 1; // Default to Community Listener
-      const roleNameMap: Record<string, number> = {
+      const roleNameMap = {
         'listener': 1,
         'community listener': 1,
         'advocate': 2,

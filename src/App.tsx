@@ -15,6 +15,7 @@ import { AdminVolunteers } from './components/AdminVolunteers';
 import { VolunteerDashboard } from './components/VolunteerDashboard';
 import { VolunteerPortal } from './components/VolunteerPortal';
 import { VolunteerApplicationForm } from './components/VolunteerApplicationForm';
+import { VolunteerProfilePage } from './components/VolunteerProfilePage';
 import { AnalyticsTracker } from './components/AnalyticsTracker';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { Heart, Menu, X, ShieldAlert, Phone } from 'lucide-react';
@@ -23,7 +24,7 @@ export default function App() {
   const { register: requestPushPermission } = usePushNotifications();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [crisisModalOpen, setCrisisModalOpen] = useState(false);
-  
+
   // Load user from localStorage
   const [user, setUser] = useState<User | null>(() => {
     try {
@@ -38,45 +39,52 @@ export default function App() {
   // State for volunteer invite token
   const [inviteToken, setInviteToken] = useState<string>('');
 
+  // State for volunteer profile email (for public volunteer pages)
+  const [volunteerProfileEmail, setVolunteerProfileEmail] = useState<string | null>(null);
+
   // Set initial view based on auth status or URL
-  const [currentView, setCurrentView] = useState<ViewState>(() => {
-    try {
-      // Check if URL contains volunteer invite token
-      const pathname = window.location.pathname;
-      if (pathname.includes('/volunteer-invite/')) {
-        return 'volunteer-invite';
-      }
-      
-      const savedUser = localStorage.getItem('unity_user');
-      const hasUser = savedUser ? JSON.parse(savedUser) : null;
-      
-      if (!hasUser) {
-        return 'landing';
-      }
+  const [currentView, setCurrentView] = useState<ViewState>('landing');
 
-      // Route volunteers to their portal
-      if (hasUser.role === 'volunteer' || hasUser.volunteerStatus === 'approved') {
-        return 'volunteer-portal';
-      }
-
-      return 'dashboard';
-    } catch (e) {
-      return 'landing';
-    }
-  });
-
-  // Parse URL for invite token on mount
+  // Parse URL on mount for invite token and volunteer profile
   useEffect(() => {
     try {
       const pathname = window.location.pathname;
-      const match = pathname.match(/\/volunteer-invite\/([a-f0-9]+)/i);
-      if (match && match[1]) {
-        const token = match[1];
+
+      // Check for invite token
+      const inviteMatch = pathname.match(/\/volunteer-invite\/([a-f0-9]+)/i);
+      if (inviteMatch && inviteMatch[1]) {
+        const token = inviteMatch[1];
         setInviteToken(token);
         setCurrentView('volunteer-invite');
+        return;
       }
-    } catch (error) {
-      console.error('Error parsing invite URL:', error);
+
+      // Check for volunteer profile page
+      const volunteerMatch = pathname.match(/^\/volunteer\/(.+)/);
+      if (volunteerMatch && volunteerMatch[1]) {
+        const email = decodeURIComponent(volunteerMatch[1]);
+        setVolunteerProfileEmail(email);
+        setCurrentView('volunteer-profile');
+        return;
+      }
+
+      // No special URL patterns, determine view from auth
+      const savedUser = localStorage.getItem('unity_user');
+      const hasUser = savedUser ? JSON.parse(savedUser) : null;
+
+      if (!hasUser) {
+        setCurrentView('landing');
+        return;
+      }
+
+      if (hasUser.role === 'volunteer' || hasUser.volunteerStatus === 'approved') {
+        setCurrentView('volunteer-portal');
+      } else {
+        setCurrentView('dashboard');
+      }
+    } catch (e) {
+      console.error('Error determining initial view:', e);
+      setCurrentView('landing');
     }
   }, []);
 
@@ -136,6 +144,8 @@ export default function App() {
         return <VolunteerApplicationForm inviteToken={inviteToken} onNavigate={handleNavigate} />;
       case 'volunteer-portal':
         return <VolunteerPortal user={user || undefined} onNavigate={handleNavigate} />;
+      case 'volunteer-profile':
+        return <VolunteerProfilePage email={volunteerProfileEmail || undefined} onNavigate={handleNavigate} />;
       case 'volunteer-dashboard':
         return <VolunteerDashboard user={user || undefined} onNavigate={handleNavigate} />;
       default:
