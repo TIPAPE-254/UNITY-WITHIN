@@ -6,7 +6,8 @@
     "type": "module",
     "scripts": {
         "start": "node server.js",
-        "dev": "node --watch server.js"
+        "dev": "node --watch server.js",
+        "smoke:volunteer-pipeline": "node scripts/volunteer-pipeline-smoke.mjs"
     },
     "dependencies": {
         "@getbrevo/brevo": "^2.0.0",

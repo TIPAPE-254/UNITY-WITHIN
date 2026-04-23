@@ -22,6 +22,8 @@ const BodyScan = lazy(() => import('./components/BodyScan').then(module => ({ de
 const SafeSpace = lazy(() => import('./components/SafeSpace').then(module => ({ default: module.SafeSpace })));
 const StoryReframer = lazy(() => import('./components/StoryReframer').then(module => ({ default: module.StoryReframer })));
 const VolunteerPage = lazy(() => import('./components/VolunteerPage').then(module => ({ default: module.VolunteerPage })));
+const AdminVolunteerPortalMonitor = lazy(() => import('./components/AdminVolunteerPortalMonitor').then(module => ({ default: module.AdminVolunteerPortalMonitor })));
+const VolunteerApplicationForm = lazy(() => import('./src/components/VolunteerApplicationForm').then(module => ({ default: module.VolunteerApplicationForm })));
 const LandingPage = lazy(() => import('./components/LandingPage').then(module => ({ default: module.LandingPage })));
 const Signup = lazy(() => import('./components/Signup').then(module => ({ default: module.Signup })));
 const Login = lazy(() => import('./components/Login').then(module => ({ default: module.Login })));
@@ -36,10 +38,14 @@ const PageLoader = () => (
   </div>
 );
 
-type AppView = ViewState | 'volunteer' | 'landing' | 'signup' | 'login' | 'forgot-password' | 'why-unity';
+type AppView = ViewState | 'volunteer' | 'volunteer-invite' | 'landing' | 'signup' | 'login' | 'forgot-password' | 'why-unity';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<AppView>('landing');
+  const inviteMatch = window.location.pathname.match(/^\/volunteer-invite\/([^/?#]+)/i);
+  const initialInviteToken = inviteMatch?.[1] || '';
+
+  const [currentView, setCurrentView] = useState<AppView>(initialInviteToken ? 'volunteer-invite' : 'landing');
+  const [inviteToken] = useState(initialInviteToken);
   const [navData, setNavData] = useState<any>({});
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -83,6 +89,11 @@ export default function App() {
   };
 
   React.useEffect(() => {
+    if (inviteToken) {
+      setCurrentView('volunteer-invite');
+      return;
+    }
+
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
@@ -93,7 +104,7 @@ export default function App() {
         setCurrentView('dashboard');
       }
     }
-  }, [currentView, checkVolunteerApproval]);
+  }, [currentView, checkVolunteerApproval, inviteToken]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -174,12 +185,18 @@ export default function App() {
         return <Community userId={user?.id} userName={user?.name} />;
       case 'admin':
         return (user?.role === 'admin' || user?.email === 'lepiromatayo@gmail.com') ? <AdminDashboard /> : <Dashboard onNavigate={handleNavigate} userName={user?.name || 'Friend'} userId={user?.id} />;
+      case 'admin-volunteer-portal':
+        return (user?.role === 'admin' || user?.email === 'lepiromatayo@gmail.com')
+          ? <AdminVolunteerPortalMonitor />
+          : <Dashboard onNavigate={handleNavigate} userName={user?.name || 'Friend'} userId={user?.id} />;
       case 'journal':
         return <Journal userId={user?.id} moodId={navData?.moodId} />;
       case 'volunteer':
         return isVolunteerApproved
           ? <VolunteerPage onLogout={handleLogout} />
           : <Dashboard onNavigate={handleNavigate} userName={user?.name || 'Friend'} userId={user?.id} />;
+      case 'volunteer-invite':
+        return <VolunteerApplicationForm inviteToken={inviteToken} onSuccess={() => setCurrentView('login')} />;
       case 'breathe':
         return <Breathe />;
       case 'namethefeeling':
@@ -202,11 +219,12 @@ export default function App() {
   };
 
    // Helper to check if we're on an auth/landing page (no sidebar/nav)
-   const isAuthPage = ['landing', 'signup', 'login', 'forgot-password', 'why-unity'].includes(currentView);
+  const isAuthPage = ['landing', 'signup', 'login', 'forgot-password', 'why-unity', 'volunteer-invite'].includes(currentView);
    const isAdmin = user?.role === 'admin' || user?.email === 'lepiromatayo@gmail.com';
    const isTherapist = user?.role === 'therapist';
    const visibleNavItems = NAVIGATION_ITEMS.filter(item => {
      if (item.id === 'admin') return isAdmin;
+     if (item.id === 'admin-volunteer-portal') return isAdmin;
      if (item.id === 'therapist-portal') return isAdmin || isTherapist;
      if (item.id === 'volunteer') return isVolunteerApproved;
      if (item.id === 'journal') return !isVolunteerApproved;
@@ -270,13 +288,6 @@ export default function App() {
         {!isAuthPage && (
           <div className="md:hidden flex items-center justify-between mb-6">
             <div className="flex items-center gap-2 text-unity-600">
-              <Heart className="fill-current" size={24} />
-              <span className="font-extrabold text-lg text-unity-black">UNITY</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-unity-100 flex items-center justify-center text-unity-600 text-xs font-bold">
-                {user ? user.name?.charAt(0).toUpperCase() || 'U' : 'U'}
-              </div>
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen((prev) => !prev)}
@@ -285,6 +296,13 @@ export default function App() {
               >
                 {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
               </button>
+              <Heart className="fill-current" size={24} />
+              <span className="font-extrabold text-lg text-unity-black">UNITY</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-unity-100 flex items-center justify-center text-unity-600 text-xs font-bold">
+                {user ? user.name?.charAt(0).toUpperCase() || 'U' : 'U'}
+              </div>
             </div>
           </div>
         )}

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useAuth } from './useAuth';
+import type { User } from '../types';
 
 /**
  * Hook to activate volunteer role when user logs in/signs up
@@ -11,10 +11,25 @@ import { useAuth } from './useAuth';
  * 4. Set role to 'volunteer'
  */
 export const useVolunteerActivation = () => {
-  const { user, updateUser } = useAuth();
+  const readUser = (): User | null => {
+    try {
+      const raw = localStorage.getItem('unity_user') || localStorage.getItem('user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const updateUser = (nextUser: User) => {
+    const serialized = JSON.stringify(nextUser);
+    localStorage.setItem('unity_user', serialized);
+    localStorage.setItem('user', serialized);
+  };
 
   useEffect(() => {
     const activateIfApproved = async () => {
+      const user = readUser();
+
       // Only activate if logged in but not already a volunteer
       if (!user?.id || !user?.email || user?.role === 'volunteer') {
         return;
@@ -88,7 +103,7 @@ export const useVolunteerActivation = () => {
     };
 
     activateIfApproved();
-  }, [user?.id, user?.email, user?.role, updateUser]);
+  }, []);
 };
 
 export default useVolunteerActivation;

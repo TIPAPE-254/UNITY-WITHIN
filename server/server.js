@@ -5310,11 +5310,120 @@ app.patch("/api/admin/volunteer-applications/:id", requireAdmin, async (req, res
   }
 
   try {
-    await pool.query(
-      "UPDATE volunteer_applications SET status = $1 WHERE id = $2",
-      [String(status), id],
+    const normalizedStatus = String(status).trim().toLowerCase();
+    const applicationResult = await pool.query(
+      `SELECT id, first_name, last_name, email, phone, location, availability, category, roles, skills,
+              why_volunteer, mental_health_context, work_preference, notes, invite_id, status
+         FROM volunteer_applications
+        WHERE id = $1
+        LIMIT 1`,
+      [id],
     );
-    return res.json({ success: true });
+
+    if (applicationResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    const application = applicationResult.rows[0];
+    const approverEmail = String(req.headers["x-user-email"] || req.user?.email || "admin");
+
+    let volunteerId = null;
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      await client.query(
+        "UPDATE volunteer_applications SET status = $1 WHERE id = $2",
+        [normalizedStatus, id],
+      );
+
+      if (normalizedStatus === "approved") {
+        const volunteerName = `${application.first_name || ""} ${application.last_name || ""}`.trim() || null;
+        const normalizedEmail = String(application.email || "").trim().toLowerCase();
+        const normalizedSkills = Array.isArray(application.skills)
+          ? JSON.stringify(application.skills)
+          : (application.skills || null);
+
+        const volunteerResult = await client.query(
+          `INSERT INTO volunteers (
+             name, email, phone, county, skills, category, availability,
+             work_preference, mental_health_context, motivation, status
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           ON CONFLICT (email) DO UPDATE SET
+             name = EXCLUDED.name,
+             phone = EXCLUDED.phone,
+             county = EXCLUDED.county,
+             skills = EXCLUDED.skills,
+             category = EXCLUDED.category,
+             availability = EXCLUDED.availability,
+             work_preference = EXCLUDED.work_preference,
+             mental_health_context = EXCLUDED.mental_health_context,
+             motivation = EXCLUDED.motivation,
+             status = EXCLUDED.status,
+             updated_at = NOW()
+           RETURNING id`,
+          [
+            volunteerName,
+            normalizedEmail,
+            application.phone || null,
+            application.location || null,
+            normalizedSkills,
+            application.category || null,
+            application.availability || null,
+            application.work_preference || null,
+            application.mental_health_context || null,
+            application.why_volunteer || null,
+            "active",
+          ],
+        );
+
+        volunteerId = volunteerResult.rows[0]?.id || null;
+
+        await client.query(
+          `INSERT INTO approved_volunteers (
+             email, first_name, last_name, application_id, approved_by, approved_at, notes
+           ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+           ON CONFLICT (email) DO UPDATE SET
+             first_name = EXCLUDED.first_name,
+             last_name = EXCLUDED.last_name,
+             application_id = EXCLUDED.application_id,
+             approved_by = EXCLUDED.approved_by,
+             approved_at = NOW(),
+             notes = EXCLUDED.notes`,
+          [
+            normalizedEmail,
+            application.first_name || null,
+            application.last_name || null,
+            Number(application.id),
+            approverEmail,
+            application.notes || null,
+          ],
+        );
+
+        if (application.invite_id) {
+          await client.query(
+            "UPDATE volunteer_invites SET status = $1 WHERE id = $2",
+            ["approved", application.invite_id],
+          );
+        }
+      }
+
+      await client.query("COMMIT");
+    } catch (dbError) {
+      await client.query("ROLLBACK");
+      throw dbError;
+    } finally {
+      client.release();
+    }
+
+    return res.json({
+      success: true,
+      volunteerId,
+      message: normalizedStatus === "approved"
+        ? "Application approved and volunteer access provisioned"
+        : "Application status updated",
+    });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -5627,52 +5736,133 @@ app.post("/api/admin/approve-volunteer/:inviteId", requireAdmin, async (req, res
     }
 
     const inviteEmail = String(inviteResult.rows[0].email || "").trim().toLowerCase();
-
-    await pool.query(
-      "UPDATE volunteer_invites SET status = $1 WHERE id = $2",
-      ["approved", inviteId],
+    const approverEmail = String(req.headers["x-user-email"] || req.user?.email || "admin");
+    const applicationResult = await pool.query(
+      `SELECT id, first_name, last_name, phone, location, availability, category, skills,
+              why_volunteer, mental_health_context, work_preference, notes
+         FROM volunteer_applications
+        WHERE LOWER(email) = LOWER($1)
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [inviteEmail],
     );
+    const application = applicationResult.rows[0] || null;
 
-    // Enable volunteer access immediately after admin approval.
-    await pool.query(
-      "UPDATE volunteers SET status = $1 WHERE LOWER(email) = $2",
-      ["active", inviteEmail],
-    );
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-    await pool.query(
-      "UPDATE users SET role = $1 WHERE LOWER(email) = $2",
-      ["volunteer", inviteEmail],
-    );
+      await client.query(
+        "UPDATE volunteer_invites SET status = $1 WHERE id = $2",
+        ["approved", inviteId],
+      );
 
-    await pool.query(
-      "UPDATE volunteer_applications SET status = $1 WHERE LOWER(email) = LOWER($2)",
-      ["active", inviteEmail],
-    );
-
-    // Auto-register Community Listeners as peer support listeners
-    const volunteerResult = await pool.query(
-      `SELECT v.id, v.matched_role_id, vr.title, v.phone 
-       FROM volunteers v
-       LEFT JOIN volunteer_roles vr ON v.matched_role_id = vr.id
-       WHERE LOWER(v.email) = LOWER($1)`,
-      [inviteEmail]
-    );
-
-    if (volunteerResult.rows.length > 0) {
-      const volunteer = volunteerResult.rows[0];
-      // Check if volunteer is a Community Listener (role ID 15)
-      const isCommunityListener = volunteer.title && volunteer.title.includes('Peer support listener');
-      
-      if (isCommunityListener || volunteer.matched_role_id === 15) {
-        // Register as peer support listener
-        await pool.query(
-          `INSERT INTO peer_support_listeners (volunteer_id, user_email, phone, is_available, approved_at)
-           VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP)
-           ON CONFLICT(volunteer_id) DO UPDATE SET is_available = TRUE, approved_at = CURRENT_TIMESTAMP`,
-          [volunteer.id, inviteEmail, volunteer.phone || null]
+      if (application) {
+        await client.query(
+          "UPDATE volunteer_applications SET status = $1 WHERE LOWER(email) = LOWER($2)",
+          ["active", inviteEmail],
         );
-        console.log(`✅ Registered ${inviteEmail} as peer support listener`);
       }
+
+      const volunteerName = application
+        ? `${application.first_name || ""} ${application.last_name || ""}`.trim() || null
+        : null;
+      const normalizedSkills = application && Array.isArray(application.skills)
+        ? JSON.stringify(application.skills)
+        : (application?.skills || null);
+
+      const volunteerResult = await client.query(
+        `INSERT INTO volunteers (
+           name, email, phone, county, skills, category, availability,
+           work_preference, mental_health_context, motivation, status
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (email) DO UPDATE SET
+           name = EXCLUDED.name,
+           phone = EXCLUDED.phone,
+           county = EXCLUDED.county,
+           skills = EXCLUDED.skills,
+           category = EXCLUDED.category,
+           availability = EXCLUDED.availability,
+           work_preference = EXCLUDED.work_preference,
+           mental_health_context = EXCLUDED.mental_health_context,
+           motivation = EXCLUDED.motivation,
+           status = EXCLUDED.status,
+           updated_at = NOW()
+         RETURNING id`,
+        [
+          volunteerName,
+          inviteEmail,
+          application?.phone || null,
+          application?.location || null,
+          normalizedSkills,
+          application?.category || null,
+          application?.availability || null,
+          application?.work_preference || null,
+          application?.mental_health_context || null,
+          application?.why_volunteer || null,
+          "active",
+        ],
+      );
+
+      await client.query(
+        `INSERT INTO approved_volunteers (
+           email, first_name, last_name, application_id, approved_by, approved_at, notes
+         ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+         ON CONFLICT (email) DO UPDATE SET
+           first_name = EXCLUDED.first_name,
+           last_name = EXCLUDED.last_name,
+           application_id = EXCLUDED.application_id,
+           approved_by = EXCLUDED.approved_by,
+           approved_at = NOW(),
+           notes = EXCLUDED.notes`,
+        [
+          inviteEmail,
+          application?.first_name || null,
+          application?.last_name || null,
+          application?.id || null,
+          approverEmail,
+          application?.notes || null,
+        ],
+      );
+
+      // Enable volunteer access immediately after admin approval.
+      await client.query(
+        "UPDATE users SET role = $1 WHERE LOWER(email) = $2",
+        ["volunteer", inviteEmail],
+      );
+
+      // Auto-register Community Listeners as peer support listeners
+      const volunteerLookup = application
+        ? await client.query(
+            `SELECT v.id, v.matched_role_id, vr.title, v.phone 
+             FROM volunteers v
+             LEFT JOIN volunteer_roles vr ON v.matched_role_id = vr.id
+             WHERE LOWER(v.email) = LOWER($1)`,
+            [inviteEmail],
+          )
+        : { rows: [] };
+
+      if (volunteerLookup.rows.length > 0) {
+        const volunteer = volunteerLookup.rows[0];
+        const isCommunityListener = volunteer.title && volunteer.title.includes('Peer support listener');
+
+        if (isCommunityListener || volunteer.matched_role_id === 15) {
+          await client.query(
+            `INSERT INTO peer_support_listeners (volunteer_id, user_email, phone, is_available, approved_at)
+             VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP)
+             ON CONFLICT(volunteer_id) DO UPDATE SET is_available = TRUE, approved_at = CURRENT_TIMESTAMP`,
+            [volunteer.id, inviteEmail, volunteer.phone || null],
+          );
+          console.log(`✅ Registered ${inviteEmail} as peer support listener`);
+        }
+      }
+
+      await client.query("COMMIT");
+    } catch (dbError) {
+      await client.query("ROLLBACK");
+      throw dbError;
+    } finally {
+      client.release();
     }
 
     res.json({ success: true });
@@ -5866,6 +6056,107 @@ app.get("/api/admin/volunteer-activity", requireAdmin, async (req, res) => {
       hours: hoursResult.rows || [],
       tasks: tasksResult.rows || [],
     });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/admin/volunteer-pipeline", requireAdmin, async (req, res) => {
+  try {
+    const dbResult = await pool.query(
+      `WITH emails AS (
+         SELECT LOWER(email) AS email FROM volunteers WHERE email IS NOT NULL
+         UNION
+         SELECT LOWER(email) AS email FROM volunteer_invites WHERE email IS NOT NULL
+         UNION
+         SELECT LOWER(email) AS email FROM volunteer_applications WHERE email IS NOT NULL
+         UNION
+         SELECT LOWER(email) AS email FROM approved_volunteers WHERE email IS NOT NULL
+         UNION
+         SELECT LOWER(email) AS email FROM users WHERE email IS NOT NULL
+       )
+       SELECT
+         e.email,
+         vi.id AS invite_id,
+         vi.status AS invite_status,
+         vi.created_at AS invited_at,
+         vi.expires_at AS invite_expires_at,
+         va.id AS application_id,
+         va.status AS application_status,
+         va.created_at AS application_created_at,
+         av.id AS approval_id,
+         av.approved_at,
+         av.activated_at,
+         av.approved_by,
+         u.id AS user_id,
+         u.role AS user_role,
+         v.id AS volunteer_id,
+         v.name AS volunteer_name,
+         v.status AS volunteer_status,
+         v.created_at AS volunteer_created_at,
+         CASE
+           WHEN COALESCE(u.role, '') = 'volunteer'
+            AND (
+              COALESCE(v.status, '') IN ('active', 'approved')
+              OR av.approved_at IS NOT NULL
+            )
+           THEN TRUE
+           ELSE FALSE
+         END AS portal_visible,
+         CASE
+           WHEN COALESCE(u.role, '') = 'volunteer'
+            AND (
+              COALESCE(v.status, '') IN ('active', 'approved')
+              OR av.approved_at IS NOT NULL
+            )
+           THEN 'portal_visible'
+           WHEN av.approved_at IS NOT NULL THEN 'approved_pending_activation'
+           WHEN va.id IS NOT NULL AND COALESCE(va.status, '') IN ('pending', 'pending_admin_review', 'invited') THEN 'application_review'
+           WHEN vi.id IS NOT NULL THEN 'invited'
+           ELSE 'no_pipeline_record'
+         END AS pipeline_stage
+       FROM emails e
+       LEFT JOIN LATERAL (
+         SELECT id, status, created_at, expires_at
+         FROM volunteer_invites
+         WHERE LOWER(email) = e.email
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) vi ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT id, status, created_at
+         FROM volunteer_applications
+         WHERE LOWER(email) = e.email
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) va ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT id, approved_at, activated_at, approved_by
+         FROM approved_volunteers
+         WHERE LOWER(email) = e.email
+         ORDER BY approved_at DESC NULLS LAST, id DESC
+         LIMIT 1
+       ) av ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT id, role
+         FROM users
+         WHERE LOWER(email) = e.email
+         ORDER BY created_at DESC NULLS LAST, id DESC
+         LIMIT 1
+       ) u ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT id, name, status, created_at
+         FROM volunteers
+         WHERE LOWER(email) = e.email
+         ORDER BY created_at DESC NULLS LAST, id DESC
+         LIMIT 1
+       ) v ON TRUE
+       ORDER BY
+         COALESCE(av.approved_at, va.created_at, vi.created_at, v.created_at) DESC NULLS LAST,
+         e.email ASC`,
+    );
+
+    return res.json({ success: true, data: dbResult.rows || [] });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }

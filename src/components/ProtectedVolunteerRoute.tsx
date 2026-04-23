@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
 
 export const ProtectedVolunteerRoute: React.FC<{
   children: React.ReactNode;
   requiredRole?: string;
 }> = ({ children, requiredRole = 'volunteer' }) => {
-  const navigate = useNavigate();
+  const navigate = (path: string) => {
+    if (typeof window !== 'undefined') {
+      window.location.href = path;
+    }
+  };
   const [loading, setLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
 

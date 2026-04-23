@@ -1,4 +1,4 @@
-export type ViewState = 'dashboard' | 'chat' | 'community' | 'journal' | 'volunteer' | 'breathe' | 'education' | 'wellness' | 'admin' | 'support' | 'therapist-portal' | 'namethefeeling' | 'selfcompassion' | 'values' | 'bodyscan' | 'safespace' | 'reframer';
+export type ViewState = 'dashboard' | 'chat' | 'community' | 'journal' | 'volunteer' | 'breathe' | 'education' | 'wellness' | 'admin' | 'support' | 'therapist-portal' | 'admin-volunteer-portal' | 'namethefeeling' | 'selfcompassion' | 'values' | 'bodyscan' | 'safespace' | 'reframer';
 
 export interface MoodEntry {
   id: string;

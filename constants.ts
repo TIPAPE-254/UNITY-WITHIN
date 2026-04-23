@@ -8,6 +8,7 @@ export const NAVIGATION_ITEMS: { id: ViewState; label: string; icon: any }[] = [
   { id: 'dashboard', label: 'Home', icon: Home },
   { id: 'support', label: 'Support', icon: Stethoscope },
   { id: 'therapist-portal', label: 'Therapist Portal', icon: Users },
+  { id: 'admin-volunteer-portal', label: 'Volunteer Monitor', icon: Users },
   { id: 'wellness', label: 'Toolkit', icon: Sparkles },
   { id: 'chat', label: 'Buddie', icon: MessageCircleHeart },
   { id: 'community', label: 'Communities', icon: Users },
