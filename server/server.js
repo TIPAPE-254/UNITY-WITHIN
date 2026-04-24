@@ -6829,6 +6829,161 @@ app.get("/api/admin/invites/pending", requireAdmin, async (req, res) => {
 // ===== PEER SUPPORT CALL ENDPOINTS =====
 
 /**
+ * POST /api/admin/peer-support/listeners/enable
+ * Admin enables (or upserts) a volunteer as a peer-support listener.
+ */
+app.post("/api/admin/peer-support/listeners/enable", requireAdmin, async (req, res) => {
+  const rawEmail = req.body?.email;
+  const email = String(rawEmail || "").trim().toLowerCase();
+  const isAvailable = req.body?.isAvailable !== false;
+
+  if (!email) {
+    return res.status(400).json({ success: false, error: "Email is required" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Ensure volunteer record exists (legacy self-healing).
+    let volunteerResult = await client.query(
+      `SELECT id, email, phone, status
+       FROM volunteers
+       WHERE LOWER(email) = LOWER($1)
+       ORDER BY id DESC
+       LIMIT 1`,
+      [email],
+    );
+
+    if (volunteerResult.rows.length === 0) {
+      const userResult = await client.query(
+        `SELECT name, email
+         FROM users
+         WHERE LOWER(email) = LOWER($1)
+         ORDER BY id DESC
+         LIMIT 1`,
+        [email],
+      );
+
+      const approvedResult = await client.query(
+        `SELECT first_name, last_name
+         FROM approved_volunteers
+         WHERE LOWER(email) = LOWER($1)
+         ORDER BY id DESC
+         LIMIT 1`,
+        [email],
+      );
+
+      const applicationResult = await client.query(
+        `SELECT first_name, last_name, phone, location, category, availability,
+                work_preference, mental_health_context, why_volunteer, skills
+         FROM volunteer_applications
+         WHERE LOWER(email) = LOWER($1)
+           AND LOWER(COALESCE(status, '')) IN ('approved', 'active')
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [email],
+      );
+
+      const application = applicationResult.rows[0] || null;
+      const approved = approvedResult.rows[0] || null;
+      const user = userResult.rows[0] || null;
+
+      let normalizedSkills = null;
+      if (Array.isArray(application?.skills)) {
+        normalizedSkills = JSON.stringify(application.skills);
+      } else if (typeof application?.skills === "string" && application.skills.trim()) {
+        try {
+          normalizedSkills = JSON.stringify(JSON.parse(application.skills));
+        } catch {
+          normalizedSkills = JSON.stringify([application.skills.trim()]);
+        }
+      } else if (application?.skills && typeof application.skills === "object") {
+        normalizedSkills = JSON.stringify(application.skills);
+      }
+
+      const firstName = String(application?.first_name || approved?.first_name || "").trim();
+      const lastName = String(application?.last_name || approved?.last_name || "").trim();
+      const fallbackName = `${firstName} ${lastName}`.trim();
+      const resolvedName = user?.name || fallbackName || email;
+
+      volunteerResult = await client.query(
+        `INSERT INTO volunteers (
+           name, email, phone, county, skills, category, availability,
+           work_preference, mental_health_context, motivation, status
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
+         ON CONFLICT (email) DO UPDATE SET
+           name = COALESCE(volunteers.name, EXCLUDED.name),
+           phone = COALESCE(volunteers.phone, EXCLUDED.phone),
+           county = COALESCE(volunteers.county, EXCLUDED.county),
+           skills = COALESCE(volunteers.skills, EXCLUDED.skills),
+           category = COALESCE(volunteers.category, EXCLUDED.category),
+           availability = COALESCE(volunteers.availability, EXCLUDED.availability),
+           work_preference = COALESCE(volunteers.work_preference, EXCLUDED.work_preference),
+           mental_health_context = COALESCE(volunteers.mental_health_context, EXCLUDED.mental_health_context),
+           motivation = COALESCE(volunteers.motivation, EXCLUDED.motivation),
+           status = 'active'
+         RETURNING id, email, phone, status`,
+        [
+          resolvedName,
+          email,
+          application?.phone || null,
+          application?.location || null,
+          normalizedSkills,
+          application?.category || null,
+          application?.availability || null,
+          application?.work_preference || null,
+          application?.mental_health_context || null,
+          application?.why_volunteer || null,
+        ],
+      );
+    }
+
+    const volunteer = volunteerResult.rows[0];
+
+    // Keep user role aligned for portal visibility.
+    await client.query(
+      `UPDATE users SET role = 'volunteer' WHERE LOWER(email) = LOWER($1)`,
+      [email],
+    );
+
+    const listenerResult = await client.query(
+      `INSERT INTO peer_support_listeners (volunteer_id, user_email, phone, is_available, approved_at)
+       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+       ON CONFLICT (volunteer_id) DO UPDATE SET
+         user_email = EXCLUDED.user_email,
+         phone = COALESCE(EXCLUDED.phone, peer_support_listeners.phone),
+         is_available = EXCLUDED.is_available,
+         approved_at = CURRENT_TIMESTAMP
+       RETURNING id, volunteer_id, user_email, phone, is_available, approved_at`,
+      [volunteer.id, email, volunteer.phone || null, isAvailable],
+    );
+
+    await client.query("COMMIT");
+
+    return res.json({
+      success: true,
+      message: `Listener ${isAvailable ? 'enabled' : 'registered offline'} successfully`,
+      listener: listenerResult.rows[0],
+      volunteer: {
+        id: volunteer.id,
+        email: volunteer.email,
+        status: volunteer.status,
+      },
+    });
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // no-op
+    }
+    return res.status(500).json({ success: false, error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+/**
  * GET /api/peer-support/listeners
  * Get available peer support listeners (Community Listeners)
  */
