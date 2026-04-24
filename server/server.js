@@ -7379,23 +7379,96 @@ app.get("/api/volunteer/profile", async (req, res) => {
     return res.status(401).json({ success: false, error: "Unauthorized" });
 
   try {
-    const volunteers = await query(
+    // 1) Preferred: RBAC-backed volunteer record (case-insensitive)
+    const volunteersRbac = await query(
       `SELECT v.id, v.name, v.email, v.phone, v.county, v.skills, v.status, v.created_at,
-              r.title as role_name, r.description as role_description, r.category as role_category
+              vrr.display_name as role_name, vrr.description as role_description, vrr.name as role_category
        FROM volunteers v
-       LEFT JOIN volunteer_roles r ON v.matched_role_id = r.id
-       WHERE v.email = $1
-       LIMIT 1`,
+       LEFT JOIN volunteer_rbac_roles vrr ON v.rbac_role_id = vrr.id
+       WHERE LOWER(v.email) = LOWER($1)`,
       [email],
     );
 
-    if (volunteers.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Volunteer profile not found" });
+    // 2) Legacy fallback: matched_role_id → volunteer_roles
+    const volunteersLegacy = volunteersRbac.length
+      ? []
+      : await query(
+          `SELECT v.id, v.name, v.email, v.phone, v.county, v.skills, v.status, v.created_at,
+                  r.title as role_name, r.description as role_description, r.category as role_category
+           FROM volunteers v
+           LEFT JOIN volunteer_roles r ON v.matched_role_id = r.id
+           WHERE LOWER(v.email) = LOWER($1)`,
+          [email],
+        );
+
+    // 3) Approved-but-not-activated fallback: approved_volunteers → volunteer_rbac_roles
+    const approvedFallback = (volunteersRbac.length || volunteersLegacy.length)
+      ? []
+      : await query(
+          `SELECT
+              av.id,
+              av.email,
+              av.first_name,
+              av.last_name,
+              av.approved_at as created_at,
+              av.activated_at,
+              vrr.display_name as role_name,
+              vrr.description as role_description,
+              vrr.name as role_category
+           FROM approved_volunteers av
+           LEFT JOIN volunteer_rbac_roles vrr ON av.role_id = vrr.id
+           WHERE LOWER(av.email) = LOWER($1)
+           LIMIT 1`,
+          [email],
+        );
+
+    // 4) Legacy fallback: approved/active volunteer_applications record
+    const approvedApplicationFallback = (volunteersRbac.length || volunteersLegacy.length || approvedFallback.length)
+      ? []
+      : await query(
+          `SELECT
+              id,
+              email,
+              first_name,
+              last_name,
+              category,
+              status,
+              created_at
+           FROM volunteer_applications
+           WHERE LOWER(email) = LOWER($1)
+             AND LOWER(status) IN ('approved', 'active')
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [email],
+        );
+
+    const volunteer = volunteersRbac[0] || volunteersLegacy[0];
+
+    if (!volunteer && approvedFallback.length === 0 && approvedApplicationFallback.length === 0) {
+      return res.status(404).json({ success: false, error: "Volunteer profile not found" });
     }
 
-    const volunteer = volunteers[0];
+    // If we only have approved fallback, return minimal profile
+    if (!volunteer) {
+      const approved = approvedFallback[0] || approvedApplicationFallback[0];
+      return res.json({
+        success: true,
+        profile: {
+          id: approved.id || null,
+          name: `${approved.first_name || ''} ${approved.last_name || ''}`.trim(),
+          email: approved.email,
+          phone: null,
+          county: null,
+          location: null,
+          skills: [],
+          status: approved.activated_at || String(approved.status || '').toLowerCase() === 'active' ? 'active' : 'approved',
+          role_name: approved.role_name || approved.category || 'Volunteer',
+          role_description: approved.role_description,
+          joined_date: approved.created_at,
+        },
+      });
+    }
+
     let parsedSkills = [];
     try {
       parsedSkills = volunteer.skills ? JSON.parse(volunteer.skills) : [];
