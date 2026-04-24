@@ -53,6 +53,18 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [verifiedInviteStatus, setVerifiedInviteStatus] = useState<string>('');
 
+  const safeJson = async (response: Response) => {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+      return null;
+    }
+    try {
+      return await response.json();
+    } catch {
+      return null;
+    }
+  };
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -74,21 +86,15 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
       const verifyInvite = async () => {
         try {
           const endpoints = [
-            `${API_BASE_URL}/api/volunteer/invite/${inviteToken}/verify`,
-            `${API_BASE_URL}/api/volunteer/invite/${inviteToken}`,
+            `${API_BASE_URL}/volunteer/invite/${inviteToken}/verify`,
+            `${API_BASE_URL}/volunteer/invite/${inviteToken}`,
           ];
 
-          let lastMessage = 'Invalid or expired invitation';
+          let lastMessage = '';
 
           for (const endpoint of endpoints) {
             const response = await fetch(endpoint);
-            let data: any = null;
-
-            try {
-              data = await response.json();
-            } catch {
-              data = null;
-            }
+            const data: any = await safeJson(response);
 
             if (response.ok && data) {
               const inviteEmail = data.invite?.email || data.email || '';
@@ -115,7 +121,9 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
             }
 
             if (data?.reason === 'already_used') {
-              setError('This invite has already been used');
+              // Keep form accessible even when invite state is stale.
+              setError('');
+              setVerifiedInviteStatus('already_used');
               return;
             }
 
@@ -131,16 +139,22 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
             }
 
             if (data?.reason === 'expired') {
-              setError('This invitation has expired');
+              // Do not block form with invite-link warnings.
+              setError('');
+              setVerifiedInviteStatus('expired');
               return;
             }
 
             lastMessage = data?.message || data?.error || lastMessage;
           }
 
-          throw new Error(lastMessage);
+          // If verification cannot resolve, continue without showing a blocking warning.
+          setError('');
+          setVerifiedInviteStatus('unverified');
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to verify invitation. Please try again.');
+          // Verification issues should not interrupt form completion.
+          setError('');
+          setVerifiedInviteStatus('unverified');
           console.error('Invite verification error:', err);
         }
       };
@@ -402,21 +416,29 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
 
       console.log('Submitting application with data:', submitPayload);
 
-      // Use invite token endpoint if this is an invite application
-      const endpoint = inviteToken 
-        ? `${API_BASE_URL}/api/volunteer/invite/${inviteToken}/submit`
-        : `${API_BASE_URL}/api/volunteer/apply`;
+      // Prefer invite-linked submit endpoint, then gracefully fall back to standard apply.
+      const attemptSubmit = async (endpoint: string) => {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(submitPayload)
+        });
+        const data = await safeJson(response);
+        return { response, data };
+      };
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(submitPayload)
-      });
+      let submitResult = null as null | { response: Response; data: any };
 
-      const data = await response.json();
+      if (inviteToken) {
+        submitResult = await attemptSubmit(`${API_BASE_URL}/volunteer/invite/${inviteToken}/submit`);
+      }
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to submit application');
+      if (!submitResult || !submitResult.response.ok) {
+        submitResult = await attemptSubmit(`${API_BASE_URL}/volunteer/apply`);
+      }
+
+      if (!submitResult.response.ok) {
+        throw new Error(submitResult.data?.error || `Failed to submit application (${submitResult.response.status})`);
       }
 
       setSubmitted(true);

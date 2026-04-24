@@ -4,9 +4,11 @@ import { API_BASE_URL } from '../constants';
 
 interface VolunteerPageProps {
     onLogout?: () => void;
+    userEmail?: string | null;
+    userId?: number | string | null;
 }
 
-export const VolunteerPage: React.FC<VolunteerPageProps> = ({ onLogout }) => {
+export const VolunteerPage: React.FC<VolunteerPageProps> = ({ onLogout, userEmail, userId }) => {
     const [profile, setProfile] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -26,19 +28,33 @@ export const VolunteerPage: React.FC<VolunteerPageProps> = ({ onLogout }) => {
             } catch {
                 parsedUser = null;
             }
-            const userEmail = email || parsedUser?.email || null;
+            const resolvedEmail = userEmail || email || parsedUser?.email || null;
+            const resolvedUserId = userId || parsedUser?.id || null;
 
-            if (!userEmail) {
-                setError('Not logged in');
+            if (!resolvedEmail && !resolvedUserId) {
+                setError('Unable to load volunteer identity. Please return to dashboard and try again.');
                 return;
             }
 
-            const response = await fetch(`${API_BASE_URL}/volunteer/profile`, {
-                headers: {
-                    'x-user-email': String(userEmail).trim().toLowerCase(),
-                    'Content-Type': 'application/json'
-                }
+            const requestHeaders: Record<string, string> = {
+                'Content-Type': 'application/json'
+            };
+            if (resolvedEmail) {
+                requestHeaders['x-user-email'] = String(resolvedEmail).trim().toLowerCase();
+            }
+
+            // Prefer the email endpoint, but fall back to userId endpoint if needed.
+            let response = await fetch(`${API_BASE_URL}/volunteer/profile`, {
+                headers: requestHeaders
             });
+
+            if (!response.ok && resolvedUserId) {
+                response = await fetch(`${API_BASE_URL}/volunteer/profile/${resolvedUserId}`, {
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+            }
 
             const data = await response.json();
             if (data.success) {

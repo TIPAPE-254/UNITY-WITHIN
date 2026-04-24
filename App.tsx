@@ -199,7 +199,7 @@ export default function App() {
         return <Journal userId={user?.id} moodId={navData?.moodId} />;
       case 'volunteer':
         return isVolunteerApproved
-          ? <VolunteerPage onLogout={handleLogout} />
+          ? <VolunteerPage onLogout={handleLogout} userEmail={user?.email || null} userId={user?.id || null} />
           : <Dashboard onNavigate={handleNavigate} userName={user?.name || 'Friend'} userId={user?.id} />;
       case 'volunteer-invite':
         return <VolunteerApplicationForm inviteToken={inviteToken} onSuccess={() => setCurrentView('login')} />;

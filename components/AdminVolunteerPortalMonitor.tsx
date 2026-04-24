@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Users, Activity, Eye, Clock, RefreshCcw, Search } from 'lucide-react';
+import { Users, Activity, Eye, Clock, RefreshCcw, Search, Trash2 } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
 
 type VolunteerRow = {
@@ -119,6 +119,14 @@ export const AdminVolunteerPortalMonitor: React.FC = () => {
   const [selectedPipelineEmail, setSelectedPipelineEmail] = useState<string | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<VolunteerActivityPayload>(EMPTY_ACTIVITY);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [trackingVolunteerId, setTrackingVolunteerId] = useState<number | null>(null);
+  const activityDetailRef = React.useRef<HTMLDivElement | null>(null);
+
+  const scrollToActivityDetail = useCallback(() => {
+    requestAnimationFrame(() => {
+      activityDetailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
 
   const getIdentityHeaders = useCallback((): Record<string, string> => {
     const raw = localStorage.getItem('user');
@@ -140,14 +148,17 @@ export const AdminVolunteerPortalMonitor: React.FC = () => {
     return headers;
   }, []);
 
-  const apiFetch = useCallback(async (url: string) => {
+  const apiFetch = useCallback(async (url: string, init?: RequestInit) => {
     const response = await fetch(url, {
+      method: init?.method || 'GET',
       headers: {
         ...getIdentityHeaders(),
+        ...(init?.headers || {}),
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         Pragma: 'no-cache',
       },
       cache: 'no-store',
+      body: init?.body,
     });
 
     const payload = await response.json().catch(() => ({}));
@@ -291,6 +302,7 @@ export const AdminVolunteerPortalMonitor: React.FC = () => {
 
   const loadVolunteerActivity = useCallback(async (volunteerId: number) => {
     setSelectedVolunteerId(volunteerId);
+    setError(null);
     setActivityLoading(true);
     try {
       const payload = await apiFetch(`${API_BASE_URL}/admin/volunteer-activity?volunteerId=${encodeURIComponent(String(volunteerId))}`);
@@ -308,9 +320,32 @@ export const AdminVolunteerPortalMonitor: React.FC = () => {
   }, [apiFetch]);
 
   const openVolunteerTrack = useCallback(async (metric: VolunteerMetrics) => {
+    setTrackingVolunteerId(metric.volunteerId);
     setSelectedPipelineEmail(metric.email);
-    await loadVolunteerActivity(metric.volunteerId);
-  }, [loadVolunteerActivity]);
+    setSelectedActivity(EMPTY_ACTIVITY);
+    scrollToActivityDetail();
+    try {
+      await loadVolunteerActivity(metric.volunteerId);
+    } finally {
+      setTrackingVolunteerId(null);
+    }
+  }, [loadVolunteerActivity, scrollToActivityDetail]);
+
+  const openPipelineTrack = useCallback(async (row: PipelineRow) => {
+    setSelectedPipelineEmail(row.email);
+    if (!row.volunteer_id) {
+      setError('This account has no active volunteer record yet. Approve and activate first to track work.');
+      return;
+    }
+    setTrackingVolunteerId(row.volunteer_id);
+    setSelectedActivity(EMPTY_ACTIVITY);
+    scrollToActivityDetail();
+    try {
+      await loadVolunteerActivity(row.volunteer_id);
+    } finally {
+      setTrackingVolunteerId(null);
+    }
+  }, [loadVolunteerActivity, scrollToActivityDetail]);
 
   const stageLabel = (stage: string) => {
     switch (stage) {
@@ -326,6 +361,27 @@ export const AdminVolunteerPortalMonitor: React.FC = () => {
         return 'No Pipeline Record';
     }
   };
+
+  const handleDeleteVolunteer = useCallback(async (volunteerId: number, label: string) => {
+    const ok = window.confirm(`Delete volunteer ${label}? This will remove the volunteer record and revoke volunteer access.`);
+    if (!ok) return;
+
+    setError(null);
+    try {
+      await apiFetch(`${API_BASE_URL}/admin/volunteer/${encodeURIComponent(String(volunteerId))}`, {
+        method: 'DELETE',
+      });
+
+      if (selectedVolunteerId === volunteerId) {
+        setSelectedVolunteerId(null);
+        setSelectedActivity(EMPTY_ACTIVITY);
+      }
+
+      await loadData(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete volunteer');
+    }
+  }, [apiFetch, loadData, selectedVolunteerId]);
 
   if (loading) {
     return (
@@ -430,13 +486,24 @@ export const AdminVolunteerPortalMonitor: React.FC = () => {
                     {item.lastActivity ? new Date(item.lastActivity).toLocaleString() : 'No activity'}
                   </td>
                   <td className="px-3 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => void openVolunteerTrack(item)}
-                      className="px-3 py-1.5 rounded-lg bg-unity-50 text-unity-700 hover:bg-unity-100 text-xs font-semibold"
-                    >
-                      Tap to track
-                    </button>
+                    <div className="inline-flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void openVolunteerTrack(item)}
+                        disabled={activityLoading && trackingVolunteerId === item.volunteerId}
+                        className="px-3 py-1.5 rounded-lg bg-unity-50 text-unity-700 hover:bg-unity-100 text-xs font-semibold"
+                      >
+                        {activityLoading && trackingVolunteerId === item.volunteerId ? 'Tracking...' : 'Tap to track'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteVolunteer(item.volunteerId, item.name || item.email)}
+                        className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 text-xs font-semibold inline-flex items-center gap-1"
+                      >
+                        <Trash2 size={12} />
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -463,6 +530,7 @@ export const AdminVolunteerPortalMonitor: React.FC = () => {
                 <th className="px-3 py-2">Application</th>
                 <th className="px-3 py-2">Approval</th>
                 <th className="px-3 py-2">Portal</th>
+                <th className="px-3 py-2 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -491,6 +559,35 @@ export const AdminVolunteerPortalMonitor: React.FC = () => {
                         <Eye size={12} />
                         {row.portal_visible ? 'Visible' : 'Hidden'}
                       </span>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openPipelineTrack(row);
+                          }}
+                          disabled={!row.volunteer_id || (activityLoading && trackingVolunteerId === row.volunteer_id)}
+                          className="px-3 py-1.5 rounded-lg bg-unity-50 text-unity-700 hover:bg-unity-100 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold"
+                        >
+                          {activityLoading && trackingVolunteerId === row.volunteer_id ? 'Tracking...' : 'Tap to track'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (row.volunteer_id) {
+                              void handleDeleteVolunteer(row.volunteer_id, row.volunteer_name || row.email);
+                            }
+                          }}
+                          disabled={!row.volunteer_id}
+                          className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold inline-flex items-center gap-1"
+                        >
+                          <Trash2 size={12} />
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -532,7 +629,7 @@ export const AdminVolunteerPortalMonitor: React.FC = () => {
         )}
       </div>
 
-      <div className="bg-white rounded-2xl border border-unity-100 p-6">
+      <div ref={activityDetailRef} className="bg-white rounded-2xl border border-unity-100 p-6">
         <h3 className="text-lg font-bold text-unity-black">Volunteer activity detail</h3>
         {!selectedVolunteerId ? (
           <p className="text-sm text-gray-500 mt-2">Choose a volunteer from the table to inspect tasks and logged hours.</p>
@@ -542,7 +639,22 @@ export const AdminVolunteerPortalMonitor: React.FC = () => {
             Loading activity...
           </div>
         ) : (
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="mt-4 space-y-4">
+            {selectedActivity.summary && (
+              <div className="rounded-xl border border-unity-100 bg-unity-50/40 p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Currently tracking</p>
+                <p className="text-base font-bold text-unity-black mt-1">
+                  {selectedActivity.summary.name || selectedActivity.summary.email}
+                </p>
+                <p className="text-sm text-gray-600">{selectedActivity.summary.email}</p>
+                <p className="text-sm text-gray-700 mt-1">
+                  Status: <span className="font-semibold">{selectedActivity.summary.status || 'unknown'}</span>
+                  {' '}• Total Hours: <span className="font-semibold">{Number(selectedActivity.summary.total_hours || 0).toFixed(1)}</span>
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="rounded-xl border border-gray-100 p-4">
               <h4 className="font-semibold text-unity-black mb-2 flex items-center gap-2"><Clock size={16} /> Recent hours</h4>
               <div className="space-y-2 max-h-72 overflow-auto pr-1">
@@ -574,6 +686,7 @@ export const AdminVolunteerPortalMonitor: React.FC = () => {
                   </div>
                 ))}
               </div>
+            </div>
             </div>
           </div>
         )}
