@@ -7374,36 +7374,6 @@ app.get("/api/volunteer/dashboard", async (req, res) => {
 });
 
 app.get("/api/volunteer/profile", async (req, res) => {
-  // DEBUG: Temporary endpoint to diagnose profile lookup
-  app.get("/api/volunteer/profile-debug", async (req, res) => {
-    const email = req.headers["x-user-email"];
-    if (!email)
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-
-    try {
-      const all_volunteers = await query(`SELECT id, email, LOWER(email) as lower_email, name, status FROM volunteers LIMIT 100`);
-      const search_result = await query(
-        `SELECT v.id, v.email, LOWER(v.email) as lower_email, v.name, v.status
-         FROM volunteers v
-         WHERE LOWER(v.email) = LOWER($1)`,
-        [email],
-      );
-      return res.json({
-        debug: {
-          looking_for: email,
-          looking_for_lower: email.toLowerCase(),
-          all_volunteers_count: all_volunteers.length,
-          all_volunteers: all_volunteers.slice(0, 5),
-          search_result_count: search_result.length,
-          search_result: search_result,
-        }
-      });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/volunteer/profile", async (req, res) => {
   const email = req.headers["x-user-email"];
   if (!email)
     return res.status(401).json({ success: false, error: "Unauthorized" });
