@@ -52,9 +52,15 @@ export default function App() {
   const [user, setUser] = useState<{ id: number; name: string; email: string; role?: string } | null>(null);
   const [isVolunteerApproved, setIsVolunteerApproved] = useState(false);
 
-  const checkVolunteerApproval = React.useCallback(async (currentUser: { email?: string } | null) => {
+  const checkVolunteerApproval = React.useCallback(async (currentUser: { email?: string; role?: string } | null) => {
     if (!currentUser?.email) {
       setIsVolunteerApproved(false);
+      return;
+    }
+
+    const normalizedRole = String(currentUser.role || '').trim().toLowerCase();
+    if (normalizedRole === 'volunteer') {
+      setIsVolunteerApproved(true);
       return;
     }
 

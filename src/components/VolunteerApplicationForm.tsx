@@ -51,6 +51,7 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
   const [phaseErrors, setPhaseErrors] = useState<Record<number, string>>({});
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [verifiedInviteStatus, setVerifiedInviteStatus] = useState<string>('');
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -72,27 +73,74 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
     if (inviteToken) {
       const verifyInvite = async () => {
         try {
-          const response = await fetch(`${API_BASE_URL}/api/volunteer/invite/${inviteToken}/verify`);
-          const data = await response.json();
-          
-          if (!response.ok) {
-            const errorMessage = data.reason === 'already_used' 
-              ? 'This invite has already been used' 
-              : data.reason === 'already_approved'
-              ? 'This invitation has already been approved'
-              : data.reason === 'expired'
-              ? 'This invitation has expired'
-              : data.message || 'Invalid or expired invitation';
-            setError(errorMessage);
-            return;
+          const endpoints = [
+            `${API_BASE_URL}/api/volunteer/invite/${inviteToken}/verify`,
+            `${API_BASE_URL}/api/volunteer/invite/${inviteToken}`,
+          ];
+
+          let lastMessage = 'Invalid or expired invitation';
+
+          for (const endpoint of endpoints) {
+            const response = await fetch(endpoint);
+            let data: any = null;
+
+            try {
+              data = await response.json();
+            } catch {
+              data = null;
+            }
+
+            if (response.ok && data) {
+              const inviteEmail = data.invite?.email || data.email || '';
+              const inviteStatus = String(data.invite?.status || data.status || 'pending').toLowerCase();
+
+              if (inviteEmail) {
+                setFormData(prev => ({ ...prev, email: inviteEmail }));
+              }
+
+              setVerifiedInviteStatus(inviteStatus);
+
+              if (inviteStatus === 'approved' || inviteStatus === 'active') {
+                setError('This invitation has already been approved. Please log in with the approved volunteer account to access the portal.');
+                // Move approved users to login where volunteer role activation happens.
+                setTimeout(() => {
+                  if (typeof window !== 'undefined') {
+                    window.location.href = `/login?invite=approved&email=${encodeURIComponent(inviteEmail || formData.email || '')}`;
+                  }
+                }, 1200);
+              } else {
+                setError('');
+              }
+              return;
+            }
+
+            if (data?.reason === 'already_used') {
+              setError('This invite has already been used');
+              return;
+            }
+
+            if (data?.reason === 'already_approved') {
+              setVerifiedInviteStatus('approved');
+              setError('This invitation has already been approved. Please log in with the approved volunteer account to access the portal.');
+              setTimeout(() => {
+                if (typeof window !== 'undefined') {
+                  window.location.href = `/login?invite=approved`;
+                }
+              }, 1200);
+              return;
+            }
+
+            if (data?.reason === 'expired') {
+              setError('This invitation has expired');
+              return;
+            }
+
+            lastMessage = data?.message || data?.error || lastMessage;
           }
-          
-          // Pre-fill email from verified invite
-          if (data.invite?.email) {
-            setFormData(prev => ({ ...prev, email: data.invite.email }));
-          }
+
+          throw new Error(lastMessage);
         } catch (err) {
-          setError('Failed to verify invitation. Please try again.');
+          setError(err instanceof Error ? err.message : 'Failed to verify invitation. Please try again.');
           console.error('Invite verification error:', err);
         }
       };
@@ -606,6 +654,11 @@ export const VolunteerApplicationForm: React.FC<VolunteerApplicationFormProps> =
               <div>
                 <h2 className="text-3xl font-black text-black mb-2">Let's get to know you</h2>
                 <p className="text-gray-600">Start with the basics</p>
+                {verifiedInviteStatus === 'approved' && (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 font-semibold">
+                    This invite has already been approved. If you already have a volunteer account, log in to access the portal.
+                  </div>
+                )}
               </div>
 
               <div className="grid md:grid-cols-2 gap-5">

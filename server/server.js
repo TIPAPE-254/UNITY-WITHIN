@@ -5141,16 +5141,40 @@ app.get("/api/volunteer/status/:email", async (req, res) => {
   }
 
   try {
+    const normalizedEmail = String(email).trim().toLowerCase();
+
     const result = await pool.query(
       `SELECT id, status, category, roles, why_volunteer, skills, work_preference 
        FROM volunteer_applications 
        WHERE LOWER(email) = LOWER($1) 
        ORDER BY created_at DESC 
        LIMIT 1`,
-      [String(email).trim().toLowerCase()]
+      [normalizedEmail]
     );
 
     if (result.rows.length === 0) {
+      const approvedResult = await pool.query(
+        `SELECT id, approved_at, activated_at
+         FROM approved_volunteers
+         WHERE LOWER(email) = LOWER($1)
+         ORDER BY approved_at DESC
+         LIMIT 1`,
+        [normalizedEmail]
+      );
+
+      if (approvedResult.rows.length > 0) {
+        const approved = approvedResult.rows[0];
+        return res.json({
+          success: true,
+          status: approved.activated_at ? "active" : "approved",
+          isApproved: true,
+          roles: [],
+          category: null,
+          applicationId: null,
+          approvedId: approved.id
+        });
+      }
+
       return res.json({
         success: true,
         status: "none",
@@ -5162,11 +5186,12 @@ app.get("/api/volunteer/status/:email", async (req, res) => {
 
     const application = result.rows[0];
     const roles = Array.isArray(application.roles) ? application.roles : (application.roles ? JSON.parse(application.roles) : []);
+    const status = String(application.status || '').toLowerCase();
     
     return res.json({
       success: true,
       status: application.status,
-      isApproved: application.status === "approved",
+      isApproved: status === "approved" || status === "active",
       roles: roles,
       category: application.category,
       applicationId: application.id,
@@ -5360,8 +5385,7 @@ app.patch("/api/admin/volunteer-applications/:id", requireAdmin, async (req, res
              work_preference = EXCLUDED.work_preference,
              mental_health_context = EXCLUDED.mental_health_context,
              motivation = EXCLUDED.motivation,
-             status = EXCLUDED.status,
-             updated_at = NOW()
+             status = EXCLUDED.status
            RETURNING id`,
           [
             volunteerName,
@@ -5786,8 +5810,7 @@ app.post("/api/admin/approve-volunteer/:inviteId", requireAdmin, async (req, res
            work_preference = EXCLUDED.work_preference,
            mental_health_context = EXCLUDED.mental_health_context,
            motivation = EXCLUDED.motivation,
-           status = EXCLUDED.status,
-           updated_at = NOW()
+           status = EXCLUDED.status
          RETURNING id`,
         [
           volunteerName,
@@ -6394,7 +6417,7 @@ app.post("/api/admin/volunteer-rbac/:volunteerId/role", requireAdmin, async (req
     // Update volunteer role
     await pool.query(`
       UPDATE volunteers
-      SET rbac_role_id = $1, updated_at = NOW()
+      SET rbac_role_id = $1
       WHERE id = $2
     `, [roleId, volunteerId]);
     
@@ -6692,17 +6715,35 @@ app.patch("/api/admin/invite/:id/approve", requireAdmin, async (req, res) => {
     if (!result.rows.length) {
       return res.status(404).json({ success: false, error: "Invite not found" });
     }
-    // Update volunteer status to active
-    await pool.query(
-      "UPDATE volunteers SET status = $1 WHERE email = $2",
-      ["active", result.rows[0].email]
+    const email = String(result.rows[0].email || '').trim().toLowerCase();
+
+    // Update volunteer status to active and ensure a volunteer row exists.
+    const volunteerResult = await pool.query(
+      `INSERT INTO volunteers (name, email, status)
+       VALUES ((SELECT name FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1), $1, 'active')
+       ON CONFLICT (email) DO UPDATE SET status = 'active'
+       RETURNING id`,
+      [email]
     );
+
+    await pool.query(
+      "UPDATE users SET role = $1 WHERE LOWER(email) = LOWER($2)",
+      ["volunteer", email]
+    );
+
+    await pool.query(
+      `INSERT INTO approved_volunteers (email, approved_by, approved_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (email) DO UPDATE SET approved_by = EXCLUDED.approved_by, approved_at = NOW()`,
+      [email, req.user?.email || req.headers["x-user-email"] || "admin"]
+    );
+
     // Try to auto-register as Community Listener if applicable
     await pool.query(
       `INSERT INTO peer_support_listeners (volunteer_id, is_available, calls_handled, average_rating)
        SELECT id, FALSE, 0, 0 FROM volunteers WHERE email = $1
        ON CONFLICT (volunteer_id) DO NOTHING`,
-      [result.rows[0].email]
+      [email]
     );
     console.log(`✅ Admin approved volunteer: ${result.rows[0].email}`);
     res.json({ success: true, message: "Volunteer approved" });
@@ -7033,27 +7074,48 @@ app.get("/api/volunteer/dashboard", async (req, res) => {
           [email],
         );
 
+    // 4) Legacy fallback: approved/active volunteer_applications record
+    const approvedApplicationFallback = (volunteersRbac.length || volunteersLegacy.length || approvedFallback.length)
+      ? []
+      : await query(
+          `SELECT
+              id AS application_id,
+              email,
+              first_name,
+              last_name,
+              category,
+              status,
+              created_at AS approved_at
+           FROM volunteer_applications
+           WHERE LOWER(email) = LOWER($1)
+             AND LOWER(status) IN ('approved', 'active')
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [email],
+        );
+
     const volunteer = volunteersRbac[0] || volunteersLegacy[0] || null;
 
-    if (!volunteer && approvedFallback.length === 0) {
+    if (!volunteer && approvedFallback.length === 0 && approvedApplicationFallback.length === 0) {
       return res.status(404).json({ success: false, error: "Volunteer not found" });
     }
 
     // If we only have the approved fallback, return a minimal profile shape
     if (!volunteer) {
-      const approved = approvedFallback[0];
+      const approved = approvedFallback[0] || approvedApplicationFallback[0];
+      const normalizedStatus = String(approved.status || '').toLowerCase();
       return res.json({
         success: true,
         data: {
           profile: {
-            id: null,
+            id: approved.application_id || approved.approved_id || null,
             email: approved.email,
             first_name: approved.first_name,
             last_name: approved.last_name,
-            status: approved.activated_at ? 'active' : 'approved',
-            role_title: approved.role_title,
+            status: approved.activated_at || normalizedStatus === 'active' ? 'active' : 'approved',
+            role_title: approved.role_title || approved.category || 'Volunteer',
             role_description: approved.role_description,
-            role_category: approved.role_category,
+            role_category: approved.role_category || approved.category || null,
             hours_contributed: 0,
           },
           tasks: [],

@@ -314,6 +314,88 @@ export async function handleApproveApplicationWithRole(req, res) {
         `, [application.invite_id]);
       }
 
+      const fullName = `${application.first_name || ''} ${application.last_name || ''}`.trim() || null;
+      const normalizedEmail = String(application.email || '').trim().toLowerCase();
+
+      // Promote/create the volunteer record so the portal can see an active volunteer account.
+      const volunteerResult = await client.query(
+        `INSERT INTO volunteers (
+           name, email, phone, county, skills, category, availability,
+           work_preference, mental_health_context, motivation, status
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (email) DO UPDATE SET
+           name = EXCLUDED.name,
+           phone = EXCLUDED.phone,
+           county = EXCLUDED.county,
+           skills = EXCLUDED.skills,
+           category = EXCLUDED.category,
+           availability = EXCLUDED.availability,
+           work_preference = EXCLUDED.work_preference,
+           mental_health_context = EXCLUDED.mental_health_context,
+           motivation = EXCLUDED.motivation,
+            status = EXCLUDED.status
+         RETURNING id`,
+        [
+          fullName,
+          normalizedEmail,
+          application.phone || null,
+          application.location || null,
+          Array.isArray(application.skills) ? JSON.stringify(application.skills) : (application.skills || null),
+          application.category || null,
+          application.availability || null,
+          application.work_preference || null,
+          application.mental_health_context || null,
+          application.why_volunteer || null,
+          'active',
+        ],
+      );
+
+      await client.query(
+        "UPDATE users SET role = $1 WHERE LOWER(email) = LOWER($2)",
+        ['volunteer', normalizedEmail],
+      );
+
+      // Persist approved volunteer state for login-time activation fallback.
+      await client.query(
+        `INSERT INTO approved_volunteers (
+           email, first_name, last_name, role_id, application_id, approved_by, approved_at, notes
+         ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
+         ON CONFLICT (email) DO UPDATE SET
+           first_name = EXCLUDED.first_name,
+           last_name = EXCLUDED.last_name,
+           role_id = EXCLUDED.role_id,
+           application_id = EXCLUDED.application_id,
+           approved_by = EXCLUDED.approved_by,
+           approved_at = NOW(),
+           notes = EXCLUDED.notes`,
+        [
+          normalizedEmail,
+          application.first_name || null,
+          application.last_name || null,
+          rbacRoleId,
+          applicationId,
+          adminEmail,
+          notes || null,
+        ],
+      );
+
+      // Make Community Listeners immediately available as peer support listeners.
+      const roleResult = await client.query(
+        `SELECT name, display_name FROM volunteer_rbac_roles WHERE id = $1 LIMIT 1`,
+        [rbacRoleId],
+      );
+      const roleName = String(roleResult.rows[0]?.name || '').toLowerCase();
+      const roleDisplayName = String(roleResult.rows[0]?.display_name || '').toLowerCase();
+      const isCommunityListener = roleName.includes('community_listener') || roleDisplayName.includes('community listener');
+      if (isCommunityListener || rbacRoleId === 15) {
+        await client.query(
+          `INSERT INTO peer_support_listeners (volunteer_id, user_email, phone, is_available, approved_at)
+           VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP)
+           ON CONFLICT(volunteer_id) DO UPDATE SET is_available = TRUE, approved_at = CURRENT_TIMESTAMP`,
+          [volunteerResult.rows[0]?.id, normalizedEmail, application.phone || null],
+        );
+      }
+
       await client.query('COMMIT');
 
       // Send approval email
@@ -400,13 +482,96 @@ export async function handleCheckApprovedStatus(req, res) {
       });
     }
 
+    const normalizedEmail = String(email).trim().toLowerCase();
+
     const result = await pool.query(`
       SELECT id, email, first_name, last_name, role_id, approved_at, activated_at
       FROM approved_volunteers
       WHERE LOWER(email) = LOWER($1)
-    `, [email]);
+    `, [normalizedEmail]);
 
     if (result.rows.length === 0) {
+      const legacyVolunteerResult = await pool.query(`
+        SELECT
+          v.id,
+          v.email,
+          v.status,
+          v.rbac_role_id,
+          v.matched_role_id,
+          vrr.name AS rbac_role_name,
+          vrr.display_name AS rbac_role_display_name,
+          vr.category AS legacy_role_name,
+          vr.title AS legacy_role_display_name
+        FROM volunteers v
+        LEFT JOIN volunteer_rbac_roles vrr ON v.rbac_role_id = vrr.id
+        LEFT JOIN volunteer_roles vr ON v.matched_role_id = vr.id
+        WHERE LOWER(v.email) = LOWER($1)
+        ORDER BY v.id DESC
+        LIMIT 1
+      `, [normalizedEmail]);
+
+      if (legacyVolunteerResult.rows.length > 0) {
+        const legacyVolunteer = legacyVolunteerResult.rows[0];
+        const legacyStatus = String(legacyVolunteer.status || '').toLowerCase();
+
+        if (legacyStatus === 'approved' || legacyStatus === 'active') {
+          return res.json({
+            success: true,
+            isApproved: true,
+            approved: {
+              id: legacyVolunteer.id,
+              email: legacyVolunteer.email,
+              firstName: null,
+              lastName: null,
+              role: {
+                id: legacyVolunteer.rbac_role_id || legacyVolunteer.matched_role_id || null,
+                name: legacyVolunteer.rbac_role_name || legacyVolunteer.legacy_role_name || 'volunteer',
+                display_name: legacyVolunteer.rbac_role_display_name || legacyVolunteer.legacy_role_display_name || 'Volunteer'
+              },
+              approvedAt: null,
+              activatedAt: legacyStatus === 'active' ? new Date().toISOString() : null
+            }
+          });
+        }
+      }
+
+      const legacyApplicationResult = await pool.query(`
+        SELECT
+          id,
+          email,
+          first_name,
+          last_name,
+          category,
+          status,
+          created_at
+        FROM volunteer_applications
+        WHERE LOWER(email) = LOWER($1)
+          AND LOWER(status) IN ('approved', 'active')
+        ORDER BY created_at DESC
+        LIMIT 1
+      `, [normalizedEmail]);
+
+      if (legacyApplicationResult.rows.length > 0) {
+        const application = legacyApplicationResult.rows[0];
+        return res.json({
+          success: true,
+          isApproved: true,
+          approved: {
+            id: application.id,
+            email: application.email,
+            firstName: application.first_name,
+            lastName: application.last_name,
+            role: {
+              id: null,
+              name: String(application.category || 'volunteer').toLowerCase(),
+              display_name: application.category || 'Volunteer'
+            },
+            approvedAt: application.created_at,
+            activatedAt: String(application.status || '').toLowerCase() === 'active' ? application.created_at : null
+          }
+        });
+      }
+
       return res.json({
         success: true,
         isApproved: false
