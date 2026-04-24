@@ -316,6 +316,19 @@ export async function handleApproveApplicationWithRole(req, res) {
 
       const fullName = `${application.first_name || ''} ${application.last_name || ''}`.trim() || null;
       const normalizedEmail = String(application.email || '').trim().toLowerCase();
+      let normalizedSkills = null;
+      if (Array.isArray(application.skills)) {
+        normalizedSkills = JSON.stringify(application.skills);
+      } else if (typeof application.skills === 'string' && application.skills.trim()) {
+        try {
+          const parsedSkills = JSON.parse(application.skills);
+          normalizedSkills = JSON.stringify(parsedSkills);
+        } catch {
+          normalizedSkills = JSON.stringify([application.skills.trim()]);
+        }
+      } else if (application.skills && typeof application.skills === 'object') {
+        normalizedSkills = JSON.stringify(application.skills);
+      }
 
       // Promote/create the volunteer record so the portal can see an active volunteer account.
       const volunteerResult = await client.query(
@@ -340,7 +353,7 @@ export async function handleApproveApplicationWithRole(req, res) {
           normalizedEmail,
           application.phone || null,
           application.location || null,
-          Array.isArray(application.skills) ? JSON.stringify(application.skills) : (application.skills || null),
+          normalizedSkills,
           application.category || null,
           application.availability || null,
           application.work_preference || null,

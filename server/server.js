@@ -5366,9 +5366,19 @@ app.patch("/api/admin/volunteer-applications/:id", requireAdmin, async (req, res
       if (normalizedStatus === "approved") {
         const volunteerName = `${application.first_name || ""} ${application.last_name || ""}`.trim() || null;
         const normalizedEmail = String(application.email || "").trim().toLowerCase();
-        const normalizedSkills = Array.isArray(application.skills)
-          ? JSON.stringify(application.skills)
-          : (application.skills || null);
+        let normalizedSkills = null;
+        if (Array.isArray(application.skills)) {
+          normalizedSkills = JSON.stringify(application.skills);
+        } else if (typeof application.skills === 'string' && application.skills.trim()) {
+          try {
+            const parsedSkills = JSON.parse(application.skills);
+            normalizedSkills = JSON.stringify(parsedSkills);
+          } catch {
+            normalizedSkills = JSON.stringify([application.skills.trim()]);
+          }
+        } else if (application.skills && typeof application.skills === 'object') {
+          normalizedSkills = JSON.stringify(application.skills);
+        }
 
         const volunteerResult = await client.query(
           `INSERT INTO volunteers (
@@ -5791,9 +5801,19 @@ app.post("/api/admin/approve-volunteer/:inviteId", requireAdmin, async (req, res
       const volunteerName = application
         ? `${application.first_name || ""} ${application.last_name || ""}`.trim() || null
         : null;
-      const normalizedSkills = application && Array.isArray(application.skills)
-        ? JSON.stringify(application.skills)
-        : (application?.skills || null);
+      let normalizedSkills = null;
+      if (application && Array.isArray(application.skills)) {
+        normalizedSkills = JSON.stringify(application.skills);
+      } else if (application && typeof application.skills === 'string' && application.skills.trim()) {
+        try {
+          const parsedSkills = JSON.parse(application.skills);
+          normalizedSkills = JSON.stringify(parsedSkills);
+        } catch {
+          normalizedSkills = JSON.stringify([application.skills.trim()]);
+        }
+      } else if (application?.skills && typeof application.skills === 'object') {
+        normalizedSkills = JSON.stringify(application.skills);
+      }
 
       const volunteerResult = await client.query(
         `INSERT INTO volunteers (
@@ -6740,8 +6760,8 @@ app.patch("/api/admin/invite/:id/approve", requireAdmin, async (req, res) => {
 
     // Try to auto-register as Community Listener if applicable
     await pool.query(
-      `INSERT INTO peer_support_listeners (volunteer_id, is_available, calls_handled, average_rating)
-       SELECT id, FALSE, 0, 0 FROM volunteers WHERE email = $1
+      `INSERT INTO peer_support_listeners (volunteer_id, user_email, is_available, calls_handled, average_rating)
+       SELECT id, $1, FALSE, 0, 0 FROM volunteers WHERE email = $1
        ON CONFLICT (volunteer_id) DO NOTHING`,
       [email]
     );
