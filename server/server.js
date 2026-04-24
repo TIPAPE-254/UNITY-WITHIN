@@ -6033,26 +6033,58 @@ app.get("/api/admin/volunteer-hours", requireAdmin, async (req, res) => {
   }
 });
 
+async function hasColumn(tableName, columnName) {
+  const result = await pool.query(
+    `SELECT 1
+       FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+        AND column_name = $2
+      LIMIT 1`,
+    [tableName, columnName],
+  );
+  return result.rows.length > 0;
+}
+
 app.get("/api/admin/volunteer-tasks", requireAdmin, async (req, res) => {
   const { volunteerId } = req.query;
   try {
+    const [hasCategory, hasDueDate, hasCompleted] = await Promise.all([
+      hasColumn("volunteer_tasks", "category"),
+      hasColumn("volunteer_tasks", "due_date"),
+      hasColumn("volunteer_tasks", "completed"),
+    ]);
+
+    const categorySelect = hasCategory ? "t.category" : "NULL::text AS category";
+    const dueDateSelect = hasDueDate ? "t.due_date" : "NULL::timestamp AS due_date";
+    const completedSelect = hasCompleted ? "t.completed" : "FALSE AS completed";
+    const orderBy = hasDueDate ? "t.due_date ASC" : "t.id DESC";
+
     if (volunteerId) {
       const dbResult = await pool.query(
-        `SELECT t.*, v.name, v.email
+        `SELECT t.id, t.volunteer_id, t.title,
+                ${categorySelect},
+                ${dueDateSelect},
+                ${completedSelect},
+                v.name, v.email
            FROM volunteer_tasks t
            LEFT JOIN volunteers v ON v.id = t.volunteer_id
           WHERE t.volunteer_id = $1
-          ORDER BY t.due_date ASC`,
+          ORDER BY ${orderBy}`,
         [Number(volunteerId)],
       );
       return res.json({ success: true, data: dbResult.rows || [] });
     }
 
     const dbResult = await pool.query(
-      `SELECT t.*, v.name, v.email
+      `SELECT t.id, t.volunteer_id, t.title,
+              ${categorySelect},
+              ${dueDateSelect},
+              ${completedSelect},
+              v.name, v.email
          FROM volunteer_tasks t
          LEFT JOIN volunteers v ON v.id = t.volunteer_id
-        ORDER BY t.due_date ASC`,
+        ORDER BY ${orderBy}`,
     );
     return res.json({ success: true, data: dbResult.rows || [] });
   } catch (error) {
@@ -6085,11 +6117,25 @@ app.get("/api/admin/volunteer-activity", requireAdmin, async (req, res) => {
       [Number(volunteerId)],
     );
 
+    const [hasCategory, hasDueDate, hasCompleted] = await Promise.all([
+      hasColumn("volunteer_tasks", "category"),
+      hasColumn("volunteer_tasks", "due_date"),
+      hasColumn("volunteer_tasks", "completed"),
+    ]);
+
+    const categorySelect = hasCategory ? "category" : "NULL::text AS category";
+    const dueDateSelect = hasDueDate ? "due_date" : "NULL::timestamp AS due_date";
+    const completedSelect = hasCompleted ? "completed" : "FALSE AS completed";
+    const orderBy = hasDueDate ? "due_date ASC" : "id DESC";
+
     const tasksResult = await pool.query(
-      `SELECT id, title, category, due_date, completed
+      `SELECT id, title,
+              ${categorySelect},
+              ${dueDateSelect},
+              ${completedSelect}
          FROM volunteer_tasks
         WHERE volunteer_id = $1
-        ORDER BY due_date ASC`,
+        ORDER BY ${orderBy}`,
       [Number(volunteerId)],
     );
 
