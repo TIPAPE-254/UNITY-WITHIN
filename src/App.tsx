@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from 'react';
 import { sendIntelligentNotification } from './services/pushNotificationApi';
+import React, { useState, useEffect } from 'react';
 import { NAVIGATION_ITEMS } from './constants';
 import { ViewState, User } from './types';
-import { UserProvider } from './contexts/UserContext';
 import { Dashboard } from './components/Dashboard';
 import { AIChat } from './components/AIChat';
 import { Journal } from './components/Journal';
 import { Breathe } from './components/Breathe';
 import { Education } from './components/Education';
 import { WellnessToolkit } from './components/WellnessToolkit';
-import { Grounding } from './components/Grounding';
 import { LandingPage } from './components/LandingPage';
 import { Login } from './components/Login';
 import { Signup } from './components/Signup';
@@ -20,16 +18,27 @@ import { VolunteerPortal } from './components/VolunteerPortal';
 import { VolunteerApplicationForm } from './components/VolunteerApplicationForm';
 import { VolunteerProfilePage } from './components/VolunteerProfilePage';
 import { AnalyticsTracker } from './components/AnalyticsTracker';
-import { TherapistInviteAccept } from './components/TherapistInviteAccept';
-import { TherapistPortal } from './components/TherapistPortal';
-import FAQ from './components/FAQ';
-import About from './components/About';
-import Contact from './components/Contact';
+import FAQ from '../components/FAQ';
+import About from '../components/About';
+import Contact from '../components/Contact';
 import { usePushNotifications } from './hooks/usePushNotifications';
-import { Heart, Menu, X, ShieldAlert, Phone, Users, Stethoscope } from 'lucide-react';
+import { Heart, Menu, X, ShieldAlert, Phone, Users } from 'lucide-react';
 
 export default function App() {
   const { register: requestPushPermission } = usePushNotifications();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [crisisModalOpen, setCrisisModalOpen] = useState(false);
+
+  // Load user from localStorage
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const savedUser = localStorage.getItem('unity_user');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch (e) {
+      console.error("Failed to parse user from local storage", e);
+      return null;
+    }
+  });
 
   // Example: Admin/test button to trigger intelligent notification
   const handleSendIntelligentNotification = async () => {
@@ -47,19 +56,6 @@ export default function App() {
       alert('Failed to send notification');
     }
   };
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [crisisModalOpen, setCrisisModalOpen] = useState(false);
-
-  // Load user from localStorage
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const savedUser = localStorage.getItem('unity_user');
-      return savedUser ? JSON.parse(savedUser) : null;
-    } catch (e) {
-      console.error("Failed to parse user from local storage", e);
-      return null;
-    }
-  });
 
   // State for volunteer invite token
   const [inviteToken, setInviteToken] = useState<string>('');
@@ -93,15 +89,6 @@ export default function App() {
         return;
       }
 
-      // Check for therapist invite
-      const therapistInviteMatch = pathname.match(/\/therapist-invite\/([a-f0-9\-]+)/i);
-      if (therapistInviteMatch && therapistInviteMatch[1]) {
-        const token = therapistInviteMatch[1];
-        setInviteToken(token);
-        setCurrentView('therapist-invite');
-        return;
-      }
-
       // No special URL patterns, determine view from auth
       const savedUser = localStorage.getItem('unity_user');
       const hasUser = savedUser ? JSON.parse(savedUser) : null;
@@ -113,8 +100,6 @@ export default function App() {
 
       if (hasUser.role === 'volunteer' || hasUser.volunteerStatus === 'approved') {
         setCurrentView('volunteer-portal');
-      } else if (hasUser.role === 'therapist') {
-        setCurrentView('therapist-portal');
       } else {
         setCurrentView('dashboard');
       }
@@ -123,13 +108,6 @@ export default function App() {
       setCurrentView('landing');
     }
   }, []);
-
-  // Register push notifications on mount if user is logged in
-  useEffect(() => {
-    if (user) {
-      void requestPushPermission().catch(console.error);
-    }
-  }, [user]);
 
   const handleNavigate = (view: ViewState) => {
     setCurrentView(view);
@@ -151,12 +129,9 @@ export default function App() {
     localStorage.setItem('unity_user', JSON.stringify(loggedInUser));
     
     // Route volunteers to volunteer portal, regular users to dashboard
-    let targetView: ViewState = 'dashboard';
-    if (loggedInUser.role === 'volunteer' || loggedInUser.volunteerStatus === 'approved') {
-      targetView = 'volunteer-portal';
-    } else if (loggedInUser.role === 'therapist') {
-      targetView = 'therapist-portal';
-    }
+    const targetView = loggedInUser.role === 'volunteer' || loggedInUser.volunteerStatus === 'approved' 
+      ? 'volunteer-portal' 
+      : 'dashboard';
     setCurrentView(targetView);
 
     void requestPushPermission().catch((error: unknown) => {
@@ -175,9 +150,7 @@ export default function App() {
       case 'dashboard':
         return <Dashboard onNavigate={handleNavigate} userName={user?.firstName} onLogout={handleLogout} />;
       case 'wellness':
-        return <WellnessToolkit onNavigate={handleNavigate} />;
-      case 'grounding':
-        return <Grounding onNavigate={handleNavigate} />;
+        return <WellnessToolkit />;
       case 'chat':
         return <AIChat />;
       case 'journal':
@@ -198,10 +171,6 @@ export default function App() {
         return <VolunteerDashboard user={user || undefined} onNavigate={handleNavigate} />;
       case 'admin-volunteers':
         return <AdminVolunteers onNavigate={handleNavigate} adminName={user?.firstName} />;
-      case 'therapist-invite':
-        return <TherapistInviteAccept inviteToken={inviteToken || ''} onNavigate={handleNavigate} />;
-      case 'therapist-portal':
-        return <TherapistPortal user={user || undefined} onNavigate={handleNavigate} />;
       case 'faq':
         return <FAQ />;
       case 'about':
@@ -214,8 +183,7 @@ export default function App() {
   };
 
   return (
-    <UserProvider>
-      <div className="min-h-screen bg-[#FFF5F7] flex flex-col md:flex-row text-gray-900 font-sans selection:bg-pink-200 selection:text-pink-900">
+    <div className="min-h-screen bg-[#FFF5F7] flex flex-col md:flex-row text-gray-900 font-sans selection:bg-pink-200 selection:text-pink-900">
 
       <AnalyticsTracker currentView={currentView} />
       {/* Admin/test button for intelligent notification */}
@@ -230,7 +198,7 @@ export default function App() {
       )}
 
       {/* Sidebar (Desktop) - Hidden on landing, login, signup, and volunteer-invite pages */}
-      {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && currentView !== 'therapist-invite' && (
+      {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && (
         <aside className="hidden md:flex flex-col w-64 bg-white border-r border-pink-100 p-6 fixed h-full z-20">
           <div className="flex items-center gap-2 mb-10 text-pink-600">
             <Heart className="fill-current" size={28} />
@@ -238,12 +206,7 @@ export default function App() {
           </div>
 
           <nav className="space-y-2 flex-1">
-            {NAVIGATION_ITEMS.filter(item => {
-              if (item.id === 'volunteer-portal') {
-                return (user?.role === 'volunteer' || user?.volunteerStatus === 'approved');
-              }
-              return true;
-            }).map((item) => (
+            {NAVIGATION_ITEMS.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setCurrentView(item.id)}
@@ -270,20 +233,6 @@ export default function App() {
                 Admin Volunteers
               </button>
             )}
-            
-            {/* Therapist Navigation */}
-            {user?.role === 'therapist' && (
-              <button
-                onClick={() => setCurrentView('therapist-portal')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 font-medium ${currentView === 'therapist-portal'
-                  ? 'bg-indigo-50 text-indigo-600 shadow-sm'
-                  : 'text-gray-500 hover:bg-gray-50 hover:text-indigo-500'
-                  }`}
-              >
-                <Stethoscope size={20} className={currentView === 'therapist-portal' ? 'stroke-[2.5px]' : 'stroke-2'} />
-                Clinical Portal
-              </button>
-            )}
           </nav>
 
           <div className="mt-auto pt-6 border-t border-gray-100">
@@ -301,9 +250,9 @@ export default function App() {
       )}
 
       {/* Main Content Area */}
-      <main className={`${(currentView === 'landing' || currentView === 'login' || currentView === 'signup' || currentView === 'volunteer-invite' || currentView === 'therapist-invite') ? 'w-full' : 'flex-1 md:ml-64'} p-4 pb-24 md:p-8 md:pb-8 max-w-5xl mx-auto w-full transition-all`}>
+      <main className={`${(currentView === 'landing' || currentView === 'login' || currentView === 'signup' || currentView === 'volunteer-invite') ? 'w-full' : 'flex-1 md:ml-64'} p-4 pb-24 md:p-8 md:pb-8 max-w-5xl mx-auto w-full transition-all`}>
         {/* Mobile Header - Hidden on landing, login, signup, and volunteer-invite pages */}
-        {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && currentView !== 'therapist-invite' && (
+        {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && (
           <div className="md:hidden flex items-center justify-between mb-6 px-2">
             {/* Hamburger Menu - Left */}
             <div className="flex-shrink-0">
@@ -339,7 +288,7 @@ export default function App() {
         )}
 
         {/* Mobile Menu Drawer */}
-        {mobileMenuOpen && currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && currentView !== 'therapist-invite' && (
+        {mobileMenuOpen && currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && (
           <>
             {/* Backdrop */}
             <div 
@@ -363,12 +312,7 @@ export default function App() {
               </div>
 
               <nav className="space-y-2">
-                {NAVIGATION_ITEMS.filter(item => {
-                  if (item.id === 'volunteer-portal') {
-                    return (user?.role === 'volunteer' || user?.volunteerStatus === 'approved');
-                  }
-                  return true;
-                }).map((item) => (
+                {NAVIGATION_ITEMS.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => {
@@ -486,14 +430,9 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation (Mobile) - Hidden on landing, login, signup, and volunteer-invite pages */}
-      {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && currentView !== 'therapist-invite' && (
+      {currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup' && currentView !== 'volunteer-invite' && (
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-pink-100 p-2 z-50 flex justify-around items-center pb-safe">
-          {NAVIGATION_ITEMS.filter(item => {
-            if (item.id === 'volunteer-portal') {
-              return (user?.role === 'volunteer' || user?.volunteerStatus === 'approved');
-            }
-            return true;
-          }).map((item) => (
+          {NAVIGATION_ITEMS.map((item) => (
             <button
               key={item.id}
               onClick={() => setCurrentView(item.id)}
@@ -508,7 +447,6 @@ export default function App() {
           ))}
         </nav>
       )}
-      </div>
-    </UserProvider>
+    </div>
   );
 }
