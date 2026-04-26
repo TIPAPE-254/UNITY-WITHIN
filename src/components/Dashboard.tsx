@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE_URL, MOODS } from '../constants';
 import { Button } from './Button';
-import { useUser } from '../contexts/UserContext';
 import { generateDailyAffirmation } from '../services/geminiService';
-import { Sun, Sparkles, TrendingUp, Flame, Trophy, Star, Sprout, Flower, Trees, Wind, BrainCircuit, Heart, Zap, Phone, ExternalLink, Brain, AlertTriangle, Video, Copy, Clock, Stethoscope } from 'lucide-react';
-import { SessionCountdown } from './SessionCountdown';
+import { Sun, Sparkles, TrendingUp, Flame, Trophy, Star, Sprout, Flower, Trees, Wind, BrainCircuit, Heart, Zap, Phone, ExternalLink, Brain, AlertTriangle, Video, Copy } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts';
 import { User, UserProgress, Goal, Habit, SafetyPlan, Badge, WearableData } from '../types';
 
 import { ViewState } from '../types';
-import { queueRequest } from '../services/offlineSyncService';
 
 interface DashboardProps {
   userName?: string;
@@ -114,11 +111,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
   const [showConfetti, setShowConfetti] = useState(false);
   const [xpGained, setXpGained] = useState<number | null>(null);
   const [isStateHydrated, setIsStateHydrated] = useState(false);
-  const therapistToolsEnabled = true; // Enabled therapist tools pipeline
-  const [activeSession, setActiveSession] = useState<any>(null);
+  const therapistToolsEnabled = false; // Feature flag for therapist tools
   const [supportLink, setSupportLink] = useState<string | null>(null);
 
-  const { progress, setProgress, toolUsage, setToolUsage, logToolUse, updateStreak } = useUser() as any; // Cast as any temporarily if types mismatch
+  // Gamification State
+  const [progress, setProgress] = useState<UserProgress>({ points: 0, streak: 0, lastCheckInDate: null, level: 1 });
+
+  // Tool Usage and Favorites State
+  const [toolUsage, setToolUsage] = useState<Record<string, number>>({});
 
   const [favorites, setFavorites] = useState<string[]>([]);
 
@@ -208,22 +208,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
       }
     };
 
-    const checkActiveSession = async () => {
-      const uId = getActiveUserId();
-      if (!uId) return;
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/support/users/${uId}/sessions/active`);
-        if (res.ok) {
-          const payload = await res.json();
-          if (payload.data) setActiveSession(payload.data);
-        }
-      } catch (err) {
-        console.error('Fetch active session error:', err);
-      }
-    };
-
     void loadDashboardState();
-    void checkActiveSession();
   }, []);
 
   useEffect(() => {
@@ -289,36 +274,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
     const userId = getActiveUserId();
     if (!userId) return;
 
-    const moodData = {
-      userId,
-      mood: moodLabel,
-      intensity: toMoodScore(moodLabel),
-    };
+    try {
+      const response = await fetch(`${API_BASE_URL}/moods`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          mood: moodLabel,
+          intensity: toMoodScore(moodLabel),
+        }),
+      });
 
-    // Update local state immediately for a fast UI
-    const now = new Date().toISOString();
-    const mockLog: MoodLog = {
-        id: Date.now(),
-        mood: moodLabel,
-        intensity: moodData.intensity,
-        note: null,
-        created_at: now
-    };
-    
-    // We update the chart immediately without waiting for network
-    setMoodChartData(prev => {
-        // Find existing day or append
-        // For simplicity, we just trigger a refresh if online, or append to local cache
-        return buildWeeklyMoodData([...(JSON.parse(localStorage.getItem('unity_mood_history') || '[]')), mockLog]);
-    });
+      if (!response.ok) {
+        throw new Error('Failed to log mood');
+      }
 
-    // Queue for sync (will send immediately if online)
-    queueRequest(`${API_BASE_URL}/moods`, 'POST', moodData);
-    
-    // Cache the history locally
-    const history = JSON.parse(localStorage.getItem('unity_mood_history') || '[]');
-    history.push(mockLog);
-    localStorage.setItem('unity_mood_history', JSON.stringify(history));
+      await fetchMoodHistory();
+    } catch (error) {
+      console.error('Mood logging failed:', error);
+    }
   };
 
   useEffect(() => {
@@ -523,20 +497,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
           </button>
         )}
       </header>
-      
-      {/* Active Therapy Session Countdown */}
-      {activeSession && (
-        <div className="animate-in fade-in slide-in-from-top-4 duration-700">
-          <div className="flex items-center gap-2 mb-3 text-indigo-600">
-            <Stethoscope size={18} />
-            <h2 className="text-sm font-black uppercase tracking-widest">Upcoming Professional Session</h2>
-          </div>
-          <SessionCountdown 
-            scheduledTime={activeSession.scheduled_time} 
-            onReady={() => console.log('Session is ready')}
-          />
-        </div>
-      )}
 
       {isApprovedVolunteer && (
         <section className="bg-white rounded-3xl p-6 shadow-sm border border-unity-50">
@@ -748,7 +708,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userName = "Friend", onNav
               desc: '5-4-3-2-1 sensory exercise',
               icon: Zap,
               color: 'bg-green-100 text-green-600',
-              action: () => { handleToolUse('grounding'); onNavigate('grounding'); }
+              action: () => { handleToolUse('grounding'); onNavigate('wellness'); }
             },
             {
               id: 'mindfulness',
