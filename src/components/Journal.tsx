@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BookHeader, Plus, Search, Calendar, ChevronRight, PenTool, Trash2, Heart, Sparkles, X, Save, Star } from 'lucide-react';
+import { BookOpen, Plus, Search, Calendar, ChevronRight, PenTool, Trash2, Heart, Sparkles, X, Save, Star } from 'lucide-react';
 import { Button } from './Button';
 import { MOODS, API_BASE_URL } from '../constants';
 import { useUser } from '../contexts/UserContext';
@@ -16,8 +16,20 @@ interface JournalEntry {
 
 const CATEGORIES = ['Healing', 'Gratitude', 'Growth', 'Reflection', 'Daily'];
 
+const getActiveUserId = (): string | null => {
+  try {
+    const savedUser = localStorage.getItem('unity_user');
+    if (!savedUser) return null;
+    const parsed = JSON.parse(savedUser);
+    return parsed?.id ? String(parsed.id) : null;
+  } catch {
+    return null;
+  }
+};
+
 export const Journal: React.FC = () => {
-  const { logToolUse, user } = useUser();
+  const { logToolUse } = useUser();
+  const userId = getActiveUserId();
   const [entries, setEntries] = useState<JournalEntry[]>(() => {
     const saved = localStorage.getItem('unity_journal_entries');
     return saved ? JSON.parse(saved) : [];
@@ -26,9 +38,9 @@ export const Journal: React.FC = () => {
   // Sync with cloud on load
   useEffect(() => {
     const fetchJournals = async () => {
-      if (!user?.id) return;
+      if (!userId) return;
       try {
-        const res = await fetch(`${API_BASE_URL}/api/journals/${user.id}`);
+        const res = await fetch(`${API_BASE_URL}/api/journals/${userId}`);
         if (res.ok) {
            const { data } = await res.json();
            if (Array.isArray(data)) {
@@ -40,7 +52,7 @@ export const Journal: React.FC = () => {
       }
     };
     fetchJournals();
-  }, [user?.id]);
+  }, [userId]);
 
   const [isAdding, setIsAdding] = useState(false);
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
@@ -64,7 +76,7 @@ export const Journal: React.FC = () => {
         content: newContent,
         mood: newMood,
         category: newCategory,
-        userId: user?.id
+        userId: userId
     };
 
     if (editingEntry) {
@@ -87,7 +99,7 @@ export const Journal: React.FC = () => {
       logToolUse('journal');
       
       // PERSIST TO CLOUD (Offline Ready)
-      if (user?.id) {
+      if (userId) {
         queueRequest(`${API_BASE_URL}/api/journals`, 'POST', entryData);
       }
     }
@@ -252,7 +264,7 @@ export const Journal: React.FC = () => {
              </div>
              <div className="bg-white border border-pink-100 rounded-2xl px-6 py-4 flex items-center gap-4 shadow-sm">
                 <div className="w-10 h-10 rounded-full bg-pink-50 flex items-center justify-center text-pink-500">
-                   <BookHeader size={20} />
+                   <BookOpen size={20} />
                 </div>
                 <div>
                    <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Total Entries</p>
