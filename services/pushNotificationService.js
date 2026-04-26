@@ -56,13 +56,3 @@ export function generateNotification(user) {
     // Default gentle nudge
     return `It’s okay to take a break. Your safe space is always here for you.`;
 }
-    if (user.isActive && Math.random() < 0.2) {
-        return "Someone just shared a gratitude moment. Join the conversation in Community Circles!";
-    }
-    // Streak encouragement
-    if (user.streak && user.streak % 3 === 0) {
-        return "Congrats! You\u2019ve checked in ".concat(user.streak, " days in a row. Keep up the great work!");
-    }
-    // Default gentle nudge
-    return "It\u2019s okay to take a break. Your safe space is always here for you.";
-}
