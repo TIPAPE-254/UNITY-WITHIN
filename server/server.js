@@ -1000,8 +1000,7 @@ app.post(
   requireStrictClerkSession,
   async (req, res) => {
     try {
-      const installationId = req.headers["x-installation-id"] || null;
-      const user = await syncClerkAppUser(req.clerkAuth, installationId);
+      const user = await syncClerkAppUser(req.clerkAuth);
 
       return res.json({
         success: true,

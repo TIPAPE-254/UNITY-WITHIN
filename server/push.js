@@ -644,7 +644,7 @@ function statsHandler(req, res) {
 }
 
 /**
- * Get VAPID public key
+ * Health check endpoint
  */
 function healthHandler(req, res) {
   res.json({
@@ -655,13 +655,6 @@ function healthHandler(req, res) {
     vapidConfigured: !!publicVapidKey && !!privateVapidKey,
     timestamp: new Date().toISOString()
   });
-}
-
-function keyHandler(req, res) {
-  if (!publicVapidKey) {
-    return res.status(404).json({ error: 'VAPID public key not configured' });
-  }
-  res.json({ publicKey: publicVapidKey });
 }
 
 // ==================== SCHEDULED NOTIFICATIONS ====================
@@ -852,7 +845,6 @@ export function setupPushNotifications(app) {
   app.post('/api/track/mood', trackMoodHandler);
   app.get('/api/push/stats', statsHandler);
   app.get('/api/push/health', healthHandler);
-  app.get('/api/push/key', keyHandler);
 
   console.log('[Push Notifications] Routes mounted on main server');
   console.log('[Push Notifications] VAPID configured:', !!publicVapidKey && !!privateVapidKey);
