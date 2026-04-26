@@ -1,5 +1,5 @@
 // --- INTELLIGENT NOTIFICATION ALGORITHM IMPORT ---
-import { generateNotification } from '../services/pushNotificationService.js';
+import { generateNotification } from '../services/pushNotificationService.mjs';
 /**
  * Intelligent notification endpoint (AI-driven, personalized)
  */

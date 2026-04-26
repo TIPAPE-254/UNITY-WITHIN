@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Wind, BookOpen, Compass, Lock, Shield, ChevronLeft, ChevronRight, Pause, Play, X } from 'lucide-react';
+import { Heart, MessageCircle, Wind, BookOpen, Compass, Lock, Shield, ChevronLeft, ChevronRight, Pause, Play, X, Sparkles } from 'lucide-react';
 
 interface LandingPageProps {
     onGetStarted: () => void;

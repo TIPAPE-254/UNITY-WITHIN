@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, UserProgress, Goal, Habit, Badge } from './types';
-import { API_BASE_URL } from './constants';
+import { User, UserProgress, Goal, Habit, Badge } from '../types';
+import { API_BASE_URL } from '../constants';
 
 interface UserContextType {
   progress: UserProgress;
@@ -94,7 +94,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [progress, toolUsage, badges, isHydrated]);
 
   const addXP = (amount: number) => {
-    setProgress(prev => {
+    setProgress((prev: UserProgress) => {
       const newPoints = prev.points + amount;
       // Level calculation logic
       let newLevel = 1;
@@ -120,7 +120,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const today = new Date().toDateString();
     if (progress.lastCheckInDate === today) return;
 
-    setProgress(prev => {
+    setProgress((prev: UserProgress) => {
       let newStreak = prev.streak;
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
