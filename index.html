@@ -5,6 +5,40 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f43f5e" />
+  <meta name="description" content="UNITY WITHIN is a world-class emotional support ecosystem for mental health, self-acceptance, and wellness. Safe, anonymous, and free support for Kenyan youth and beyond." />
+  <meta name="keywords" content="mental health, self-acceptance, emotional support, wellness, therapy, community, Kenya, youth, AI companion, journaling, mindfulness, support groups" />
+  <meta name="author" content="UNITY WITHIN" />
+  <meta property="og:title" content="UNITY WITHIN – Mental Health & Self-Acceptance" />
+  <meta property="og:description" content="A safe, anonymous, and free emotional support ecosystem for mental health and self-acceptance." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://unitywithin.example.com/" />
+  <meta property="og:image" content="/favicon.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="UNITY WITHIN – Mental Health & Self-Acceptance" />
+  <meta name="twitter:description" content="A safe, anonymous, and free emotional support ecosystem for mental health and self-acceptance." />
+  <meta name="twitter:image" content="/favicon.png" />
+
+  <!-- Schema.org structured data for MentalHealthContent -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "UNITY WITHIN",
+    "url": "https://unitywithin.example.com/",
+    "logo": "/favicon.png",
+    "sameAs": [
+      "https://www.facebook.com/unitywithin",
+      "https://twitter.com/unitywithin",
+      "https://www.instagram.com/unitywithin"
+    ],
+    "description": "A world-class emotional support ecosystem for mental health, self-acceptance, and wellness. Safe, anonymous, and free support for Kenyan youth and beyond.",
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "contactType": "customer support",
+      "email": "support@unitywithin.example.com"
+    }
+  }
+  </script>
   <title>UNITY WITHIN</title>
   <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="apple-touch-icon" href="/favicon.png" />
@@ -73,6 +107,30 @@
 }
 </script>
   <link rel="stylesheet" href="/index.css">
+  <link rel="manifest" href="/manifest.json">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then(reg => {
+          console.log('SW registered:', reg);
+          // Auto-update like Play Store apps
+          reg.onupdatefound = () => {
+            const installingWorker = reg.installing;
+            if (installingWorker) {
+              installingWorker.onstatechange = () => {
+                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                   console.log('New version available, refreshing...');
+                   window.location.reload();
+                }
+              };
+            }
+          };
+        }).catch(err => {
+          console.log('SW registration failed:', err);
+        });
+      });
+    }
+  </script>
 </head>
 
 <body>

@@ -149,3 +149,52 @@ export const updateTherapistProfile = async (profileData: {
     throw error;
   }
 };
+
+/**
+ * Get all active therapists for public listing
+ */
+export const getTherapists = async (filters?: { specialization?: string; language?: string; availability?: string; rating?: number }) => {
+  try {
+    const params = new URLSearchParams();
+    if (filters?.specialization) params.set('specialization', filters.specialization);
+    if (filters?.language) params.set('language', filters.language);
+    if (filters?.availability) params.set('availability', filters.availability);
+    if (filters?.rating) params.set('rating', String(filters.rating));
+
+    const response = await fetch(`${API_BASE_URL}/api/support/therapists?${params}`);
+    if (!response.ok) throw new Error('Failed to fetch therapists');
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching therapists:', error);
+    throw error;
+  }
+};
+
+/**
+ * Book a therapy session (client-side)
+ */
+export const bookTherapySession = async (bookingData: {
+  therapistId: number;
+  userId: number | string;
+  date: string;
+  time: string;
+  type: 'video' | 'voice';
+  issueDescription?: string;
+  preferredTimeFrame?: string;
+}) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/sessions/book`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bookingData)
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to book session');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error booking therapy session:', error);
+    throw error;
+  }
+};

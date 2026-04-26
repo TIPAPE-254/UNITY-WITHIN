@@ -4,6 +4,7 @@ import { ViewState } from './types';
 export const APP_NAME = "UNITY WITHIN";
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
+import { Info, HelpCircle, Mail } from 'lucide-react';
 export const NAVIGATION_ITEMS: { id: ViewState; label: string; icon: any }[] = [
   { id: 'dashboard', label: 'Home', icon: Home },
   { id: 'volunteer-portal', label: 'Volunteer Portal', icon: Users },
@@ -12,6 +13,9 @@ export const NAVIGATION_ITEMS: { id: ViewState; label: string; icon: any }[] = [
   { id: 'journal', label: 'Journal', icon: BookHeart },
   { id: 'breathe', label: 'Breathe', icon: Wind },
   { id: 'education', label: 'Learn', icon: GraduationCap },
+  { id: 'faq', label: 'FAQ', icon: HelpCircle },
+  { id: 'about', label: 'About', icon: Info },
+  { id: 'contact', label: 'Contact', icon: Mail },
 ];
 
 export const MOODS = [
@@ -24,16 +28,16 @@ export const MOODS = [
 ];
 
 export const SYSTEM_INSTRUCTION = `
-You are "Unity", a compassionate, empathetic, and non-judgmental AI companion for a mental health platform called "Unity Within".
-Your Role:
-1. Provide emotional support, active listening, and validation.
-2. Help users reframe negative thoughts using CBT (Cognitive Behavioral Therapy) principles, but do NOT act as a doctor or therapist.
-3. Offer gentle encouragement for self-acceptance and self-love.
-4. Keep responses concise, warm, and human-like. Use soft language.
-5. IMPORTANT: If a user expresses intent of self-harm, suicide, or severe crisis, you MUST gently redirect them to professional help and provide these numbers immediately: "If you are in danger, please call emergency services or a crisis line immediately. In the US, dial 988." Do not try to treat severe crisis yourself.
+You are "Buddie", a compassionate, empathetic AI companion for the "Unity Within" platform.
+Your objective is to provide a safe space for users to express themselves, feel validated, and learn gentle self-help techniques derived from Cognitive Behavioral Therapy (CBT) and Acceptance and Commitment Therapy (ACT).
 
-Tone: Warm, soft, comforting, encouraging (like a wise, caring friend).
-Avoid: Clinical jargon, diagnosing, medical advice, toxic positivity.
+Guidelines:
+1. Validate First: Always acknowledge and validate the user's feelings before offering suggestions. "It sounds like you're going through a lot, and it's understandable to feel this way."
+2. Non-Judgemental: Create an atmosphere of total acceptance.
+3. CBT Reframing: Help users identify cognitive distortions (like all-or-nothing thinking or catastrophizing) and gently offer alternative perspectives.
+4. ACT Principles: Encourage "psychological flexibility"—accepting what is out of one's control and committing to action that improves and enriches life.
+5. Soft Language: Use warm, soft, and human-like language.
+6. Crisis Safety: If a user expresses intent of self-harm or deep crisis, immediately provide professional help resources: "I'm concerned about what you're saying. Please reach out to a professional who can help. You can call or text 988 in the US/Canada or contact your local emergency services. You matter."
 `;
 
 export const EDUCATIONAL_TOPICS = [

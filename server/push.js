@@ -1,3 +1,38 @@
+// --- INTELLIGENT NOTIFICATION ALGORITHM IMPORT ---
+import { generateNotification } from '../services/pushNotificationService.js';
+/**
+ * Intelligent notification endpoint (AI-driven, personalized)
+ */
+async function intelligentNotifyHandler(req, res) {
+  try {
+    const { userId, userProfile } = req.body;
+    if (!userId || !userProfile) {
+      return res.status(400).json({ error: 'userId and userProfile required' });
+    }
+    // Generate intelligent notification message
+    const body = generateNotification(userProfile);
+    const payload = JSON.stringify({
+      title: 'UNITY WITHIN',
+      body,
+      action: 'intelligent',
+      tag: `intelligent_${Date.now()}`,
+      id: `intelligent_${Date.now()}`
+    });
+    // Send only to this user's subscription(s)
+    let sent = 0, failed = 0;
+    subscriptions.forEach((data, endpoint) => {
+      if (data.subscription.userId === userId) {
+        webpush.sendNotification(data.subscription, payload)
+          .then(() => { sent++; })
+          .catch(() => { failed++; });
+      }
+    });
+    res.json({ message: 'Intelligent notification sent', sent, failed });
+  } catch (error) {
+    console.error('[Push Server] Intelligent notify error:', error);
+    res.status(500).json({ error: 'Failed to send intelligent notification' });
+  }
+}
 
 /**
  * Push Notification Module for Unity Within
@@ -609,7 +644,7 @@ function statsHandler(req, res) {
 }
 
 /**
- * Health check endpoint
+ * Get VAPID public key
  */
 function healthHandler(req, res) {
   res.json({
@@ -620,6 +655,13 @@ function healthHandler(req, res) {
     vapidConfigured: !!publicVapidKey && !!privateVapidKey,
     timestamp: new Date().toISOString()
   });
+}
+
+function keyHandler(req, res) {
+  if (!publicVapidKey) {
+    return res.status(404).json({ error: 'VAPID public key not configured' });
+  }
+  res.json({ publicKey: publicVapidKey });
 }
 
 // ==================== SCHEDULED NOTIFICATIONS ====================
@@ -806,9 +848,11 @@ export function setupPushNotifications(app) {
   app.post('/api/notify/revenue', revenueNotifyHandler);
   app.post('/api/notify/gamification', gamificationNotifyHandler);
   app.post('/api/notify/welcome', welcomeNotifyHandler);
+  app.post('/api/notify/intelligent', intelligentNotifyHandler);
   app.post('/api/track/mood', trackMoodHandler);
   app.get('/api/push/stats', statsHandler);
   app.get('/api/push/health', healthHandler);
+  app.get('/api/push/key', keyHandler);
 
   console.log('[Push Notifications] Routes mounted on main server');
   console.log('[Push Notifications] VAPID configured:', !!publicVapidKey && !!privateVapidKey);

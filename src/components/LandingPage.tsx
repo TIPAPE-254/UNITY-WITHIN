@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Wind, BookOpen, Compass, Lock, Shield, ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
+import { Heart, MessageCircle, Wind, BookOpen, Compass, Lock, Shield, ChevronLeft, ChevronRight, Pause, Play, X } from 'lucide-react';
 
 interface LandingPageProps {
     onGetStarted: () => void;
@@ -11,6 +11,46 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onNaviga
     const [currentTestimonialSlide, setCurrentTestimonialSlide] = useState(0);
     const [isHeroPaused, setIsHeroPaused] = useState(false);
     const [isTestimonialPaused, setIsTestimonialPaused] = useState(false);
+    const [downloadModalOpen, setDownloadModalOpen] = useState(false);
+    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+    const [isAlreadyInstalled, setIsAlreadyInstalled] = useState(false);
+
+    // PWA Install logic
+    useEffect(() => {
+        // Detect if already installed/running as standalone
+        if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+            setIsAlreadyInstalled(true);
+        }
+
+        const handler = (e: any) => {
+            e.preventDefault();
+            setDeferredPrompt(e);
+            console.log('App Install Prompt Ready');
+        };
+        window.addEventListener('beforeinstallprompt', handler);
+        return () => window.removeEventListener('beforeinstallprompt', handler);
+    }, []);
+
+    const handleInstallApp = async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`User response to install prompt: ${outcome}`);
+            setDeferredPrompt(null);
+            setDownloadModalOpen(false);
+        } else {
+            // Auto-download APK for Android users as the ultimate 'Play Store' fallback
+            const link = document.createElement('a');
+            link.href = '/downloads/unity-within-latest.apk';
+            link.download = 'unity-within-latest.apk';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Still show a quick informative notification or modal so they know what happened
+            setDownloadModalOpen(true);
+        }
+    };
 
     // Hero carousel images - calming, gentle imagery from public folder
     const heroSlides = [
@@ -79,6 +119,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onNaviga
         <div className="min-h-screen bg-gradient-to-b from-[#f8f9fa] to-[#fff5f7]">
             {/* Hero Section with Carousel */}
             <section className="relative h-screen flex items-center justify-center overflow-hidden">
+                {/* Floating Quick Install Button (Top of Carousel) */}
+                {!isAlreadyInstalled && (
+                    <div className="absolute top-10 right-6 z-50 animate-in fade-in slide-in-from-top-4 duration-1000">
+                        <button 
+                            onClick={handleInstallApp}
+                            className="group flex items-center gap-3 px-6 py-3 bg-white/10 backdrop-blur-xl border border-white/20 text-white rounded-full shadow-2xl hover:bg-unity-500 hover:border-unity-400 transition-all duration-500 hover:scale-105 active:scale-95"
+                        >
+                            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center group-hover:bg-white/40 transition-colors">
+                                <Heart size={16} className="fill-white" />
+                            </div>
+                            <span className="font-bold text-sm tracking-wide uppercase">Install Unity App</span>
+                            <ChevronRight size={18} className="opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                        </button>
+                    </div>
+                )}
+
                 {/* Carousel Background */}
                 <div className="absolute inset-0 transition-all duration-[2000ms] ease-in-out">
                     {heroSlides.map((slide, index) => (
@@ -120,17 +176,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onNaviga
                     ))}
 
                     <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-12">
-                        <button
-                            onClick={onGetStarted}
-                            className="px-10 py-5 bg-white text-unity-600 font-bold text-lg rounded-full shadow-2xl hover:shadow-3xl hover:scale-105 transition-all duration-300"
-                        >
-                            Talk to Buddie
-                        </button>
+                        {!isAlreadyInstalled && (
+                            <button
+                                onClick={handleInstallApp}
+                                className="px-10 py-5 bg-white text-unity-600 font-bold text-lg rounded-full shadow-2xl hover:shadow-3xl hover:scale-105 transition-all duration-300"
+                            >
+                                Download App
+                            </button>
+                        )}
                         <button
                             onClick={onGetStarted}
                             className="px-10 py-5 bg-white/10 backdrop-blur-md text-white font-bold text-lg rounded-full border-2 border-white/30 hover:bg-white/20 transition-all duration-300"
                         >
-                            Start Free
+                            Talk to Buddie
                         </button>
                     </div>
 
@@ -535,7 +593,95 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onNaviga
                 </div>
             </section>
 
-            {/* Footer */}
+            {/* Download App Section - Hidden if already installed */}
+            {!isAlreadyInstalled && (
+                <section className="py-24 px-6 bg-unity-black text-white rounded-[4rem] mx-6 mb-24 overflow-hidden relative">
+                    <div className="absolute bottom-0 right-0 p-12 opacity-10">
+                        <Shield size={400} />
+                    </div>
+                    <div className="max-w-4xl mx-auto text-center relative z-10">
+                        <h2 className="text-4xl md:text-6xl font-bold mb-8">Take Your Wellness Anywhere.</h2>
+                        <p className="text-xl text-gray-400 mb-12 max-w-2xl mx-auto leading-relaxed">
+                            Stay connected to your support system, track your mood, and access grounding tools even when you're offline.
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
+                            <button 
+                                onClick={handleInstallApp}
+                                className="group flex items-center gap-4 px-10 py-5 bg-white text-unity-black font-bold text-xl rounded-full hover:bg-unity-50 hover:scale-105 transition-all"
+                            >
+                                {deferredPrompt ? 'Install Android App' : 'Get Android App'}
+                                <ChevronRight size={24} className="group-hover:translate-x-2 transition-transform" />
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            )}
+
+            {/* Download Modal Component */}
+            {downloadModalOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+                    <div className="bg-white rounded-[3rem] max-w-lg w-full p-10 relative shadow-2xl animate-in zoom-in-95 duration-300">
+                        <button 
+                            onClick={() => setDownloadModalOpen(false)}
+                            className="absolute top-6 right-6 p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                        >
+                            <X size={24} className="text-gray-500" />
+                        </button>
+
+                        <div className="text-center mb-10">
+                            <div className="w-20 h-20 bg-unity-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                                <Heart className="text-unity-600 fill-unity-600/10" size={40} />
+                            </div>
+                            <h2 className="text-3xl font-black text-gray-900 mb-2 tracking-tight">Unity Within for Android</h2>
+                            <p className="text-gray-500 font-medium">Download the latest clinical-grade build.</p>
+                        </div>
+
+                        <div className="space-y-4 mb-10">
+                            {deferredPrompt && (
+                                <button 
+                                    onClick={handleInstallApp}
+                                    className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-unity-100 to-pink-50 rounded-2xl border-2 border-unity-200 hover:border-unity-400 transition-all group"
+                                >
+                                    <div className="flex items-center gap-4 text-left">
+                                        <div className="w-12 h-12 bg-unity-500 rounded-xl flex items-center justify-center text-white shrink-0 shadow-lg">
+                                            <Sparkles size={24} />
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-gray-900">Direct Install</p>
+                                            <p className="text-gray-500 text-xs text-nowrap">Instant PWA wrapping for Android</p>
+                                        </div>
+                                    </div>
+                                    <ChevronRight className="text-unity-400 group-hover:translate-x-1 transition-transform" />
+                                </button>
+                            )}
+
+                            <div className="flex items-start gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center text-green-600 shrink-0">
+                                    <Shield size={20} />
+                                </div>
+                                <div className="text-left">
+                                    <p className="font-bold text-gray-900 text-sm">Verified APK</p>
+                                    <p className="text-gray-500 text-xs">Direct download from our secure servers.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                            <a 
+                                href="/downloads/unity-within-latest.apk" 
+                                download 
+                                className="block w-full py-5 bg-unity-900 text-white text-center font-black text-xl rounded-2xl hover:bg-unity-800 shadow-xl transition-all"
+                                onClick={() => setTimeout(() => setDownloadModalOpen(false), 2000)}
+                            >
+                                {deferredPrompt ? 'Alternative: Download APK' : 'Download Latest (APK)'}
+                            </a>
+                            <p className="text-center text-gray-400 text-[10px] font-bold uppercase tracking-widest mt-2">
+                                Recommended for Kenyan Networks • ~34MB
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
             <footer className="bg-unity-900 text-white py-16 px-6">
                 <div className="max-w-6xl mx-auto">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">

@@ -151,6 +151,15 @@ async function initializeDatabase() {
             console.log('✅ Added role column to users table');
         }
 
+        const installIdCheck = await client.query(`
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'users' AND column_name = 'last_installation_id'
+        `);
+        if (installIdCheck.rows.length === 0) {
+            await client.query(`ALTER TABLE users ADD COLUMN last_installation_id UUID`);
+            console.log('✅ Added last_installation_id column to users table');
+        }
+
         await client.query(`
             CREATE TABLE IF NOT EXISTS user_moods (
                 id SERIAL PRIMARY KEY,
@@ -602,6 +611,48 @@ async function initializeDatabase() {
                 approved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 activated_at TIMESTAMP NULL,
                 notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Ensure support_sessions table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS support_sessions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                therapist_id INTEGER REFERENCES therapists(id) ON DELETE SET NULL,
+                type VARCHAR(20) DEFAULT 'chat',
+                call_mode VARCHAR(20) DEFAULT 'voice',
+                status VARCHAR(50) DEFAULT 'new',
+                priority VARCHAR(20) DEFAULT 'normal',
+                scheduled_date VARCHAR(50),
+                scheduled_time VARCHAR(50),
+                preferred_timeframe VARCHAR(100),
+                client_name VARCHAR(255),
+                client_phone VARCHAR(50),
+                client_age VARCHAR(20),
+                client_email VARCHAR(255),
+                issue_description TEXT,
+                rating INTEGER,
+                start_time TIMESTAMP,
+                end_time TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Ensure support_notifications table exists
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS support_notifications (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                session_id INTEGER REFERENCES support_sessions(id) ON DELETE CASCADE,
+                type VARCHAR(50) NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                message TEXT NOT NULL,
+                event_key VARCHAR(255),
+                payload JSONB,
+                channel VARCHAR(20) DEFAULT 'in_app',
+                is_read BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
